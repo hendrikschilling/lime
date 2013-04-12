@@ -1,0 +1,58 @@
+short term:
+- valgrind: memleaks
+- valgrind: illegal read/writes
+- really enable cache size changes
+- clean up code all filter
+- api purge "clobber", replace by buffering
+- hide private stuff
+- more static functions in filters!
+- limeview abort if not configuarble file is in a folder!
+- packages for ubunt? and mac?
+- license
+- limeview: mat_cache remove only invisible stuff when too full
+- cli.c fix unknown filter with parameters message
+- limeview: glitches on window resize/startup
+- filter introspection (list filters, setting etc.)
+
+mid term:
+- simplify specification tree definition
+- fix gauss blur rounding
+- speed up configuration
+  - do everything as late as possible (input fixed etc.)
+  - jpg+tiff: check file extension first
+- remove busy wait for renderer
+- tiledata area handling? no pointer?
+
+long term:
+- composition
+- clean autoconfiguration
+  - do filters need to know their connections? handel externally!
+- pass trough input tiles with same area
+- combined iterating and buffering filter mode
+- multiple regions/scales for buffering interface
+- intelligent cache metrics
+- more bit dephts
+- automatic application of filters to multiple channels!
+
+- more filters
+- integrate memory usage of filters in cache size calculations
+- better filter interface
+- better buffering interface (current is just a hack)
+- filter level threading for buffering mode (less memory consumption, works with buffering interface)
+- filter level threading for iterating mode (works with all filters, might be difficult (TIFF!?))
+
+- internal thread id handling, allocate only the necessary per thread for threads currently in used
+    free data if not used for some time? integrate within cache management.
+    
+- abstract sink node, like load one single node with settings, file format/memsink found by pairing!
+- orientation for file loading!
+
+- threading
+  waiting for tiles rendered on other threads causes problems for jpeg loader, it would be optimal to render multiple scale in parallel!
+  hint on used tiles
+  "jpeglib.h" "jpeg_decompress_struct" "region_x"
+    
+    
+    
+limeview filter chain saving and processing!
+
