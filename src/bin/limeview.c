@@ -559,11 +559,12 @@ void mat_cache_flush(Mat_Cache *mat_cache)
   }
   
   while (ea_count(mat_cache->images))
+    //here segfault???
     evas_object_del(ea_pop(mat_cache->images));
 }
 
 void mat_cache_del(Mat_Cache *mat_cache)
-{
+{ 
   mat_cache_flush(mat_cache);
   
   eina_array_free(mat_cache->images);
@@ -679,8 +680,11 @@ void mat_cache_set(Mat_Cache *mat_cache, int scale, int x, int y, void *data)
     eina_matrixsparse_size_get(mat_cache->mats[scale], &mx, &my);
   }
   
-  if (y >= my)
+  if (y >= my) {
     eina_matrixsparse_size_set(mat_cache->mats[scale], mx, y+1);
+    //FIXME just tried if duplicate of above code helbs
+    eina_matrixsparse_size_get(mat_cache->mats[scale], &mx, &my);
+  }
   
   //printf("pos: %dx%d before %dx%d\n", eina)
   eina_matrixsparse_data_idx_set(mat_cache->mats[scale], x, y, data);
@@ -1533,6 +1537,13 @@ void _trans_grid_zoom_trans_cb(Elm_Transit_Effect *effect, Elm_Transit *transit,
   
 }
 
+
+static void
+on_exe_images(void *data, Evas_Object *obj, void *event_info)
+{
+  
+}
+
 static void
 on_fit_image(void *data, Evas_Object *obj, void *event_info)
 {
@@ -2181,13 +2192,13 @@ static void on_tag_changed(void *data, Evas_Object *obj, void *event_info)
   }
   else {
     assert(eina_hash_find(tag->group->tags, tag->tag));
-    eina_hash_del(tag->group->tags, tag->tag, tag->tag);
+    eina_hash_del_by_key(tag->group->tags, tag->tag);
   }
+  
+  save_sidecar(tag->group);
   
   if (!group_in_filters(group, tags_filter))
     step_image_do(NULL, NULL);
-  
-  save_sidecar(tag->group);
 }
 
 static void on_tag_filter_changed(void *data, Evas_Object *obj, void *event_info)
@@ -2311,6 +2322,7 @@ static Evas_Object *export_box_add(Evas_Object *parent)
   evas_object_size_hint_weight_set(btn, EVAS_HINT_EXPAND, 0);
   evas_object_size_hint_align_set(btn, EVAS_HINT_FILL, 0);
   elm_object_text_set(btn, "execute");
+  evas_object_smart_callback_add(btn, "clicked", &on_exe_images, entry);
   evas_object_show(btn);
   elm_box_pack_end(main_box, btn);
   

@@ -871,11 +871,13 @@ void fg_undo_tunings(void)
 
     f = ((Fg_Node*)ea_data(global_nodes_list, i))->f;
     
-    for(j=0;j<ea_count(f->in);j++)
-      meta_undo_tunings_rec(ea_data(f->in, j));
+    if (f->in)
+      for(j=0;j<ea_count(f->in);j++)
+	meta_undo_tunings_rec(ea_data(f->in, j));
     
-    for(j=0;j<ea_count(f->out);j++)
-      meta_undo_tunings_rec(ea_data(f->out, j));
+    if (f->out)
+      for(j=0;j<ea_count(f->out);j++)
+	meta_undo_tunings_rec(ea_data(f->out, j));
   }
     
 }
