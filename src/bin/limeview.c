@@ -1541,7 +1541,26 @@ void _trans_grid_zoom_trans_cb(Elm_Transit_Effect *effect, Elm_Transit *transit,
 static void
 on_exe_images(void *data, Evas_Object *obj, void *event_info)
 {
+  int i, j;
+  File_Group *group;
+  const char *filename;
+  char dst[64];
   
+  for(i=0;i<eina_inarray_count(files);i++) {
+    group = eina_inarray_nth(files, i);
+    if (group_in_filters(group, tags_filter)) {
+      printf("group in: %p\n", group);
+      for(j=0;j<eina_inarray_count(group->files);j++) {
+	filename = ((Tagged_File*)eina_inarray_nth(group->files, j))->filename;
+	if (filename && strstr(filename, ".JPG")) {
+	  printf("in f: %s\n", filename);
+	  sprintf(dst, "/media/blacksheep/weltreise/export/%s", filename);
+	  ecore_file_cp(filename, dst);
+	}
+      }
+    }
+  }
+    
 }
 
 static void
@@ -2322,7 +2341,7 @@ static Evas_Object *export_box_add(Evas_Object *parent)
   evas_object_size_hint_weight_set(btn, EVAS_HINT_EXPAND, 0);
   evas_object_size_hint_align_set(btn, EVAS_HINT_FILL, 0);
   elm_object_text_set(btn, "execute");
-  evas_object_smart_callback_add(btn, "clicked", &on_exe_images, entry);
+  evas_object_smart_callback_add(btn, "clicked", &on_exe_images, NULL);
   evas_object_show(btn);
   elm_box_pack_end(main_box, btn);
   
