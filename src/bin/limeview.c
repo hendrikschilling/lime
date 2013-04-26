@@ -36,6 +36,8 @@ typedef struct {
 
 Eina_Inarray *files;
 
+Eina_Array *export_list = NULL;
+
 char image_path[EINA_PATH_MAX];
 char *image_file;
 Eina_Hash *tags_filter;
@@ -59,7 +61,7 @@ int max_workers;
 Filter *sink, *contr, *blur, *load;
 Evas_Object *grid, *clipper, *win, *scroller, *file_slider, *filter_list, *select_filter, *pos_label;
 Evas_Object *tab_group, *tab_filter, *tab_settings, *tab_tags, *tab_current, *tab_box, *tab_export, *tab_tags, *tags_list, *tags_filter_list, *seg_rating;
-Evas_Object *group_list;
+Evas_Object *group_list, *export_progress;
 char *labelbuf;
 char *pos_lbl_buf;
 int posx, posy;
@@ -77,6 +79,7 @@ int verbose;
 Eina_Array *finished_threads = NULL;
 Ecore_Timer *preview_timer = NULL;
 
+int export_count;
 int file_step = 1;
 int file_idx = 0;
 int group_idx;
@@ -1538,6 +1541,36 @@ void _trans_grid_zoom_trans_cb(Elm_Transit_Effect *effect, Elm_Transit *transit,
 }
 
 
+
+static void
+export_error_cb(void *data, Eio_File *handler, int error)
+{
+  printf("error on copy export");
+}
+
+static void
+export_done_cb(void *data, Eio_File *handler)
+{
+  char *filename;
+  char dst[EINA_PATH_MAX];
+  
+  if (export_list)
+    elm_progressbar_value_set(export_progress, 1.0 - (double)ea_count(export_list)/export_count);
+  else
+    elm_progressbar_value_set(export_progress, 0.0);    
+  
+  if (export_list) {
+    filename = eina_array_pop(export_list);
+    if (!ea_count(export_list)) {
+      eina_array_free(export_list);
+      export_list = NULL;
+      //elm_object_disabled_set(
+    }
+    sprintf(dst, "/home/hendrik/weltreise/foto_blog/%s", filename);
+    eio_file_copy(filename, strdup(dst), NULL, export_done_cb, export_error_cb, NULL);
+  }
+}
+
 static void
 on_exe_images(void *data, Evas_Object *obj, void *event_info)
 {
@@ -1546,6 +1579,8 @@ on_exe_images(void *data, Evas_Object *obj, void *event_info)
   const char *filename;
   char dst[64];
   
+  elm_progressbar_value_set(export_progress, 0.0);
+  
   for(i=0;i<eina_inarray_count(files);i++) {
     group = eina_inarray_nth(files, i);
     if (group_in_filters(group, tags_filter)) {
@@ -1553,12 +1588,26 @@ on_exe_images(void *data, Evas_Object *obj, void *event_info)
       for(j=0;j<eina_inarray_count(group->files);j++) {
 	filename = ((Tagged_File*)eina_inarray_nth(group->files, j))->filename;
 	if (filename && strstr(filename, ".JPG")) {
-	  printf("in f: %s\n", filename);
-	  sprintf(dst, "/media/blacksheep/weltreise/export/%s", filename);
-	  ecore_file_cp(filename, dst);
+	  if (!export_list)
+	    export_list = eina_array_new(32);
+	  eina_array_push(export_list, filename);
+	  //printf("in f: %s\n", filename);
+	  //sprintf(dst, "/media/blacksheep/weltreise/export/%s", filename);
+	  //ecore_file_cp(filename, dst);
 	}
       }
     }
+  }
+  
+  if (export_list) {
+    export_count = ea_count(export_list);
+    filename = eina_array_pop(export_list);
+    if (!ea_count(export_list)) {
+      eina_array_free(export_list);
+      export_list = NULL;
+    }
+    sprintf(dst, "/home/hendrik/weltreise/foto_blog/%s", filename);
+    eio_file_copy(filename, strdup(dst), NULL, export_done_cb, export_error_cb, NULL);
   }
     
 }
@@ -2299,7 +2348,7 @@ static void on_export_type_sel(void *data, Evas_Object *obj, void *event_info)
 
 static Evas_Object *export_box_add(Evas_Object *parent)
 {
-  Evas_Object *main_box, *btn, *progress, *sel, *lbl, *fs;
+  Evas_Object *main_box, *btn, *sel, *lbl, *fs;
   
   main_box = elm_box_add(parent);
   evas_object_size_hint_weight_set(main_box, EVAS_HINT_EXPAND, EVAS_HINT_EXPAND);
@@ -2346,11 +2395,11 @@ static Evas_Object *export_box_add(Evas_Object *parent)
   elm_box_pack_end(main_box, btn);
   
   //progress bar
-  progress = elm_progressbar_add(parent);
-  evas_object_size_hint_weight_set(progress, EVAS_HINT_EXPAND, 0);
-  evas_object_size_hint_align_set(progress, EVAS_HINT_FILL, 0);
-  evas_object_show(progress);
-  elm_box_pack_end(main_box, progress);
+  export_progress = elm_progressbar_add(parent);
+  evas_object_size_hint_weight_set(export_progress, EVAS_HINT_EXPAND, 0);
+  evas_object_size_hint_align_set(export_progress, EVAS_HINT_FILL, 0);
+  evas_object_show(export_progress);
+  elm_box_pack_end(main_box, export_progress);
   
   return main_box;
 }
