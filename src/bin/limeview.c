@@ -1817,7 +1817,7 @@ File_Group *file_group_new(const char *name)
   File_Group *group = calloc(sizeof(File_Group), 1);
   
   group->files = eina_inarray_new(sizeof(Tagged_File), 2);
-  group->tags = eina_hash_stringshared_new(NULL);
+  group->tags = eina_hash_string_superfast_new(NULL); //eina_hash_stringshared_new(NULL);
   
   file_new = tag_file_new(group, name);
   eina_inarray_push(group->files, &file_new);
@@ -1937,11 +1937,12 @@ void _scroller_resize_cb(void *data, Evas *e, Evas_Object *obj, void *event_info
   fill_scroller();
 }
 
-Eina_Bool shortcut(void *data, Evas_Object *obj, Evas_Object *src, Evas_Callback_Type type, void *event_info)
+void shortcut(void *data, Evas *e, Evas_Object *obj, void *event_info)
+//Eina_Bool shortcut(void *data, Evas_Object *obj, Evas_Object *src, Evas_Callback_Type type, void *event_info)
 {
   struct _Evas_Event_Key_Down *key;
   
-  if (type ==  EVAS_CALLBACK_KEY_DOWN) {
+  //if (type ==  EVAS_CALLBACK_KEY_DOWN) {
     key = event_info;
     if (!strcmp(key->keyname, "space"))
       on_next_image(NULL, NULL, NULL);
@@ -1959,14 +1960,14 @@ Eina_Bool shortcut(void *data, Evas_Object *obj, Evas_Object *src, Evas_Callback
       on_origscale_image(NULL, NULL, NULL);
     else if (!strcmp(key->keyname, "f"))
       on_fit_image(NULL, NULL, NULL);
-    else {
+    else //{
       printf("keyboard! \"%s\"\n", key->keyname);
-      return EINA_TRUE;
-    }
-    return EINA_FALSE;
-  }
+      //return EINA_TRUE;
+    //}
+    //return EINA_FALSE;
+  //}
   
-  return EINA_TRUE;
+  //return EINA_TRUE;
 }
 
 Evas_Object *elm_button_add_pack(Evas_Object *p, const char *text, void (*cb)(void *data, Evas_Object *obj, void *event_info))
@@ -2452,8 +2453,10 @@ elm_main(int argc, char **argv)
     return EXIT_SUCCESS;
   }
   
-  known_tags = eina_hash_stringshared_new(NULL);
-  tags_filter = eina_hash_stringshared_new(NULL);
+  //known_tags = eina_hash_stringshared_new(NULL);
+  //tags_filter = eina_hash_stringshared_new(NULL);
+  known_tags = eina_hash_string_superfast_new(NULL);
+  tags_filter = eina_hash_string_superfast_new(NULL);
   
   strcpy(image_path, dir);
   image_file = image_path + strlen(image_path);
@@ -2535,7 +2538,9 @@ elm_main(int argc, char **argv)
   //evas_object_event_callback_add(scroller, EVAS_CALLBACK_MOVE, _scroller_resize_cb, NULL);
   evas_object_event_callback_add(scroller, EVAS_CALLBACK_SHOW, _scroller_resize_cb, NULL);
   
-  elm_object_event_callback_add(win, &shortcut, NULL);
+  //elm_object_event_callback_add(win, &shortcut, NULL);
+  evas_object_key_grab(win, "space", 0, 0, EINA_TRUE);
+  evas_object_event_callback_add(win, EVAS_CALLBACK_KEY_DOWN, shortcut, NULL);
   
   tab_box = elm_box_add(win);
   evas_object_size_hint_weight_set(tab_box, EVAS_HINT_EXPAND, EVAS_HINT_EXPAND);
