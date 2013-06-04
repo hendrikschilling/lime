@@ -398,7 +398,7 @@ void insert_after_do(void *data, Evas_Object *obj)
   if (filter_last_selected)
     fc->item = elm_list_item_insert_before(filter_list, fc_source->item, f->fc->name, NULL, NULL, &_on_filter_select, eina_list_next(source_l));
   else
-    fc->item = elm_list_item_append(filter_list, f->fc->name, NULL, NULL, &_on_filter_select, eina_list_next(source_l));
+    fc->item = elm_list_item_append(filter_list, strdup(f->fc->name), NULL, NULL, &_on_filter_select, eina_list_next(source_l));
 
   elm_list_item_selected_set(fc->item, EINA_TRUE);
   elm_list_go(filter_list);
@@ -1282,7 +1282,7 @@ Eina_Bool tags_hash_func(const Eina_Hash *hash, const void *key, void *data, voi
 {
   Tags_List_Item_Data *tag = malloc(sizeof(Tags_List_Item_Data));
   
-  tag->tag = data;
+  tag->tag = strdup(data);
   tag->group = fdata;
   
   elm_genlist_item_append(tags_list, tags_list_itc, tag, NULL, ELM_GENLIST_ITEM_NONE, NULL, NULL);
@@ -1292,7 +1292,7 @@ Eina_Bool tags_hash_func(const Eina_Hash *hash, const void *key, void *data, voi
 
 Eina_Bool tags_hash_filter_func(const Eina_Hash *hash, const void *key, void *data, void *fdata)
 {
-  elm_genlist_item_append(tags_filter_list, tags_filter_itc, data, NULL, ELM_GENLIST_ITEM_NONE, NULL, NULL);
+  elm_genlist_item_append(tags_filter_list, tags_filter_itc, strdup(data), NULL, ELM_GENLIST_ITEM_NONE, NULL, NULL);
   
   return 1;
 }
@@ -1367,7 +1367,13 @@ void step_image_do(void *data, Evas_Object *obj)
 	  break;
 	
 	filename = ((Tagged_File*)eina_inarray_nth(group->files, group_idx))->filename;
-	if (!filename) {
+	//FIXME better file ending list (no static file endings!)
+	if (!filename || (!eina_str_has_extension(filename, ".jpg") 
+		       && !eina_str_has_extension(filename, ".JPG")
+		       && !eina_str_has_extension(filename, ".tif")
+		       && !eina_str_has_extension(filename, ".TIF")
+		       && !eina_str_has_extension(filename, ".tiff")
+		       && !eina_str_has_extension(filename, ".TIFF"))) {
 	  group_idx++;
 	  continue;
 	}
@@ -1401,7 +1407,7 @@ void step_image_do(void *data, Evas_Object *obj)
     if (((Tagged_File*)eina_inarray_nth(group->files, i))->filename) {
       idx_cp = malloc(sizeof(int));
       *idx_cp = i;
-      item = elm_list_item_append(group_list, ((Tagged_File*)eina_inarray_nth(group->files, i))->filename, NULL, NULL, &on_group_select, idx_cp);
+      item = elm_list_item_append(group_list, strdup(((Tagged_File*)eina_inarray_nth(group->files, i))->filename), NULL, NULL, &on_group_select, idx_cp);
       if (group_idx == i)
 	elm_list_item_selected_set(item, EINA_TRUE);
     }
@@ -1946,6 +1952,38 @@ void shortcut(void *data, Evas *e, Evas_Object *obj, void *event_info)
     key = event_info;
     if (!strcmp(key->keyname, "space"))
       on_next_image(NULL, NULL, NULL);
+    /*else if (!strcmp(key->keyname, "plus"))
+      zoom_in_do();
+    else if (!strcmp(key->keyname, "minus"))
+      zoom_out_do();
+    else if (!strcmp(key->keyname, "BackSpace"))
+      on_prev_image(NULL, NULL, NULL);
+    else if (!strcmp(key->keyname, "Delete"))
+      on_delete_image(NULL, NULL, NULL);
+    else if (!strcmp(key->keyname, "Escape"))
+      on_done(NULL, NULL, NULL);
+    else if (!strcmp(key->keyname, "o"))
+      on_origscale_image(NULL, NULL, NULL);
+    else if (!strcmp(key->keyname, "f"))
+      on_fit_image(NULL, NULL, NULL);
+    else*/ //{
+      printf("keyboard! \"%s\"\n", key->keyname);
+      //return EINA_TRUE;
+    //}
+    //return EINA_FALSE;
+  //}
+  
+  //return EINA_TRUE;
+}
+
+Eina_Bool shortcut_elm(void *data, Evas_Object *obj, Evas_Object *src, Evas_Callback_Type type, void *event_info)
+{
+  struct _Evas_Event_Key_Down *key;
+  
+  if (type ==  EVAS_CALLBACK_KEY_DOWN) {
+    key = event_info;
+    if (!strcmp(key->keyname, "space"))
+      on_next_image(NULL, NULL, NULL);
     else if (!strcmp(key->keyname, "plus"))
       zoom_in_do();
     else if (!strcmp(key->keyname, "minus"))
@@ -1960,14 +1998,14 @@ void shortcut(void *data, Evas *e, Evas_Object *obj, void *event_info)
       on_origscale_image(NULL, NULL, NULL);
     else if (!strcmp(key->keyname, "f"))
       on_fit_image(NULL, NULL, NULL);
-    else //{
+    else {
       printf("keyboard! \"%s\"\n", key->keyname);
-      //return EINA_TRUE;
-    //}
-    //return EINA_FALSE;
-  //}
+      return EINA_TRUE;
+    }
+    return EINA_FALSE;
+  }
   
-  //return EINA_TRUE;
+  return EINA_TRUE;
 }
 
 Evas_Object *elm_button_add_pack(Evas_Object *p, const char *text, void (*cb)(void *data, Evas_Object *obj, void *event_info))
@@ -2161,7 +2199,8 @@ void add_group_sidecar(File_Group *group)
 void save_sidecar(File_Group *group)
 {
   int len;
-  FILE *f;  XmpStringPtr xmp_buf = xmp_string_new();
+  FILE *f;
+  XmpStringPtr xmp_buf = xmp_string_new();
   char *buf = malloc(MAX_XMP_FILE);
   XmpPtr xmp;
   
@@ -2314,8 +2353,9 @@ static Evas_Object *_tag_gen_cont_get(void *data, Evas_Object *obj, const char *
     return NULL;
   
   check = elm_check_add(obj);
+  elm_object_focus_allow_set(check, EINA_FALSE);
 
-  elm_object_part_text_set(check, "default", tag->tag);
+  elm_object_part_text_set(check, "default", strdup(tag->tag));
   if (eina_hash_find(tag->group->tags, tag->tag))
     elm_check_state_set(check, EINA_TRUE);
 
@@ -2332,8 +2372,9 @@ static Evas_Object *_tag_filter_cont_get(void *data, Evas_Object *obj, const cha
     return NULL;
   
   check = elm_check_add(obj);
+  elm_object_focus_allow_set(check, EINA_FALSE);
   
-  elm_object_part_text_set(check, "default", data);
+  elm_object_part_text_set(check, "default", strdup(data));
   if (eina_hash_find(tags_filter, data))
     elm_check_state_set(check, EINA_TRUE);
 
@@ -2500,6 +2541,7 @@ elm_main(int argc, char **argv)
   elm_slider_min_max_set(file_slider, 0, 0);
   
   hbox = elm_box_add(win);
+  elm_object_tree_focus_allow_set(hbox, EINA_FALSE);
   evas_object_size_hint_weight_set(hbox, EVAS_HINT_EXPAND, 0);
   evas_object_size_hint_align_set(hbox, EVAS_HINT_FILL, 0);
   elm_box_horizontal_set(hbox, EINA_TRUE);
@@ -2538,9 +2580,15 @@ elm_main(int argc, char **argv)
   //evas_object_event_callback_add(scroller, EVAS_CALLBACK_MOVE, _scroller_resize_cb, NULL);
   evas_object_event_callback_add(scroller, EVAS_CALLBACK_SHOW, _scroller_resize_cb, NULL);
   
-  //elm_object_event_callback_add(win, &shortcut, NULL);
-  evas_object_key_grab(win, "space", 0, 0, EINA_TRUE);
-  evas_object_event_callback_add(win, EVAS_CALLBACK_KEY_DOWN, shortcut, NULL);
+  elm_object_event_callback_add(win, &shortcut_elm, NULL);
+  //evas_object_key_grab(win, "space", 0, 0, EINA_TRUE);
+  //evas_object_key_grab(win, "minus", 0, 0, EINA_TRUE);
+  //evas_object_key_grab(win, "BackSpace", 0, 0, EINA_TRUE);
+  //evas_object_key_grab(win, "Delete", 0, 0, EINA_TRUE);
+  //evas_object_key_grab(win, "Escape", 0, 0, EINA_TRUE);
+  //evas_object_key_grab(win, "o", 0, 0, EINA_TRUE);
+  //evas_object_key_grab(win, "f", 0, 0, EINA_TRUE);
+  //evas_object_event_callback_add(win, EVAS_CALLBACK_KEY_DOWN, shortcut, NULL);
   
   tab_box = elm_box_add(win);
   evas_object_size_hint_weight_set(tab_box, EVAS_HINT_EXPAND, EVAS_HINT_EXPAND);
@@ -2593,6 +2641,7 @@ elm_main(int argc, char **argv)
   tags_filter_itc->func.del = NULL;
   
   tags_list =  elm_genlist_add(win);
+  elm_object_tree_focus_allow_set(tags_list, EINA_FALSE);
   elm_box_pack_end(tab_tags, tags_list);
   elm_genlist_select_mode_set(tags_list, ELM_OBJECT_SELECT_MODE_NONE);
   evas_object_size_hint_weight_set(tags_list, EVAS_HINT_EXPAND, EVAS_HINT_EXPAND);
@@ -2613,6 +2662,7 @@ elm_main(int argc, char **argv)
   evas_object_smart_callback_add(seg_rating, "changed", on_rating_changed, NULL);
   
   tags_filter_list =  elm_genlist_add(win);
+  elm_object_tree_focus_allow_set(tags_filter_list, EINA_FALSE);
   elm_box_pack_end(tab_tags, tags_filter_list);
   elm_genlist_select_mode_set(tags_filter_list, ELM_OBJECT_SELECT_MODE_NONE);
   evas_object_size_hint_weight_set(tags_filter_list, EVAS_HINT_EXPAND, EVAS_HINT_EXPAND);
@@ -2633,6 +2683,7 @@ elm_main(int argc, char **argv)
   evas_object_smart_callback_add(seg_filter_rating, "changed", on_filter_rating_changed, NULL);
   
   tab_filter = elm_box_add(win);
+  elm_object_tree_focus_allow_set(tab_filter, EINA_FALSE);
   evas_object_size_hint_weight_set(tab_filter, EVAS_HINT_EXPAND, EVAS_HINT_EXPAND);
   evas_object_size_hint_align_set(tab_filter, EVAS_HINT_FILL, EVAS_HINT_FILL);
   elm_box_pack_end(tab_box, tab_filter);
