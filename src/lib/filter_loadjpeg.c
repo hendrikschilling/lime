@@ -123,13 +123,6 @@ void _loadjpeg_worker(Filter *f, Eina_Array *in, Eina_Array *out, Rect *area, in
   ((j_common_ptr) &cinfo, JPOOL_IMAGE, row_stride, 16);
   
   switch (data->rot) {
-    case 1 : 
-      rp = r;
-      gp = g;
-      bp = b;
-      xstep = 1;
-      ystep = 0;
-      break;
     case 6 : 
       rp = r + cinfo.output_height - 1;
       gp = g + cinfo.output_height - 1;
@@ -144,8 +137,14 @@ void _loadjpeg_worker(Filter *f, Eina_Array *in, Eina_Array *out, Rect *area, in
       xstep = -cinfo.output_height;
       ystep = cinfo.output_height*cinfo.output_width+1;
       break;
-    default :
-      abort();
+    case 1 :  
+    default : //FIXME more cases!
+      rp = r;
+      gp = g;
+      bp = b;
+      xstep = 1;
+      ystep = 0;
+      break;
   }
 
   while (cinfo.output_scanline < cinfo.output_height) {
