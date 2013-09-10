@@ -254,7 +254,8 @@ void xmp_gettags(const char *file, File_Group *group)
   
     while (xmp_iterator_next(iter, NULL, NULL, propValue, NULL)) {
       //FIXME free the c string?
-      tag = eina_stringshare_add(xmp_string_cstr(propValue));
+      tag = strdup(xmp_string_cstr(propValue));
+      //tag = eina_stringshare_add(xmp_string_cstr(propValue));
       if (!eina_hash_find(group->tags, tag))
 	eina_hash_add(group->tags, tag, tag);
       if (!eina_hash_find(known_tags, tag))
@@ -612,6 +613,9 @@ FUNC_DEBUG_PRINT("mat_cache_flush")
   }
   
   printf("del mat cache imgs\n");
+  //CRASH!!! munmap_chunk(): invalid pointer:
+  //COUNT: 2
+  
   while (ea_count(mat_cache->images)) {
     //here segfault!
     evas_object_del(ea_pop(mat_cache->images));
@@ -1547,6 +1551,8 @@ FUNC_DEBUG_PRINT("step_image_do")
   
   DEBUG_STEP_IMAGE_PRINT("clear tag list");
   //FIXME we should only need to clear!
+  //CRASH!!! munmap_chunk(): invalid pointer:
+  //COUNT: 6
   elm_genlist_clear(tags_list);
   DEBUG_STEP_IMAGE_PRINT("del tag list");
   //evas_object_del(tags_list);
@@ -1565,7 +1571,7 @@ FUNC_DEBUG_PRINT("step_image_do")
   //DEBUG_STEP_IMAGE_PRINT("5");
   //evas_object_show(tags_list);
   
-  DEBUG_STEP_IMAGE_PRINT("clear tag list cleaned");
+  //DEBUG_STEP_IMAGE_PRINT("clear tag list cleaned");
   eina_hash_foreach(known_tags, tags_hash_func, group);
   DEBUG_STEP_IMAGE_PRINT("known tags iterated");
   
@@ -2534,6 +2540,8 @@ static void new_tag_file(File_Group *group)
   
   xmp_string_free(xmp_buf);
   xmp_free(xmp);
+  
+  printf("wrote new tag file!\n");
 }
 
 
@@ -2642,7 +2650,7 @@ static void on_new_tag(void *data, Evas_Object *obj, void *event_info)
   if (eina_hash_find(known_tags, new))
     return;
   
-  new = eina_stringshare_add(new);
+  new = strdup(new);//eina_stringshare_add(new);
   
   eina_hash_add(known_tags, new, new);
   
@@ -2738,7 +2746,7 @@ static Evas_Object *_tag_gen_cont_get(void *data, Evas_Object *obj, const char *
   
   printf("%s\n", part);
   
-  check = elm_check_add(obj);
+  check = elm_check_add(win);
   elm_object_focus_allow_set(check, EINA_FALSE);
 
   elm_object_part_text_set(check, "default", strdup(tag->tag));
@@ -2757,7 +2765,7 @@ static Evas_Object *_tag_filter_cont_get(void *data, Evas_Object *obj, const cha
   if (strcmp(part, "elm.swallow.icon"))
     return NULL;
   
-  check = elm_check_add(obj);
+  check = elm_check_add(win);
   elm_object_focus_allow_set(check, EINA_FALSE);
   
   elm_object_part_text_set(check, "default", strdup(data));
