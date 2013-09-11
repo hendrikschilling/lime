@@ -3044,7 +3044,10 @@ elm_main(int argc, char **argv)
   // run the mainloop and process events and callbacks
   //fill_area(0,0,1024,1024,MAX_FAST_SCALEDOWN,1);
   
-  //evas_object_size_hint_min_set(win, 128, 128);
+  evas_object_size_hint_min_set(win, 128, 128);
+  
+  evas_object_show(win);
+  elm_scroller_region_show(scroller, 0, 0, 1, 1);
   
   ecore_event_handler_add(ECORE_EXE_EVENT_DEL, &_rsync_term, NULL);
   
@@ -3054,9 +3057,6 @@ elm_main(int argc, char **argv)
     evas_object_resize(win, 1024, 1024);
   else
 	  elm_win_maximized_set(win, EINA_TRUE);
-  
-  evas_object_show(win);
-  elm_scroller_region_show(scroller, 0, 0, 1, 1);
   
   bench_time_mark(BENCHMARK_INIT);
   elm_run();
