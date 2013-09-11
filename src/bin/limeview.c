@@ -2555,7 +2555,7 @@ void add_group_sidecar(File_Group *group)
   
   EINA_INARRAY_FOREACH(group->files, file)
     if (!strcmp(file->filename+strlen(file->filename)-4, ".jpg") || !strcmp(file->filename+strlen(file->filename)-4, ".JPG")) {
-      buf = malloc(strlen(file->filename+5));
+      buf = malloc(strlen(file->filename)+5);
       sprintf(buf, "%s.xmp", file->filename);
       group->sidecar = buf;
       return;
