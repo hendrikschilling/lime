@@ -15,12 +15,6 @@
 
 #define RSYNC_INSTANCE_COUNT 1
 
-#ifdef DEBUG_FILL_AREA
-#define DEBUG_FA_P(P) printf(P"\n");
-#else
-#define DEBUG_FA_P(P)
-#endif
-
 int high_quality_delay =  150;
 int max_reaction_delay =  1000;
 
@@ -149,7 +143,6 @@ void size_recalc(void)
   size_ptr = (Dim*)filter_core_by_type(sink, MT_IMGSIZE);
   if (size_ptr) {
     size = *size_ptr;
-    printf("got size: %d %d\n", size.width, size.height);
   }
   
   forbid_fill--;
@@ -237,12 +230,11 @@ void xmp_gettags(const char *file, File_Group *group)
   
     while (xmp_iterator_next(iter, NULL, NULL, propValue, NULL)) {
       //FIXME free the c string?
-      tag = strdup(xmp_string_cstr(propValue));
-      //tag = eina_stringshare_add(xmp_string_cstr(propValue));
+      tag = xmp_string_cstr(propValue);
       if (!eina_hash_find(group->tags, tag))
-	eina_hash_add(group->tags, tag, tag);
+			eina_hash_add(group->tags, tag, tag);
       if (!eina_hash_find(known_tags, tag))
-	eina_hash_add(known_tags, tag, tag);
+			eina_hash_add(known_tags, tag, tag);
     }
 
     xmp_iterator_free(iter); 
@@ -594,10 +586,6 @@ void mat_cache_flush(Mat_Cache *mat_cache)
     mat_cache->high_of_layer[i] = NULL;
   }
   
-  printf("del mat cache imgs\n");
-  //CRASH!!! munmap_chunk(): invalid pointer:
-  //COUNT: 2
-  
   while (ea_count(mat_cache->images)) {
     //here segfault!
     evas_object_del(ea_pop(mat_cache->images));
@@ -827,7 +815,6 @@ Eina_Bool _display_preview(void *data)
   int i;
     
   evas_object_show(clipper);
-  printf("display preview\n");
   mat_cache_del(mat_cache_old);
   mat_cache_old = NULL;
   grid_setsize();
@@ -887,7 +874,7 @@ _finished_tile(void *data, Ecore_Thread *th)
     }
     
     if (preview_timer) {
-      printf("no fource!\n");
+      printf("no force!\n");
       ecore_timer_del(preview_timer);
       preview_timer = NULL;
     }
@@ -1027,8 +1014,6 @@ int fill_area(int xm, int ym, int wm, int hm, int minscale, int preview)
   
   if (scale_start > size.scaledown_max)
     scale_start = size.scaledown_max;
-  
-  DEBUG_FA_P("area loop");
 
   for(scale=scale_start;scale>=minscale;scale--) {
     //additional scaledown for preview
@@ -1041,7 +1026,6 @@ int fill_area(int xm, int ym, int wm, int hm, int minscale, int preview)
 	  continue;
 		
 	if (!cell) {
-	  DEBUG_FA_P("img obj ops");
 	  img = evas_object_image_filled_add(evas_object_evas_get(win));
 	  evas_object_image_colorspace_set(img, EVAS_COLORSPACE_ARGB8888);
 	  evas_object_image_alpha_set(img, EINA_FALSE);
@@ -1049,7 +1033,6 @@ int fill_area(int xm, int ym, int wm, int hm, int minscale, int preview)
 	  evas_object_image_smooth_scale_set(img, EINA_FALSE); 
 	  evas_object_image_scale_hint_set(img, EVAS_IMAGE_SCALE_HINT_STATIC);
 	  evas_object_image_scale_hint_set(img, EVAS_IMAGE_CONTENT_HINT_STATIC);
-	  DEBUG_FA_P("img obj ops finished");
 	  
 	  minx = i*TILE_SIZE*scalediv;
 	  miny = j*TILE_SIZE*scalediv;
@@ -1081,7 +1064,6 @@ int fill_area(int xm, int ym, int wm, int hm, int minscale, int preview)
 	  
 	  tdata = calloc(sizeof(_Img_Thread_Data), 1);
 	 
-	  DEBUG_FA_P("img data get");
   	  buf = evas_object_image_data_get(img, EINA_TRUE);
 	  
 	  //elm_grid_pack(grid, img, i*TILE_SIZE*scalediv, j*TILE_SIZE*scalediv, TILE_SIZE*scalediv, TILE_SIZE*scalediv);
@@ -1111,11 +1093,8 @@ int fill_area(int xm, int ym, int wm, int hm, int minscale, int preview)
 	  	  
 	  worker++;
 	  
-	  DEBUG_FA_P("start thread");
 	  ecore_thread_run(_process_tile, _finished_tile, NULL, tdata);
 	  started++;
-	  
-	  DEBUG_FA_P("started thread");
 
 	  if (worker >= max_workers)
 	    return started;
@@ -1193,15 +1172,10 @@ void group_select_do(void *data, Evas_Object *obj)
   File_Group *group = eina_inarray_nth(files, file_idx);
   
   group_idx = *(int*)data;
-  
-  printf("do group sel %d\n", group_idx);
-
     
   failed = 1;
   
   while(failed) {
-    printf("try group %d - %d\n", file_idx, group_idx);
-    
     if (group_idx == eina_inarray_count(group->files)) {
       group_idx = 0;
     }
@@ -1216,7 +1190,6 @@ void group_select_do(void *data, Evas_Object *obj)
     lime_setting_string_set(load, "filename", image_path);
     
     failed = lime_config_test(sink);
-    printf("tested %s: %d\n", filename, failed);
     if (failed)
       group_idx++;
   }
@@ -1236,15 +1209,10 @@ void tags_select_do(void *data, Evas_Object *obj)
   File_Group *group = eina_inarray_nth(files, file_idx);
   
   group_idx = *(int*)data;
-  
-  printf("do group sel %d\n", group_idx);
-
     
   failed = 1;
   
   while(failed) {
-    printf("try group %d - %d\n", file_idx, group_idx);
-    
     if (group_idx == eina_inarray_count(group->files)) {
       group_idx = 0;
     }
@@ -1259,7 +1227,6 @@ void tags_select_do(void *data, Evas_Object *obj)
     lime_setting_string_set(load, "filename", image_path);
     
     failed = lime_config_test(sink);
-    printf("tested %s: %d\n", filename, failed);
     if (failed)
       group_idx++;
   }
@@ -1342,23 +1309,19 @@ Tags_List_Item_Data;
 Eina_Bool tags_hash_func(const Eina_Hash *hash, const void *key, void *data, void *fdata)
 {
   Tags_List_Item_Data *tag = malloc(sizeof(Tags_List_Item_Data));
-  
-  printf("dup hash\n");
-  tag->tag = strdup(data);
+ 
+  tag->tag = data;
   tag->group = fdata;
   
-  
-  printf("append hash %s\n", (char*)data);
   elm_genlist_item_append(tags_list, tags_list_itc, tag, NULL, ELM_GENLIST_ITEM_NONE, NULL, NULL);
-  
-  printf("appended\n");
+
   return 1;
 }
 
 
 Eina_Bool tags_hash_filter_func(const Eina_Hash *hash, const void *key, void *data, void *fdata)
 {
-  elm_genlist_item_append(tags_filter_list, tags_filter_itc, strdup(data), NULL, ELM_GENLIST_ITEM_NONE, NULL, NULL);
+  elm_genlist_item_append(tags_filter_list, tags_filter_itc, data, NULL, ELM_GENLIST_ITEM_NONE, NULL, NULL);
   
   return 1;
 }
@@ -1461,8 +1424,7 @@ void step_image_do(void *data, Evas_Object *obj)
 	  
 	strcpy(image_file, filename);
 	lime_setting_string_set(load, "filename", image_path);
-	
-	printf("test %s\n", image_path);
+
 	failed = lime_config_test(sink);
 	if (failed)
 	  group_idx++;
@@ -1478,7 +1440,6 @@ void step_image_do(void *data, Evas_Object *obj)
     group = eina_inarray_nth(files, file_idx);
     
     if (start_idx == file_idx){
-      printf("ERROR - no image file found in this dir!\n");
       elm_exit_do(NULL, NULL);
       return;
     }
@@ -1489,7 +1450,7 @@ void step_image_do(void *data, Evas_Object *obj)
     if (((Tagged_File*)eina_inarray_nth(group->files, i))->filename) {
       idx_cp = malloc(sizeof(int));
       *idx_cp = i;
-      item = elm_list_item_append(group_list, strdup(((Tagged_File*)eina_inarray_nth(group->files, i))->filename), NULL, NULL, &on_group_select, idx_cp);
+      item = elm_list_item_append(group_list, ((Tagged_File*)eina_inarray_nth(group->files, i))->filename, NULL, NULL, &on_group_select, idx_cp);
       if (group_idx == i) {
 	elm_list_item_selected_set(item, EINA_TRUE);
       }
@@ -1547,13 +1508,13 @@ void delete_image_do(void *data, Evas_Object *obj)
       strcpy(dest, image_path);
       sprintf(dest_file, "delete/%s", file->filename);
       strcpy(image_file, file->filename);
-      eio_file_move(strdup(image_path), strdup(dest), NULL, &del_file_done, &del_file_error, file->filename);
+      eio_file_move(image_path, dest, NULL, &del_file_done, &del_file_error, file->filename);
     }
     if (file->sidecar) {
       strcpy(dest, image_path);
       sprintf(dest_file, "delete/%s", file->sidecar);
       strcpy(image_file, file->sidecar);
-      eio_file_move(strdup(image_path), strdup(dest), NULL, &del_file_done, &del_file_error, file->sidecar);
+      eio_file_move(image_path, dest, NULL, &del_file_done, &del_file_error, file->sidecar);
     }
   }
   
@@ -1728,7 +1689,7 @@ void start_single_export(Export_Data *export, char *filename)
   job->export = export;
   job->filename = filename;
   
-  dirs = eina_file_split(strdup(dir));
+  dirs = eina_file_split(dir);
   if (export->server)
     sprintf(dst, "rsync -rt --progress \"./%s\" %s:\"\'%s/%s/%s\'\"", filename, export->server,export->path, export->dir, filename);
   else
@@ -1827,10 +1788,11 @@ on_exe_images_rsync(void *data, Evas_Object *obj, void *event_info)
       eina_array_free(export->list);
       export->list = NULL;
     }
-    dirs = eina_file_split(strdup(dir));
+    dirs = eina_file_split(dir);
     export->dir = strdup(eina_array_data_get(dirs, eina_array_count(dirs)-1));
     //FIXME for export to server!
     //ecore_exe_run(dst, NULL);
+	 eina_array_free(dirs);
     
     if (export->path[strlen(export->path)-1] == '/')
       export->path[strlen(export->path)-1] = '\0';
@@ -2172,7 +2134,7 @@ _ls_done_cb(void *data, Eio_File *handler)
   evas_object_show(scroller);
  
   grid_setsize(); 
-  //step_image_do(NULL, NULL);
+  step_image_do(NULL, NULL);
   forbid_fill--;
   //fill_scroller_preview();
   //fill_scroller();;
@@ -2376,7 +2338,7 @@ Evas_Object *settings_box_add(Evas_Object *parent)
 
 Eina_Bool xmp_add_tags_lr_func(const Eina_Hash *hash, const void *key, void *data, void *fdata)
 {
-  const char *tag = strdup(data);
+  const char *tag = data;
   XmpPtr xmp = fdata;
   
   xmp_append_array_item(xmp, "http://ns.adobe.com/lightroom/1.0/", "lr:hierarchicalSubject", XMP_PROP_ARRAY_IS_UNORDERED, tag, 0);
@@ -2386,7 +2348,7 @@ Eina_Bool xmp_add_tags_lr_func(const Eina_Hash *hash, const void *key, void *dat
 
 Eina_Bool xmp_add_tags_dc_func(const Eina_Hash *hash, const void *key, void *data, void *fdata)
 {
-  const char *tag = strdup(data);
+  const char *tag = data;
   XmpPtr xmp = fdata;
   
   xmp_append_array_item(xmp, "http://purl.org/dc/elements/1.1/", "dc:subject", XMP_PROP_ARRAY_IS_UNORDERED, tag, 0);
@@ -2396,7 +2358,7 @@ Eina_Bool xmp_add_tags_dc_func(const Eina_Hash *hash, const void *key, void *dat
 
 Eina_Bool xmp_add_tags_dk_func(const Eina_Hash *hash, const void *key, void *data, void *fdata)
 {
-  char *tag = strdup(data);
+  char *tag = data;
   char *replace;
   XmpPtr xmp = fdata;
   
@@ -2553,7 +2515,7 @@ static void on_new_tag(void *data, Evas_Object *obj, void *event_info)
   if (eina_hash_find(known_tags, new))
     return;
   
-  new = strdup(new);//eina_stringshare_add(new);
+  new = strdup(new);
   
   eina_hash_add(known_tags, new, new);
   
@@ -2581,12 +2543,9 @@ static void on_tag_changed(void *data, Evas_Object *obj, void *event_info)
 {
   Tags_List_Item_Data *tag = data;
   File_Group *group = (File_Group*)eina_inarray_nth(files, file_idx);
-  char *tag_dup;
   
   if (elm_check_state_get(obj)) {
-    //FIXME no dup!
-    tag_dup = strdup(tag->tag);
-    eina_hash_add(tag->group->tags, tag_dup, tag_dup);
+    eina_hash_add(tag->group->tags, tag->tag, tag->tag);
   }
   else {
     assert(eina_hash_find(tag->group->tags, tag->tag));
@@ -2604,7 +2563,7 @@ static void on_tag_filter_changed(void *data, Evas_Object *obj, void *event_info
   File_Group *group = (File_Group*)eina_inarray_nth(files, file_idx);
   char *tag;
   
-  tag = strdup(data);
+  tag = data;
   
   if (elm_check_state_get(obj)) {
     eina_hash_add(tags_filter, tag, tag);
@@ -2650,7 +2609,7 @@ static Evas_Object *_tag_gen_cont_get(void *data, Evas_Object *obj, const char *
   check = elm_check_add(win);
   elm_object_focus_allow_set(check, EINA_FALSE);
 
-  elm_object_part_text_set(check, "default", strdup(tag->tag));
+  elm_object_part_text_set(check, "default", tag->tag);
   if (eina_hash_find(tag->group->tags, tag->tag))
     elm_check_state_set(check, EINA_TRUE);
 
@@ -2669,7 +2628,7 @@ static Evas_Object *_tag_filter_cont_get(void *data, Evas_Object *obj, const cha
   check = elm_check_add(win);
   elm_object_focus_allow_set(check, EINA_FALSE);
   
-  elm_object_part_text_set(check, "default", strdup(data));
+  elm_object_part_text_set(check, "default", data);
   if (eina_hash_find(tags_filter, data))
     elm_check_state_set(check, EINA_TRUE);
 
@@ -3081,20 +3040,23 @@ elm_main(int argc, char **argv)
   
   
   // now we are done, show the window
-  evas_object_show(win);
-  elm_scroller_region_show(scroller, 0, 0, 1, 1);
   
   // run the mainloop and process events and callbacks
   //fill_area(0,0,1024,1024,MAX_FAST_SCALEDOWN,1);
   
-  evas_object_size_hint_min_set(win, 128, 128);
+  //evas_object_size_hint_min_set(win, 128, 128);
+  
+  ecore_event_handler_add(ECORE_EXE_EVENT_DEL, &_rsync_term, NULL);
   
   if (winsize)
     evas_object_resize(win, winsize, winsize);
   else if (bench)
     evas_object_resize(win, 1024, 1024);
+  else
+	  elm_win_maximized_set(win, EINA_TRUE);
   
-  ecore_event_handler_add(ECORE_EXE_EVENT_DEL, &_rsync_term, NULL);
+  evas_object_show(win);
+  elm_scroller_region_show(scroller, 0, 0, 1, 1);
   
   bench_time_mark(BENCHMARK_INIT);
   elm_run();
