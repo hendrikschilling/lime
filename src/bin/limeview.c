@@ -13,24 +13,7 @@
 #define TILE_SIZE DEFAULT_TILE_SIZE
 #define MAX_XMP_FILE 1024*1024
 
-
-#define FUNC_DEBUG
-#define DEBUG_STEP_IMAGE
-#define DEBUG_FILL_AREA
-
 #define RSYNC_INSTANCE_COUNT 1
-
-#ifdef FUNC_DEBUG
-#define FUNC_DEBUG_PRINT(P) printf("calling: "P"\n");
-#else
-#define FUNC_DEBUG_PRINT(P)
-#endif
-
-#ifdef DEBUG_STEP_IMAGE
-#define DEBUG_STEP_IMAGE_PRINT(P) printf(P"\n");
-#else
-#define DEBUG_STEP_IMAGE_PRINT(P)
-#endif
 
 #ifdef DEBUG_FILL_AREA
 #define DEBUG_FA_P(P) printf(P"\n");
@@ -46,10 +29,10 @@ Elm_Genlist_Item_Class *tags_list_itc;
 Elm_Genlist_Item_Class *tags_filter_itc;
 
 typedef struct {
-  char *extensions;
+  const char *extensions;
   char *path;
-  char *server;
-  char *dir;
+  const char *server;
+  const char *dir;
   Eina_Array *list;
   Evas_Object *eo_progress;
   int count;
@@ -600,7 +583,6 @@ Mat_Cache *mat_cache_new(void)
 
 void mat_cache_flush(Mat_Cache *mat_cache)
 {
-FUNC_DEBUG_PRINT("mat_cache_flush")
   int i;
   
   for(i=0;i<=mat_cache->scale_max;i++) {
@@ -620,13 +602,10 @@ FUNC_DEBUG_PRINT("mat_cache_flush")
     //here segfault!
     evas_object_del(ea_pop(mat_cache->images));
   }
-  
-  printf("del mat cache imgs finsihed\n");
 }
 
 void mat_cache_del(Mat_Cache *mat_cache)
-{ 
-FUNC_DEBUG_PRINT("mat_cache_del")
+{
   mat_cache_flush(mat_cache);
   
   eina_array_free(mat_cache->images);
@@ -761,7 +740,6 @@ void elm_exit_do(void *data, Evas_Object *obj)
 
 void workerfinish_schedule(void (*func)(void *data, Evas_Object *obj), void *data, Evas_Object *obj)
 {
-FUNC_DEBUG_PRINT("workerfinish_schedule")
   if (!worker) {
     func(data, obj);
   }
@@ -873,7 +851,6 @@ Eina_Bool _display_preview(void *data)
 static void
 _finished_tile(void *data, Ecore_Thread *th)
 {
-  FUNC_DEBUG_PRINT("_finished_tile")
   int i;
   void (*pend_tmp_func)(void *data, Evas_Object *obj);
   _Img_Thread_Data *tdata = data;
@@ -1150,15 +1127,12 @@ int fill_area(int xm, int ym, int wm, int hm, int minscale, int preview)
 }
 
 void fill_scroller_preview(void)
-{ 
-FUNC_DEBUG_PRINT("fill_scroller_preview")
+{
   preview_tiles += fill_area(0,0,0,0, MAX_FAST_SCALEDOWN, 1);
 }
 
 static void fill_scroller(void)
 {
-  
-FUNC_DEBUG_PRINT("fill_scroller\n")
   int x, y, w, h, grid_w, grid_h;
   float scale;
   
@@ -1246,14 +1220,10 @@ void group_select_do(void *data, Evas_Object *obj)
     if (failed)
       group_idx++;
   }
-
-  DEBUG_STEP_IMAGE_PRINT("group select size calc")
   size_recalc();
 
   fill_scroller_preview();
   fill_scroller();
-  
-  DEBUG_STEP_IMAGE_PRINT("group select finished")
 }
 
 void tags_select_do(void *data, Evas_Object *obj)
@@ -1439,7 +1409,6 @@ int group_in_filters(File_Group *group, Eina_Hash *filters)
 
 void step_image_do(void *data, Evas_Object *obj)
 {
-FUNC_DEBUG_PRINT("step_image_do")
   int i;
   int *idx_cp;
   int start_idx;
@@ -1448,25 +1417,16 @@ FUNC_DEBUG_PRINT("step_image_do")
   const char *filename;
   Elm_Object_Item *item;
   
-  DEBUG_STEP_IMAGE_PRINT("a");
-  
   file_idx = elm_slider_value_get(file_slider);
   
   bench_delay_start();
-
-  DEBUG_STEP_IMAGE_PRINT("b");
   
   assert(!worker);
   
   assert(files);
   
-  
-  DEBUG_STEP_IMAGE_PRINT("c");
-  
   if (!eina_inarray_count(files))
     return;
-
-  DEBUG_STEP_IMAGE_PRINT("delgrid");
   
   delgrid();
     
@@ -1477,8 +1437,6 @@ FUNC_DEBUG_PRINT("step_image_do")
   group = eina_inarray_nth(files, file_idx);
     
   failed = 1;
-  
-  DEBUG_STEP_IMAGE_PRINT("search");
   
   while (failed) {
     group_idx = 0;
@@ -1504,7 +1462,6 @@ FUNC_DEBUG_PRINT("step_image_do")
 	strcpy(image_file, filename);
 	lime_setting_string_set(load, "filename", image_path);
 	
-	DEBUG_STEP_IMAGE_PRINT("test config");
 	printf("test %s\n", image_path);
 	failed = lime_config_test(sink);
 	if (failed)
@@ -1527,53 +1484,22 @@ FUNC_DEBUG_PRINT("step_image_do")
     }
   }
   
-  DEBUG_STEP_IMAGE_PRINT("group listing");
   elm_list_clear(group_list);
-  DEBUG_STEP_IMAGE_PRINT("group list cleaned");
   for(i=0;i<eina_inarray_count(group->files);i++)
     if (((Tagged_File*)eina_inarray_nth(group->files, i))->filename) {
       idx_cp = malloc(sizeof(int));
       *idx_cp = i;
-      DEBUG_STEP_IMAGE_PRINT("item append");
       item = elm_list_item_append(group_list, strdup(((Tagged_File*)eina_inarray_nth(group->files, i))->filename), NULL, NULL, &on_group_select, idx_cp);
       if (group_idx == i) {
-	DEBUG_STEP_IMAGE_PRINT("item select");
 	elm_list_item_selected_set(item, EINA_TRUE);
       }
     }
-    
-    
-  DEBUG_STEP_IMAGE_PRINT("group list go");
 
   elm_list_go(group_list);
   
   //update tag list
-  
-  DEBUG_STEP_IMAGE_PRINT("clear tag list");
-  //FIXME we should only need to clear!
-  //CRASH!!! munmap_chunk(): invalid pointer:
-  //COUNT: 6
   elm_genlist_clear(tags_list);
-  DEBUG_STEP_IMAGE_PRINT("del tag list");
-  //evas_object_del(tags_list);
-  //DEBUG_STEP_IMAGE_PRINT("deleted tag list");
-  
-  //tags_list =  elm_genlist_add(win);
-  //DEBUG_STEP_IMAGE_PRINT("1");
-  //elm_object_tree_focus_allow_set(tags_list, EINA_FALSE);
-  //elm_box_pack_start(tab_tags, tags_list);
-  //DEBUG_STEP_IMAGE_PRINT("2");
-  //elm_genlist_select_mode_set(tags_list, ELM_OBJECT_SELECT_MODE_NONE);
-  //DEBUG_STEP_IMAGE_PRINT("3");
-  //evas_object_size_hint_weight_set(tags_list, EVAS_HINT_EXPAND, EVAS_HINT_EXPAND);
-  //DEBUG_STEP_IMAGE_PRINT("4");
-  //evas_object_size_hint_align_set(tags_list, EVAS_HINT_FILL, EVAS_HINT_FILL);
-  //DEBUG_STEP_IMAGE_PRINT("5");
-  //evas_object_show(tags_list);
-  
-  //DEBUG_STEP_IMAGE_PRINT("clear tag list cleaned");
   eina_hash_foreach(known_tags, tags_hash_func, group);
-  DEBUG_STEP_IMAGE_PRINT("known tags iterated");
   
   //update tag rating
   elm_segment_control_item_selected_set(elm_segment_control_item_get(seg_rating, group->tag_rating), EINA_TRUE);
@@ -1581,14 +1507,11 @@ FUNC_DEBUG_PRINT("step_image_do")
   elm_slider_value_set(file_slider, file_idx+0.1);
   
   forbid_fill--;
-  
-  
-  DEBUG_STEP_IMAGE_PRINT("step_image size calc")
+ 
   size_recalc();
   
   fill_scroller_preview();
   fill_scroller();
-  DEBUG_STEP_IMAGE_PRINT("step_image filled")
 }
 
 void del_file_done(void *data, Eio_File *handler)
@@ -1608,7 +1531,6 @@ void file_group_del(File_Group *group)
 
 void delete_image_do(void *data, Evas_Object *obj)
 {
-FUNC_DEBUG_PRINT("delete_image_do")
   char *dest = malloc(EINA_PATH_MAX);
   char *dest_file = dest + (image_file - image_path);
 
@@ -1859,9 +1781,7 @@ on_exe_images_rsync(void *data, Evas_Object *obj, void *event_info)
   File_Group *group;
   const char *filename;
   char dst[2048];
-  char *del;
   Eina_Array *dirs;
-  Eina_Array_Iterator iter;
   Export_Data *export = calloc(sizeof(Export_Data), 1);
   Export_Job *job;
 
@@ -1869,7 +1789,7 @@ on_exe_images_rsync(void *data, Evas_Object *obj, void *event_info)
   if (export->extensions && !strlen(export->extensions)) {
     export->extensions = NULL;
   }
-  export->path = elm_entry_entry_get(export_path);
+  export->path = strdup(elm_entry_entry_get(export_path));
   
   //progress bar
   export->eo_progress = elm_progressbar_add(export_box);
@@ -2020,7 +1940,6 @@ on_origscale_image(void *data, Evas_Object *obj, void *event_info)
 static void
 on_next_image(void *data, Evas_Object *obj, void *event_info)
 {
-  FUNC_DEBUG_PRINT("on_next_image")
   file_step = 1;
   
   //if (grid && )
@@ -2028,7 +1947,6 @@ on_next_image(void *data, Evas_Object *obj, void *event_info)
   elm_slider_value_set(file_slider, wrap_files_idx(elm_slider_value_get(file_slider)+1)+0.1);
   
   workerfinish_schedule(&step_image_do, NULL, NULL);
-  DEBUG_STEP_IMAGE_PRINT("next_image callback finished")
 }
 
 static void
@@ -2206,8 +2124,6 @@ void insert_file(const char *file)
 static void
 _ls_done_cb(void *data, Eio_File *handler)
 {
-  FUNC_DEBUG_PRINT("_ls_done_cb");
-  
   Eina_List *l, *l_next;
   const char *file;
   Eina_Compare_Cb cmp_func = (Eina_Compare_Cb)strcmp;
@@ -2291,19 +2207,6 @@ static void on_tab_select(void *data, Evas_Object *obj, void *event_info)
 
 void _scroller_resize_cb(void *data, Evas *e, Evas_Object *obj, void *event_info)
 {
-  int x, y, w, h;
-  
-  /*if (forbid_fill && grid) {
-    elm_scroller_region_get(scroller, &x, &y, &w, &h);
-    if (w && h) {
-      forbid_fill--;
-      printf("scroller resize triggered set forbid fill: %d\n", forbid_fill);
-    }
-    else
-      printf("scroller resize but still no area");
-      
-  }*/
-  
   if (forbid_fill)
     return;
     
@@ -2694,8 +2597,6 @@ static void on_tag_changed(void *data, Evas_Object *obj, void *event_info)
   
   if (!group_in_filters(group, tags_filter))
     step_image_do(NULL, NULL);
-  
-  DEBUG_STEP_IMAGE_PRINT("tag changed finshed")
 }
 
 static void on_tag_filter_changed(void *data, Evas_Object *obj, void *event_info)
@@ -2777,14 +2678,14 @@ static Evas_Object *_tag_filter_cont_get(void *data, Evas_Object *obj, const cha
   return check;
 }
 
-static void on_export_type_sel(void *data, Evas_Object *obj, void *event_info)
+/*static void on_export_type_sel(void *data, Evas_Object *obj, void *event_info)
 {
   
-}
+}*/
 
 static Evas_Object *export_box_add(Evas_Object *parent)
 {
-  Evas_Object *btn, *sel, *lbl, *fs;
+  Evas_Object *btn;
   
   export_box = elm_box_add(parent);
   evas_object_size_hint_weight_set(export_box, EVAS_HINT_EXPAND, EVAS_HINT_EXPAND);
