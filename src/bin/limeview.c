@@ -3030,9 +3030,6 @@ elm_main(int argc, char **argv)
   
   eio_file_direct_ls(dir, &_ls_filter_cb, &_ls_main_cb,&_ls_done_cb, &_ls_error_cb,NULL);
   
-  if (!winsize)
-    elm_win_maximized_set(win, EINA_TRUE);
-  
   /*test_filter_config(load);
    s ize = *(*Dim*)filter_core_by_type(sink, MT_IMGSIZE);
    
