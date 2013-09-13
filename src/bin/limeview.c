@@ -2009,9 +2009,8 @@ static void on_insert_after(void *data, Evas_Object *obj, void *event_info)
 
 static Eina_Bool
 _ls_filter_cb(void *data, Eio_File *handler, const Eina_File_Direct_Info *info)
-{
-  
-  if (info->type == EINA_FILE_REG || info->type == EINA_FILE_LNK)
+{  
+  if (info->type == EINA_FILE_REG || info->type == EINA_FILE_LNK || info->type == EINA_FILE_UNKNOWN)
     return EINA_TRUE;
   
   return EINA_FALSE;
