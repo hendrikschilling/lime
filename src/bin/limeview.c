@@ -229,8 +229,7 @@ void xmp_gettags(const char *file, File_Group *group)
     iter = xmp_iterator_new(xmp, "http://ns.adobe.com/lightroom/1.0/", "lr:hierarchicalSubject", XMP_ITER_JUSTLEAFNODES);
   
     while (xmp_iterator_next(iter, NULL, NULL, propValue, NULL)) {
-      //FIXME free the c string?
-      tag = xmp_string_cstr(propValue);
+      tag = strdup(xmp_string_cstr(propValue));
       if (!eina_hash_find(group->tags, tag))
 			eina_hash_add(group->tags, tag, tag);
       if (!eina_hash_find(known_tags, tag))
