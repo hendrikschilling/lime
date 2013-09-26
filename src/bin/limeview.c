@@ -2602,8 +2602,6 @@ static Evas_Object *_tag_gen_cont_get(void *data, Evas_Object *obj, const char *
   if (strcmp(part, "elm.swallow.icon"))
     return NULL;
   
-  printf("%s\n", part);
-  
   check = elm_check_add(win);
   elm_object_focus_allow_set(check, EINA_FALSE);
 
