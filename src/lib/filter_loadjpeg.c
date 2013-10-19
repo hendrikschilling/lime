@@ -83,7 +83,6 @@ void _loadjpeg_worker(Filter *f, Eina_Array *in, Eina_Array *out, Rect *area, in
     printf("FIXME: invalid tile requested in loadjpg: %dx%d\n", area->corner.x, area->corner.y);
     return;
   }
-
   
   r = ((Tiledata*)ea_data(out, 0))->data;
   g = ((Tiledata*)ea_data(out, 1))->data;
@@ -105,7 +104,6 @@ void _loadjpeg_worker(Filter *f, Eina_Array *in, Eina_Array *out, Rect *area, in
   jpeg_create_decompress(&cinfo);
 
   jpeg_stdio_src(&cinfo, file);
- 
 
   (void) jpeg_read_header(&cinfo, TRUE);
 
@@ -115,8 +113,9 @@ void _loadjpeg_worker(Filter *f, Eina_Array *in, Eina_Array *out, Rect *area, in
   
   /*cinfo.dct_method = JDCT_IFAST;
   cinfo.do_fancy_upsampling = FALSE;*/
-  
-  (void) jpeg_start_decompress(&cinfo);
+  jpeg_start_decompress(&cinfo);
+   
+  printf("restart every %d mcus, mcus per row: %d \n", cinfo.restart_interval, cinfo.MCUs_per_row);
   
   row_stride = cinfo.output_width * cinfo.output_components;
   buffer = (*cinfo.mem->alloc_sarray)
