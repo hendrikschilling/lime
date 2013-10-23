@@ -16,6 +16,7 @@
 #include "filter_denoise.h"
 #include "filter_assert.h"
 #include "filter_crop.h"
+#include "filter_simplerotate.h"
 
 void lime_filters_init(void);
 void lime_filter_add(Filter_Core *fc);

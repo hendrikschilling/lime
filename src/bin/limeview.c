@@ -2081,6 +2081,16 @@ void insert_file(const char *file)
   eina_inarray_push(files, file_group_new(file));
 }
 
+int cmp_img_file(char *a, char *b)
+{
+	if (strlen(a) == 12 && strlen(b) == 12 && a[0] == 'P' && b[0] == 'P' && a[8] == '.' && b[8] == '.')
+		//cmp just file number not date
+		return strcmp(a+4, b+4);
+	
+	return strcmp(a, b);
+	
+}
+
 static void
 _ls_done_cb(void *data, Eio_File *handler)
 {
@@ -2984,6 +2994,7 @@ elm_main(int argc, char **argv)
   elm_hoversel_item_add(select_filter, "sharpen", NULL, ELM_ICON_NONE, &on_select_filter_select, &filter_core_sharpen);
   elm_hoversel_item_add(select_filter, "denoise", NULL, ELM_ICON_NONE, &on_select_filter_select, &filter_core_denoise);
   elm_hoversel_item_add(select_filter, "crop", NULL, ELM_ICON_NONE, &on_select_filter_select, &filter_core_crop);
+  elm_hoversel_item_add(select_filter, "rotate", NULL, ELM_ICON_NONE, &on_select_filter_select, &filter_core_simplerotate);
   elm_object_text_set(select_filter, "contrast");
   select_filter_func = filter_core_contrast.filter_new_f;
   evas_object_show(select_filter);

@@ -21,6 +21,7 @@ void lime_filters_init(void)
   eina_hash_add(lime_filters, filter_core_denoise.shortname, &filter_core_denoise);
   eina_hash_add(lime_filters, filter_core_assert.shortname, &filter_core_assert);
   eina_hash_add(lime_filters, filter_core_crop.shortname, &filter_core_crop);
+  eina_hash_add(lime_filters, filter_core_simplerotate.shortname, &filter_core_simplerotate);
 }
 
 Filter *lime_filter_new(const char *shortname)
