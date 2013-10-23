@@ -393,6 +393,50 @@ void insert_before_do(void *data, Evas_Object *obj)
   fill_scroller();
 }
 
+void insert_rotation_do(void *data, Evas_Object *obj)
+{
+  int rotation = (intptr_t)data;
+  Filter_Chain *fc_source, *fc_sink, *fc;
+  Eina_List *source_l, *sink_l;
+  Filter *f;
+
+  forbid_fill++;
+  
+  sink_l = eina_list_last(filter_chain);
+  source_l = eina_list_prev(sink_l);
+    
+  fc_sink = eina_list_data_get(sink_l);
+  fc_source = eina_list_data_get(source_l);
+  f = filter_core_simplerotate.filter_new_f();
+  fc = fc_new(f);
+  
+  lime_setting_int_set(f, "rotation", rotation); 
+  
+  filter_chain = eina_list_append_relative_list(filter_chain, fc, source_l);
+  
+  if (filter_last_selected)
+    fc->item = elm_list_item_insert_after(filter_list, fc_sink->item, f->fc->name, NULL, NULL, &_on_filter_select, eina_list_prev(sink_l));
+  else
+    fc->item = elm_list_item_prepend(filter_list, f->fc->name, NULL, NULL, &_on_filter_select, eina_list_next(source_l));
+
+  elm_list_item_selected_set(fc->item, EINA_TRUE);
+  elm_list_go(filter_list);
+  
+  filter_connect(fc_source->f, 0, f, 0);
+  filter_connect(f, 0, fc_sink->f, 0);
+
+  delgrid();
+  
+  lime_config_test(sink);
+  
+  size_recalc();
+  
+  forbid_fill--;
+  
+  fill_scroller_preview();
+  fill_scroller();
+}
+
 void insert_after_do(void *data, Evas_Object *obj)
 {
   Filter_Chain *fc_source, *fc_sink, *fc;
@@ -2237,6 +2281,10 @@ Eina_Bool shortcut_elm(void *data, Evas_Object *obj, Evas_Object *src, Evas_Call
       on_done(NULL, NULL, NULL);
     else if (!strcmp(key->keyname, "o"))
       on_origscale_image(NULL, NULL, NULL);
+    else if (!strcmp(key->keyname, "r"))
+      workerfinish_schedule(&insert_rotation_do, (void*)(intptr_t)1, NULL);
+    else if (!strcmp(key->keyname, "l"))
+      workerfinish_schedule(&insert_rotation_do, (void*)(intptr_t)3, NULL);
     else if (!strcmp(key->keyname, "f"))
       on_fit_image(NULL, NULL, NULL);
     else {
