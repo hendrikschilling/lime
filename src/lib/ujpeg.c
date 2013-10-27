@@ -385,6 +385,7 @@ UJ_INLINE void ujDecodeDRI(ujContext *uj) {
     ujDecodeLength(uj);
     if (uj->length < 2) ujThrow(UJ_SYNTAX_ERROR);
     uj->rstinterval = ujDecode16(uj->pos);
+    printf("restart interval: %d mbw:%d mbh:%d\n", uj->rstinterval, uj->mbwidth, uj->mbheight);
     ujSkip(uj, uj->length);
 }
 
@@ -425,6 +426,9 @@ UJ_INLINE void ujDecodeBlock(ujContext *uj, ujComponent* c, unsigned char* out) 
 
 UJ_INLINE void ujDecodeScan(ujContext *uj) {
     int i, mbx, mby, sbx, sby;
+    int block_count;
+    int seek;
+    int s;
     int rstcount = uj->rstinterval, nextrst = 0;
     ujComponent* c;
     ujDecodeLength(uj);
@@ -445,7 +449,35 @@ UJ_INLINE void ujDecodeScan(ujContext *uj) {
     uj->decoded = 1;  // mark the image as decoded now -- every subsequent error
                       // just means that the image hasn't been decoded
                       // completely
-    for (mbx = mby = 0;;) {
+    
+    //to skip some part of the file
+    //adjust position and size
+    //keep mbx, mby the same
+    //to decode just a part -> decrease size further (somehow handle error logic?)
+    //change mbheight?
+    
+    //are we at a byte position (i think yes!)
+    mbx = 0;
+    mby = 0;/*uj->mbheight*7/8;
+    int mcount = 0;
+    for(s=0;s<uj->size;s++) {
+      if (uj->pos[s] == 0xFF && ((uj->pos[s+1] & 0xF0) == 0xD0)) {
+        int nstart = (uj->pos[s+1] & 0x0F);
+        mcount++;
+        //printf("found marker %d (%d)\n", nstart, mcount);
+        if (mcount == uj->mbheight*7/8*uj->mbwidth / uj->rstinterval) {
+          //printf("skip some stuff!");
+          ujSkip(uj, s+2);
+          break;
+        }
+      }
+        
+    }*/
+    
+    while (1)
+    /*for (mbx = mby = 0;;)*/ {      
+        block_count = 0;
+        //decode one mcu?
         for (i = 0, c = uj->comp;  i < uj->ncomp;  ++i, ++c)
             for (sby = 0;  sby < c->ssy;  ++sby)
                 for (sbx = 0;  sbx < c->ssx;  ++sbx) {
@@ -459,12 +491,141 @@ UJ_INLINE void ujDecodeScan(ujContext *uj) {
         if (uj->rstinterval && !(--rstcount)) {
             ujByteAlign(uj);
             i = ujGetBits(uj, 16);
-            if (((i & 0xFFF8) != 0xFFD0) || ((i & 7) != nextrst))
-                ujThrow(UJ_SYNTAX_ERROR);
+            //if (((i & 0xFFF8) != 0xFFD0) || ((i & 7) != nextrst))
+            //    ujThrow(UJ_SYNTAX_ERROR);
             nextrst = (nextrst + 1) & 7;
             rstcount = uj->rstinterval;
             for (i = 0;  i < 3;  ++i)
                 uj->comp[i].dcpred = 0;
+        }
+    }
+    ujError = __UJ_FINISHED;
+}
+
+void ujSeekCoord(ujContext *uj, int *mbx, int *mby, int seekx, int seeky) {
+  int s;
+
+  
+  printf("start1 %d %d\n", seekx, seeky);
+  
+  if (!seekx && !seeky)
+    return;
+  
+  int mcount = 0;
+    for(s=0;s<uj->size;s++) {
+      if (uj->pos[s] == 0xFF && ((uj->pos[s+1] & 0xF0) == 0xD0)) {
+        int nstart = (uj->pos[s+1] & 0x0F);
+        mcount++;
+        *mbx += uj->rstinterval;
+      if (*mbx >= uj->mbwidth) {
+        *mbx = 0;
+        if (++(*mby) >= uj->mbheight) ujThrow(UJ_SYNTAX_ERROR);
+      }
+      if (*mbx == seekx && *mby == seeky) {
+        ujSkip(uj, s+2);
+        return;
+      }
+        //printf("found marker %d (%d)\n", nstart, mcount);
+        /*if (mcount == uj->mbheight*7/8*uj->mbwidth / uj->rstinterval) {
+          //printf("skip some stuff!");
+          ujSkip(uj, s+2);
+          break;
+        }*/
+      }}
+      
+  
+  /*printf("start\n");
+  for(s=0;s<uj->size;s++) {
+    if (uj->pos[s] == 0xFF && ((uj->pos[s+1] & 0xF0) == 0xD0)) {
+      *mbx += uj->rstinterval;
+      printf("%d x %d\n", *mbx, *mby);
+      if (*mbx >= uj->mbwidth) {
+        *mbx = 0;
+        if (++(*mby) >= seeky) ujThrow(UJ_SYNTAX_ERROR);
+      }
+      if (*mbx == seekx && *mby == seeky) {
+        ujSkip(uj, s+2);
+        return;
+      }
+      //int nstart = (uj->pos[s+1] & 0x0F);
+    }
+  }*/
+}
+
+UJ_INLINE void ujDecodeScanArea(ujContext *uj, int x, int y, int w, int h) {
+    int i, mbx, mby, sbx, sby;
+    int block_count;
+    int seek;
+    int s;
+    int rstcount = uj->rstinterval, nextrst = 0;
+    ujComponent* c;
+    ujDecodeLength(uj);
+    if (uj->length < (4 + 2 * uj->ncomp)) ujThrow(UJ_SYNTAX_ERROR);
+    if (uj->pos[0] != uj->ncomp) ujThrow(UJ_UNSUPPORTED);
+    ujSkip(uj, 1);
+    for (i = 0, c = uj->comp;  i < uj->ncomp;  ++i, ++c) {
+        if (uj->pos[0] != c->cid) ujThrow(UJ_SYNTAX_ERROR);
+        if (uj->pos[1] & 0xEE) ujThrow(UJ_SYNTAX_ERROR);
+        c->dctabsel = uj->pos[1] >> 4;
+        c->actabsel = (uj->pos[1] & 1) | 2;
+        ujSkip(uj, 2);
+    }
+    if (uj->pos[0] || (uj->pos[1] != 63) || uj->pos[2]) ujThrow(UJ_UNSUPPORTED);
+    ujSkip(uj, uj->length);
+    uj->valid = 1;
+    if (uj->no_decode) { ujError = __UJ_FINISHED; return; }
+    uj->decoded = 1;  // mark the image as decoded now -- every subsequent error
+                      // just means that the image hasn't been decoded
+                      // completely
+    
+    //to skip some part of the file
+    //adjust position and size
+    //keep mbx, mby the same
+    //to decode just a part -> decrease size further (somehow handle error logic?)
+    //change mbheight?
+    
+    //are we at a byte position (i think yes!)
+    //FIXME mbsize == mcu size? 
+    //FIXME sanity check x,y,w,h
+    x /= uj->mbsizex;
+    y /= uj->mbsizey;
+    w /= uj->mbsizex;
+    h /= uj->mbsizey;
+    
+    mbx = 0;
+    mby = 0;
+    ujSeekCoord(uj, &mbx, &mby, x, y);
+    
+    while (1)
+    /*for (mbx = mby = 0;;)*/ { 
+        block_count = 0;
+        //decode one mcu?
+        for (i = 0, c = uj->comp;  i < uj->ncomp;  ++i, ++c)
+            for (sby = 0;  sby < c->ssy;  ++sby)
+                for (sbx = 0;  sbx < c->ssx;  ++sbx) {
+                    ujDecodeBlock(uj, c, &c->pixels[((mby * c->ssy + sby) * c->stride + mbx * c->ssx + sbx) << 3]);
+                    ujCheckError();
+                }
+        if (++mbx >= uj->mbwidth) {
+            mbx = 0;
+            if (++mby >= uj->mbheight) break;
+            if (mby >= y+h) break;
+        }
+        if (uj->rstinterval && !(--rstcount)) {
+            ujByteAlign(uj);
+            i = ujGetBits(uj, 16);
+            //if (((i & 0xFFF8) != 0xFFD0) || ((i & 7) != nextrst))
+            //    ujThrow(UJ_SYNTAX_ERROR);
+            nextrst = (nextrst + 1) & 7;
+            rstcount = uj->rstinterval;
+            for (i = 0;  i < 3;  ++i)
+                uj->comp[i].dcpred = 0;
+            
+            if (mbx >= x + w)
+              if (mby+1 >= uj->mbheight || mby+1 >= y+h)
+                break;
+              else
+                ujSeekCoord(uj, &mbx, &mby, x, mby+1);
         }
     }
     ujError = __UJ_FINISHED;
@@ -816,6 +977,48 @@ ujImage ujDecode(ujImage img, const void* jpeg, const int size) {
     return (ujImage) uj;
 }
 
+ujImage ujDecodeArea(ujImage img, const void* jpeg, const int size, const int x, const int y, const int w, const int h) {
+    ujContext *uj = (ujContext*) (img ? img : ujCreate());
+    if (img) ujInit(uj);
+    ujError = UJ_OK;
+    if (!uj)
+        { ujError = UJ_OUT_OF_MEM; goto out; }
+    uj->pos = (const unsigned char*) jpeg;
+    uj->size = size & 0x7FFFFFFF;
+    if (uj->size < 2)
+        { ujError = UJ_NO_JPEG; goto out; }
+    if ((uj->pos[0] ^ 0xFF) | (uj->pos[1] ^ 0xD8))
+        { ujError = UJ_NO_JPEG; goto out; }
+    ujSkip(uj, 2);
+    while (!ujError) {
+        if ((uj->size < 2) || (uj->pos[0] != 0xFF))
+            { ujError = UJ_SYNTAX_ERROR; goto out; }
+        ujSkip(uj, 2);
+        switch (uj->pos[-1]) {
+            case 0xC0: ujDecodeSOF(uj);  break;
+            case 0xC4: ujDecodeDHT(uj);  break;
+            case 0xDB: ujDecodeDQT(uj);  break;
+            case 0xDD: ujDecodeDRI(uj);  break;
+            case 0xDA: ujDecodeScanArea(uj, x, y, w, h); break;
+            case 0xFE: ujSkipMarker(uj); break;
+            case 0xE1: ujDecodeExif(uj); break;
+            default:
+                if ((uj->pos[-1] & 0xF0) == 0xE0)
+                    ujSkipMarker(uj);
+                else
+                    { ujError = UJ_UNSUPPORTED; goto out; }
+        }
+    }
+    if (ujError == __UJ_FINISHED) ujError = UJ_OK;
+  out:
+    if (ujError && !uj->valid) {
+        if (!img)
+            ujFree(uj);
+        return NULL;
+    }
+    return (ujImage) uj;
+}
+
 ujImage ujDecodeFile(ujImage img, const char* filename) {
     FILE *f; size_t size;
     void *buf;
@@ -841,6 +1044,35 @@ ujImage ujDecodeFile(ujImage img, const char* filename) {
     size = fread(buf, 1, size, f);
     fclose(f);
     img = ujDecode(img, buf, (int) size);
+    free(buf);
+    return img;
+}
+
+ujImage ujDecodeFileArea(ujImage img, const char* filename, const int x, const int y, const int w, const int h) {
+    FILE *f; size_t size;
+    void *buf;
+    ujError = UJ_OK;
+    f = fopen(filename, "rb");
+    if (!f) {
+        ujError = UJ_IO_ERROR;
+        return NULL;
+    }
+    fseek(f, 0, SEEK_END);
+    size = ftell(f);
+    fseek(f, 0, SEEK_SET);
+#ifdef UJ_NODECODE_BLOCK_SIZE
+    if (img && ((ujContext*)img)->no_decode && (size > UJ_NODECODE_BLOCK_SIZE))
+        size = UJ_NODECODE_BLOCK_SIZE;
+#endif
+    buf = malloc(size);
+    if (!buf) {
+        fclose(f);
+        ujError = UJ_OUT_OF_MEM;
+        return NULL;
+    }
+    size = fread(buf, 1, size, f);
+    fclose(f);
+    img = ujDecodeArea(img, buf, (int) size, x, y, w, h);
     free(buf);
     return img;
 }

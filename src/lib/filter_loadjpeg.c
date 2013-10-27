@@ -150,9 +150,9 @@ void _loadjpeg_worker(Filter *f, Eina_Array *in, Eina_Array *out, Rect *area, in
     lines_read = jpeg_read_scanlines(&cinfo, buffer, 16);
     for(j=0;j<lines_read;j++,rp+=ystep,gp+=ystep,bp+=ystep)
       for(i=0;i<cinfo.output_width;i++,rp+=xstep,gp+=xstep,bp+=xstep) {
-	rp[0] = buffer[j][i*3];
-	gp[0] = buffer[j][i*3+1];
-	bp[0] = buffer[j][i*3+2];
+        rp[0] = buffer[j][i*3];
+        gp[0] = buffer[j][i*3+1];
+        bp[0] = buffer[j][i*3+2];
       }
   }
   

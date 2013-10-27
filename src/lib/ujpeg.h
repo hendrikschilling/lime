@@ -106,6 +106,8 @@ extern void ujSetChromaMode(ujImage img, int mode);
 // returns the image handle on success or NULL on failure; use ujGetError to
 // get a more detailed error description
 extern ujImage ujDecode(ujImage img, const void* jpeg, const int size);
+extern ujImage ujDecodeArea(ujImage img, const void* jpeg, const int size, const int x, const int y, const int w, const int h);
+
 
 // decode a JPEG image from a file
 // img:  the handle to the uJPEG image to decode to;
@@ -114,6 +116,7 @@ extern ujImage ujDecode(ujImage img, const void* jpeg, const int size);
 // returns the image handle on success or NULL on failure; use ujGetError to
 // get a more detailed error description
 extern ujImage ujDecodeFile(ujImage img, const char* filename);
+extern ujImage ujDecodeFileArea(ujImage img, const char* filename, const int x, const int y, const int w, const int h);
 
 // determine whether a picture has been successfully decoded
 extern int ujIsValid(ujImage img);
@@ -172,6 +175,7 @@ public:
     void setChromaMode(int mode)                  { ujSetChromaMode(img, mode); }
     bool decode(const void* jpeg, const int size) { return ujDecode(img, jpeg, size) != NULL; }
     bool decodeFile(const char* filename)         { return ujDecodeFile(img, filename) != NULL; }
+    bool decodeFileArea(const char* filename, const int x, const int y, const int w, const int h)         { return ujDecodeFileArea(img, filename, x, y, w, h) != NULL; }
     bool isValid()                                { return (ujIsValid(img) != 0); }
     bool good()                                   { return  isValid(); }
     bool bad()                                    { return !isValid(); }
