@@ -75,9 +75,10 @@ typedef struct _uj_ctx {
     unsigned char *rgb;
     int exif_le;
     int co_sited_chroma;
+    ujResult ujError;
 } ujContext;
 
-static ujResult ujError = UJ_OK;
+//static ujResult ujError = UJ_OK;
 
 static const char ujZZ[64] = { 0, 1, 8, 16, 9, 2, 3, 10, 17, 24, 32, 25, 18,
 11, 4, 5, 12, 19, 26, 33, 40, 48, 41, 34, 27, 20, 13, 6, 7, 14, 21, 28, 35,
@@ -325,6 +326,60 @@ UJ_INLINE void ujDecodeSOF(ujContext *uj) {
     ujSkip(uj, uj->length);
 }
 
+UJ_INLINE void ujDecodeSOFArea(ujContext *uj, const int x, int y, const int w, const int h) {
+    int i, ssxmax = 0, ssymax = 0, size;
+    ujComponent* c;
+    ujDecodeLength(uj);
+    if (uj->length < 9) ujThrow(UJ_SYNTAX_ERROR);
+    if (uj->pos[0] != 8) ujThrow(UJ_UNSUPPORTED);
+    uj->height = ujDecode16(uj->pos+1);
+    uj->width = ujDecode16(uj->pos+3);
+    uj->ncomp = uj->pos[5];
+    ujSkip(uj, 6);
+    switch (uj->ncomp) {
+        case 1:
+        case 3:
+            break;
+        default:
+            ujThrow(UJ_UNSUPPORTED);
+    }
+    if (uj->length < (uj->ncomp * 3)) ujThrow(UJ_SYNTAX_ERROR);
+    for (i = 0, c = uj->comp;  i < uj->ncomp;  ++i, ++c) {
+        c->cid = uj->pos[0];
+        if (!(c->ssx = uj->pos[1] >> 4)) ujThrow(UJ_SYNTAX_ERROR);
+        if (c->ssx & (c->ssx - 1)) ujThrow(UJ_UNSUPPORTED);  // non-power of two
+        if (!(c->ssy = uj->pos[1] & 15)) ujThrow(UJ_SYNTAX_ERROR);
+        if (c->ssy & (c->ssy - 1)) ujThrow(UJ_UNSUPPORTED);  // non-power of two
+        if ((c->qtsel = uj->pos[2]) & 0xFC) ujThrow(UJ_SYNTAX_ERROR);
+        ujSkip(uj, 3);
+        uj->qtused |= 1 << c->qtsel;
+        if (c->ssx > ssxmax) ssxmax = c->ssx;
+        if (c->ssy > ssymax) ssymax = c->ssy;
+    }
+    if (uj->ncomp == 1) {
+        c = uj->comp;
+        c->ssx = c->ssy = ssxmax = ssymax = 1;
+    }
+    uj->mbsizex = ssxmax << 3;
+    uj->mbsizey = ssymax << 3;
+    uj->mbwidth = (uj->width + uj->mbsizex - 1) / uj->mbsizex;
+    uj->mbheight = (uj->height + uj->mbsizey - 1) / uj->mbsizey;
+    for (i = 0, c = uj->comp;  i < uj->ncomp;  ++i, ++c) {
+        //FIXME check for w to be multiple of ssxmax/ssx?
+        c->width = (w/*uj->width*/ * c->ssx + ssxmax - 1) / ssxmax;
+        c->stride = (c->width + 7) & 0x7FFFFFF8;
+        c->height = (h/*uj->height*/ * c->ssy + ssymax - 1) / ssymax;
+        c->stride = w/*uj->mbwidth * uj->mbsizex*/ * c->ssx / ssxmax;
+        if (((c->width < 3) && (c->ssx != ssxmax)) || ((c->height < 3) && (c->ssy != ssymax))) ujThrow(UJ_UNSUPPORTED);
+        size = c->stride * (w/*uj->mbheight * uj->mbsizey*/ * c->ssy / ssymax);
+        if (!uj->no_decode) {
+            if (!(c->pixels = malloc(size))) ujThrow(UJ_OUT_OF_MEM);
+            memset(c->pixels, 0x80, size);
+        }
+    }
+    ujSkip(uj, uj->length);
+}
+
 UJ_INLINE void ujDecodeDHT(ujContext *uj) {
     int codelen, currcnt, remain, spread, i, j;
     ujVLCCode *vlc;
@@ -427,7 +482,6 @@ UJ_INLINE void ujDecodeBlock(ujContext *uj, ujComponent* c, unsigned char* out) 
 UJ_INLINE void ujDecodeScan(ujContext *uj) {
     int i, mbx, mby, sbx, sby;
     int block_count;
-    int seek;
     int s;
     int rstcount = uj->rstinterval, nextrst = 0;
     ujComponent* c;
@@ -450,34 +504,10 @@ UJ_INLINE void ujDecodeScan(ujContext *uj) {
                       // just means that the image hasn't been decoded
                       // completely
     
-    //to skip some part of the file
-    //adjust position and size
-    //keep mbx, mby the same
-    //to decode just a part -> decrease size further (somehow handle error logic?)
-    //change mbheight?
-    
     //are we at a byte position (i think yes!)
-    mbx = 0;
-    mby = 0;/*uj->mbheight*7/8;
-    int mcount = 0;
-    for(s=0;s<uj->size;s++) {
-      if (uj->pos[s] == 0xFF && ((uj->pos[s+1] & 0xF0) == 0xD0)) {
-        int nstart = (uj->pos[s+1] & 0x0F);
-        mcount++;
-        //printf("found marker %d (%d)\n", nstart, mcount);
-        if (mcount == uj->mbheight*7/8*uj->mbwidth / uj->rstinterval) {
-          //printf("skip some stuff!");
-          ujSkip(uj, s+2);
-          break;
-        }
-      }
-        
-    }*/
-    
-    while (1)
-    /*for (mbx = mby = 0;;)*/ {      
+
+    for (mbx = mby = 0;;) {      
         block_count = 0;
-        //decode one mcu?
         for (i = 0, c = uj->comp;  i < uj->ncomp;  ++i, ++c)
             for (sby = 0;  sby < c->ssy;  ++sby)
                 for (sbx = 0;  sbx < c->ssx;  ++sbx) {
@@ -491,8 +521,8 @@ UJ_INLINE void ujDecodeScan(ujContext *uj) {
         if (uj->rstinterval && !(--rstcount)) {
             ujByteAlign(uj);
             i = ujGetBits(uj, 16);
-            //if (((i & 0xFFF8) != 0xFFD0) || ((i & 7) != nextrst))
-            //    ujThrow(UJ_SYNTAX_ERROR);
+            if (((i & 0xFFF8) != 0xFFD0) || ((i & 7) != nextrst))
+                ujThrow(UJ_SYNTAX_ERROR);
             nextrst = (nextrst + 1) & 7;
             rstcount = uj->rstinterval;
             for (i = 0;  i < 3;  ++i)
@@ -504,18 +534,13 @@ UJ_INLINE void ujDecodeScan(ujContext *uj) {
 
 void ujSeekCoord(ujContext *uj, int *mbx, int *mby, int seekx, int seeky) {
   int s;
-
-  
-  printf("start1 %d %d\n", seekx, seeky);
   
   if (!seekx && !seeky)
     return;
   
-  int mcount = 0;
-    for(s=0;s<uj->size;s++) {
-      if (uj->pos[s] == 0xFF && ((uj->pos[s+1] & 0xF0) == 0xD0)) {
+  for(s=0;s<uj->size;s++) {
+    if (uj->pos[s] == 0xFF && ((uj->pos[s+1] & 0xF0) == 0xD0)) {
         int nstart = (uj->pos[s+1] & 0x0F);
-        mcount++;
         *mbx += uj->rstinterval;
       if (*mbx >= uj->mbwidth) {
         *mbx = 0;
@@ -525,31 +550,8 @@ void ujSeekCoord(ujContext *uj, int *mbx, int *mby, int seekx, int seeky) {
         ujSkip(uj, s+2);
         return;
       }
-        //printf("found marker %d (%d)\n", nstart, mcount);
-        /*if (mcount == uj->mbheight*7/8*uj->mbwidth / uj->rstinterval) {
-          //printf("skip some stuff!");
-          ujSkip(uj, s+2);
-          break;
-        }*/
-      }}
-      
-  
-  /*printf("start\n");
-  for(s=0;s<uj->size;s++) {
-    if (uj->pos[s] == 0xFF && ((uj->pos[s+1] & 0xF0) == 0xD0)) {
-      *mbx += uj->rstinterval;
-      printf("%d x %d\n", *mbx, *mby);
-      if (*mbx >= uj->mbwidth) {
-        *mbx = 0;
-        if (++(*mby) >= seeky) ujThrow(UJ_SYNTAX_ERROR);
-      }
-      if (*mbx == seekx && *mby == seeky) {
-        ujSkip(uj, s+2);
-        return;
-      }
-      //int nstart = (uj->pos[s+1] & 0x0F);
     }
-  }*/
+  }
 }
 
 UJ_INLINE void ujDecodeScanArea(ujContext *uj, int x, int y, int w, int h) {
@@ -603,7 +605,7 @@ UJ_INLINE void ujDecodeScanArea(ujContext *uj, int x, int y, int w, int h) {
         for (i = 0, c = uj->comp;  i < uj->ncomp;  ++i, ++c)
             for (sby = 0;  sby < c->ssy;  ++sby)
                 for (sbx = 0;  sbx < c->ssx;  ++sbx) {
-                    ujDecodeBlock(uj, c, &c->pixels[((mby * c->ssy + sby) * c->stride + mbx * c->ssx + sbx) << 3]);
+                    ujDecodeBlock(uj, c, &c->pixels[(((mby-y) * c->ssy + sby) * c->stride + (mbx-x) * c->ssx + sbx) << 3]);
                     ujCheckError();
                 }
         if (++mbx >= uj->mbwidth) {
@@ -621,11 +623,14 @@ UJ_INLINE void ujDecodeScanArea(ujContext *uj, int x, int y, int w, int h) {
             for (i = 0;  i < 3;  ++i)
                 uj->comp[i].dcpred = 0;
             
-            if (mbx >= x + w)
+            if (mbx >= x + w) {
               if (mby+1 >= uj->mbheight || mby+1 >= y+h)
                 break;
               else
                 ujSeekCoord(uj, &mbx, &mby, x, mby+1);
+            }
+            if (x && !mbx)
+              ujSeekCoord(uj, &mbx, &mby, x, mby);
         }
     }
     ujError = __UJ_FINISHED;
@@ -837,6 +842,60 @@ UJ_INLINE void ujConvert(ujContext *uj, unsigned char *pout) {
     }
 }
 
+UJ_INLINE void ujConvertArea(ujContext *uj, unsigned char *pout, const int x, const int y, const int w, const int h) {
+    int i;
+    ujComponent* c;
+    for (i = 0, c = uj->comp;  i < uj->ncomp;  ++i, ++c) {
+        if (uj->fast_chroma) {
+            ujUpsampleFast(uj, c);
+            ujCheckError();
+        } else {
+            while ((c->width < w/*uj->width*/) || (c->height < h/*uj->height*/)) {
+                if (c->width < w/*uj->width*/) {
+                    if (uj->co_sited_chroma) ujUpsampleHCoSited(c);
+                                        else ujUpsampleHCentered(c);
+                }
+                ujCheckError();
+                if (c->height < h/*uj->height*/) {
+                    if (uj->co_sited_chroma) ujUpsampleVCoSited(c);
+                                        else ujUpsampleVCentered(c);
+                }
+                ujCheckError();
+            }
+        }
+        if ((c->width < w/*uj->width*/) || (c->height < h/*uj->height*/)) ujThrow(UJ_INTERNAL_ERR);
+    }
+    if (uj->ncomp == 3) {
+        // convert to RGB
+        int x, yy;
+        const unsigned char *py  = uj->comp[0].pixels;
+        const unsigned char *pcb = uj->comp[1].pixels;
+        const unsigned char *pcr = uj->comp[2].pixels;
+        for (yy = h/*uj->height*/;  yy;  --yy) {
+            for (x = 0;  x < w/*uj->width*/;  ++x) {
+                register int y = py[x] << 8;
+                register int cb = pcb[x] - 128;
+                register int cr = pcr[x] - 128;
+                *pout++ = ujClip((y            + 359 * cr + 128) >> 8);
+                *pout++ = ujClip((y -  88 * cb - 183 * cr + 128) >> 8);
+                *pout++ = ujClip((y + 454 * cb            + 128) >> 8);
+            }
+            py += uj->comp[0].stride;
+            pcb += uj->comp[1].stride;
+            pcr += uj->comp[2].stride;
+        }
+    } else {
+        // grayscale -> only remove stride
+        unsigned char *pin = &uj->comp[0].pixels[uj->comp[0].stride];
+        int y;
+        for (y = h/*uj->height*/ - 1;  y;  --y) {
+            memcpy(pout, pin, w/*uj->width*/);
+            pin += uj->comp[0].stride;
+            pout += w/*uj->width*/;
+        }
+    }
+}
+
 void ujDone(ujContext *uj) {
     int i;
     for (i = 0;  i < 3;  ++i)
@@ -995,7 +1054,7 @@ ujImage ujDecodeArea(ujImage img, const void* jpeg, const int size, const int x,
             { ujError = UJ_SYNTAX_ERROR; goto out; }
         ujSkip(uj, 2);
         switch (uj->pos[-1]) {
-            case 0xC0: ujDecodeSOF(uj);  break;
+            case 0xC0: ujDecodeSOFArea(uj, x, y, w, h);  break;
             case 0xC4: ujDecodeDHT(uj);  break;
             case 0xDB: ujDecodeDQT(uj);  break;
             case 0xDD: ujDecodeDRI(uj);  break;
@@ -1135,6 +1194,32 @@ unsigned char* ujGetImage(ujImage img, unsigned char* dest) {
             uj->rgb = malloc(uj->width * uj->height * uj->ncomp);
             if (!uj->rgb) { ujError = UJ_OUT_OF_MEM; return NULL; }
             ujConvert(uj, uj->rgb);
+            if (ujError) return NULL;
+        }
+        return uj->rgb;
+    }
+}
+
+
+unsigned char* ujGetImageArea(ujImage img, unsigned char* dest, const int x, int y, const int w, const int h) {
+    ujContext *uj = (ujContext*) img;
+    ujError = !uj ? UJ_NO_CONTEXT : (uj->decoded ? UJ_OK : UJ_NOT_DECODED);
+    if (ujError) return NULL;
+    if (dest) {
+        if (uj->rgb)
+            memcpy(dest, uj->rgb, w/*uj->width*/ * h/*uj->height*/*uj->ncomp);
+        else {
+            ujConvertArea(uj, dest, x, y, w, h);
+            if (ujError) return NULL;
+        }
+        return dest;
+    } else {
+        if (!uj->rgb) {
+            uj->rgb = malloc(w/*uj->width*/ * h/*uj->height*/*uj->ncomp);
+            printf("malloced %p\n", uj->rgb);
+            if (!uj->rgb) { ujError = UJ_OUT_OF_MEM; return NULL; }
+            ujConvertArea(uj, uj->rgb, x, y, w, h);
+            printf("error %d\n", ujError);
             if (ujError) return NULL;
         }
         return uj->rgb;

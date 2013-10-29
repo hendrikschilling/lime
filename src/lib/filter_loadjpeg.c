@@ -1,8 +1,11 @@
 #include "filter_loadjpeg.h"
+#include "ujpeg.h"
 
 #include <libexif/exif-data.h>
 #include <jpeglib.h>
 #include <setjmp.h>
+
+#define JPEG_TILE_SIZE 256
 
 struct my_error_mgr {
   struct jpeg_error_mgr pub;	/* "public" fields */
@@ -27,6 +30,15 @@ typedef struct {
   Meta *dim;
   int rot;
 } _Data;
+
+void *_data_new(Filter *f, void *data)
+{
+  _Data *newdata = calloc(sizeof(_Data), 1);
+  
+  *newdata = *(_Data*)data;
+  
+  return newdata;
+}
 
 static int _get_exif_orientation(const char *file)
 {
@@ -58,7 +70,69 @@ static int _get_exif_orientation(const char *file)
    return orientation;
 }
 
+
 void _loadjpeg_worker(Filter *f, Eina_Array *in, Eina_Array *out, Rect *area, int thread_id)
+{
+  _Data *data = ea_data(f->data, thread_id);
+  
+  uint8_t *r, *g, *b;
+  uint8_t *rp, *gp, *bp;
+  int i, j;
+  int xstep, ystep;
+  unsigned char *buffer;    /* Output row buffer */
+  int row_stride;   /* physical row width in output buffer */
+  FILE *file;
+  int lines_read;
+  
+  ujImage uj;
+  
+  uj = ujDecodeFileArea(NULL, data->input->data, area->corner.x, area->corner.y, area->width, area->height);
+  
+  //maximum scaledown: 1/1
+  assert(area->corner.scale <= 0);
+  
+  r = ((Tiledata*)ea_data(out, 0))->data;
+  g = ((Tiledata*)ea_data(out, 1))->data;
+  b = ((Tiledata*)ea_data(out, 2))->data;
+  
+  buffer = ujGetImageArea(uj, NULL, area->corner.x, area->corner.y, area->width, area->height);
+  
+  switch (data->rot) {
+    case 6 : 
+      rp = r + area->height - 1;
+      gp = g + area->height - 1;
+      bp = b + area->height - 1;
+      xstep = area->height;
+      ystep = -area->height*area->height - 1;
+      break;
+    case 8 : 
+      rp = r + area->height*(area->width - 1);
+      gp = g + area->height*(area->width - 1);
+      bp = b + area->height*(area->width - 1);
+      xstep = -area->height;
+      ystep = area->height*area->width+1;
+      break;
+    case 1 :  
+    default : //FIXME more cases!
+      rp = r;
+      gp = g;
+      bp = b;
+      xstep = 1;
+      ystep = 0;
+      break;
+  }
+
+    for(j=0;j<area->height;j++,rp+=ystep,gp+=ystep,bp+=ystep)
+      for(i=0;i<area->width;i++,rp+=xstep,gp+=xstep,bp+=xstep) {
+        rp[0] = buffer[(j*area->width+i)*3];
+        gp[0] = buffer[(j*area->width+i)*3+1];
+        bp[0] = buffer[(j*area->width+i)*3+2];
+      }
+      
+  ujDestroy(uj);
+}
+
+void _loadjpeg_worker_ur(Filter *f, Eina_Array *in, Eina_Array *out, Rect *area, int thread_id)
 {
   _Data *data = ea_data(f->data, 0);
   
@@ -199,9 +273,9 @@ int _loadjpeg_input_fixed(Filter *f)
     ((Dim*)data->dim)->width = cinfo.output_height;
     ((Dim*)data->dim)->height = cinfo.output_width;
   }
-  ((Dim*)data->dim)->scaledown_max = 3;
+  ((Dim*)data->dim)->scaledown_max = 0;
   
-  f->tw_s = malloc(sizeof(int)*4);
+  /*f->tw_s = malloc(sizeof(int)*4);
   f->th_s = malloc(sizeof(int)*4);
 
   for(i=0;i<4;i++) {
@@ -216,7 +290,9 @@ int _loadjpeg_input_fixed(Filter *f)
       f->tw_s[i] = cinfo.output_height;
       f->th_s[i] = cinfo.output_width;
     }
-  }
+  }*/
+  f->tile_width = JPEG_TILE_SIZE;
+  f->tile_height = JPEG_TILE_SIZE;
   
   jpeg_destroy_decompress(&cinfo);
   
@@ -248,6 +324,7 @@ Filter *filter_loadjpeg_new(void)
   filter->mode_buffer = filter_mode_buffer_new();
   filter->mode_buffer->worker = &_loadjpeg_worker;
   filter->mode_buffer->threadsafe = 1;
+  filter->mode_buffer->data_new = &_data_new;
   filter->input_fixed = &_loadjpeg_input_fixed;
   filter->fixme_outcount = 3;
   ea_push(filter->data, data);

@@ -147,6 +147,8 @@ extern ujPlane* ujGetPlane(ujImage img, int num);
 // If conversion failed, this function returns NULL; use ujGetError to get a
 // more detailed error description.
 extern unsigned char* ujGetImage(ujImage img, unsigned char* dest);
+unsigned char* ujGetImageArea(ujImage img, unsigned char* dest, const int x, int y, const int w, const int h);
+
 
 // destroy a uJPEG image handle
 extern void ujDestroy(ujImage img);
@@ -185,7 +187,9 @@ public:
     int getImageSize()                            { return ujGetImageSize(img); }
     ujPlane* getPlane(int num)                    { return ujGetPlane(img, num); }
     const unsigned char* getImage()               { return ujGetImage(img, NULL); }
+    const unsigned char* getImageArea(const int x, int y, const int w, const int h) { return ujGetImageArea(img, NULL, x, y, w, h); }
     bool getImage(unsigned char* dest)            { return ujGetImage(img, dest) != NULL; }
+    bool getImageArea(unsigned char* dest, const int x, int y, const int w, const int h) { return ujGetImageArea(img, dest, x, y, w, h) != NULL; }
 private:
     ujImage img;
 };
