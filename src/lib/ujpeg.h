@@ -84,7 +84,7 @@ extern "C" {
 typedef void* ujImage;
 
 // return the error code of the last uJPEG operation
-extern ujResult ujGetError(void);
+extern ujResult ujGetError(ujImage *img);
 
 // create a uJPEG image context
 extern ujImage ujCreate(void);

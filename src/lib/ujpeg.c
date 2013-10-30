@@ -75,10 +75,11 @@ typedef struct _uj_ctx {
     unsigned char *rgb;
     int exif_le;
     int co_sited_chroma;
-    ujResult ujError;
+    ujResult error;
+    unsigned char dht_counts[16]
 } ujContext;
 
-//static ujResult ujError = UJ_OK;
+//static ujResult uj->error = UJ_OK;
 
 static const char ujZZ[64] = { 0, 1, 8, 16, 9, 2, 3, 10, 17, 24, 32, 25, 18,
 11, 4, 5, 12, 19, 26, 33, 40, 48, 41, 34, 27, 20, 13, 6, 7, 14, 21, 28, 35,
@@ -194,8 +195,8 @@ UJ_INLINE void ujColIDCT(const int* blk, unsigned char *out, int stride) {
 
 ///////////////////////////////////////////////////////////////////////////////
 
-#define ujThrow(e) do { ujError = e; return; } while (0)
-#define ujCheckError() do { if (ujError) return; } while (0)
+#define ujThrow(e) do { uj->error = e; return; } while (0)
+#define ujCheckError() do { if (uj->error) return; } while (0)
 
 static int ujShowBits(ujContext *uj, int bits) {
     unsigned char newbyte;
@@ -221,14 +222,14 @@ static int ujShowBits(ujContext *uj, int bits) {
                     case 0xD9: uj->size = 0; break;
                     default:
                         if ((marker & 0xF8) != 0xD0)
-                            ujError = UJ_SYNTAX_ERROR;
+                            uj->error = UJ_SYNTAX_ERROR;
                         else {
                             uj->buf = (uj->buf << 8) | marker;
                             uj->bufbits += 8;
                         }
                 }
             } else
-                ujError = UJ_SYNTAX_ERROR;
+                uj->error = UJ_SYNTAX_ERROR;
         }
     }
     return (uj->buf >> (uj->bufbits - bits)) & ((1 << bits) - 1);
@@ -254,7 +255,7 @@ static void ujSkip(ujContext *uj, int count) {
     uj->pos += count;
     uj->size -= count;
     uj->length -= count;
-    if (uj->size < 0) ujError = UJ_SYNTAX_ERROR;
+    if (uj->size < 0) uj->error = UJ_SYNTAX_ERROR;
 }
 
 UJ_INLINE unsigned short ujDecode16(const unsigned char *pos) {
@@ -383,7 +384,7 @@ UJ_INLINE void ujDecodeSOFArea(ujContext *uj, const int x, int y, const int w, c
 UJ_INLINE void ujDecodeDHT(ujContext *uj) {
     int codelen, currcnt, remain, spread, i, j;
     ujVLCCode *vlc;
-    static unsigned char counts[16];
+    //static unsigned char counts[16];
     ujDecodeLength(uj);
     while (uj->length >= 17) {
         i = uj->pos[0];
@@ -391,13 +392,13 @@ UJ_INLINE void ujDecodeDHT(ujContext *uj) {
         if (i & 0x02) ujThrow(UJ_UNSUPPORTED);
         i = (i | (i >> 3)) & 3;  // combined DC/AC + tableid value
         for (codelen = 1;  codelen <= 16;  ++codelen)
-            counts[codelen - 1] = uj->pos[codelen];
+            uj->dht_counts[codelen - 1] = uj->pos[codelen];
         ujSkip(uj, 17);
         vlc = &uj->vlctab[i][0];
         remain = spread = 65536;
         for (codelen = 1;  codelen <= 16;  ++codelen) {
             spread >>= 1;
-            currcnt = counts[codelen - 1];
+            currcnt = uj->dht_counts[codelen - 1];
             if (!currcnt) continue;
             if (uj->length < currcnt) ujThrow(UJ_SYNTAX_ERROR);
             remain -= currcnt << (16 - codelen);
@@ -447,7 +448,7 @@ UJ_INLINE void ujDecodeDRI(ujContext *uj) {
 static int ujGetVLC(ujContext *uj, ujVLCCode* vlc, unsigned char* code) {
     int value = ujShowBits(uj, 16);
     int bits = vlc[value].bits;
-    if (!bits) { ujError = UJ_SYNTAX_ERROR; return 0; }
+    if (!bits) { uj->error = UJ_SYNTAX_ERROR; return 0; }
     ujSkipBits(uj, bits);
     value = vlc[value].code;
     if (code) *code = (unsigned char) value;
@@ -499,7 +500,7 @@ UJ_INLINE void ujDecodeScan(ujContext *uj) {
     if (uj->pos[0] || (uj->pos[1] != 63) || uj->pos[2]) ujThrow(UJ_UNSUPPORTED);
     ujSkip(uj, uj->length);
     uj->valid = 1;
-    if (uj->no_decode) { ujError = __UJ_FINISHED; return; }
+    if (uj->no_decode) { uj->error = __UJ_FINISHED; return; }
     uj->decoded = 1;  // mark the image as decoded now -- every subsequent error
                       // just means that the image hasn't been decoded
                       // completely
@@ -529,7 +530,7 @@ UJ_INLINE void ujDecodeScan(ujContext *uj) {
                 uj->comp[i].dcpred = 0;
         }
     }
-    ujError = __UJ_FINISHED;
+    uj->error = __UJ_FINISHED;
 }
 
 void ujSeekCoord(ujContext *uj, int *mbx, int *mby, int seekx, int seeky) {
@@ -575,7 +576,7 @@ UJ_INLINE void ujDecodeScanArea(ujContext *uj, int x, int y, int w, int h) {
     if (uj->pos[0] || (uj->pos[1] != 63) || uj->pos[2]) ujThrow(UJ_UNSUPPORTED);
     ujSkip(uj, uj->length);
     uj->valid = 1;
-    if (uj->no_decode) { ujError = __UJ_FINISHED; return; }
+    if (uj->no_decode) { uj->error = __UJ_FINISHED; return; }
     uj->decoded = 1;  // mark the image as decoded now -- every subsequent error
                       // just means that the image hasn't been decoded
                       // completely
@@ -633,7 +634,7 @@ UJ_INLINE void ujDecodeScanArea(ujContext *uj, int x, int y, int w, int h) {
               ujSeekCoord(uj, &mbx, &mby, x, mby);
         }
     }
-    ujError = __UJ_FINISHED;
+    uj->error = __UJ_FINISHED;
 }
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -657,7 +658,7 @@ UJ_INLINE void ujUpsampleHCentered(ujComponent* c) {
     unsigned char *out, *lin, *lout;
     int x, y;
     out = malloc((c->width * c->height) << 1);
-    if (!out) ujThrow(UJ_OUT_OF_MEM);
+    if (!out) abort();//FIXME ujThrow(UJ_OUT_OF_MEM);
     lin = c->pixels;
     lout = out;
     for (y = c->height;  y;  --y) {
@@ -685,7 +686,7 @@ UJ_INLINE void ujUpsampleVCentered(ujComponent* c) {
     unsigned char *out, *cin, *cout;
     int x, y;
     out = malloc((c->width * c->height) << 1);
-    if (!out) ujThrow(UJ_OUT_OF_MEM);
+    if (!out) abort();//FIXME ujThrow(UJ_OUT_OF_MEM);
     for (x = 0;  x < w;  ++x) {
         cin = &c->pixels[x];
         cout = &out[x];
@@ -716,7 +717,7 @@ UJ_INLINE void ujUpsampleHCoSited(ujComponent* c) {
     unsigned char *out, *lin, *lout;
     int x, y;
     out = malloc((c->width * c->height) << 1);
-    if (!out) ujThrow(UJ_OUT_OF_MEM);
+    if (!out) abort();//FIXME ujThrow(UJ_OUT_OF_MEM);
     lin = c->pixels;
     lout = out;
     for (y = c->height;  y;  --y) {
@@ -744,7 +745,7 @@ UJ_INLINE void ujUpsampleVCoSited(ujComponent* c) {
     unsigned char *out, *cin, *cout;
     int x, y;
     out = malloc((c->width * c->height) << 1);
-    if (!out) ujThrow(UJ_OUT_OF_MEM);
+    if (!out) abort();//FIXME ujThrow(UJ_OUT_OF_MEM);
     for (x = 0;  x < w;  ++x) {
         cin = &c->pixels[x];
         cout = &out[x];
@@ -972,7 +973,7 @@ UJ_INLINE void ujDecodeExif(ujContext* uj) {
 
 ujImage ujCreate(void) {
     ujContext *uj = (ujContext*) calloc(1, sizeof(ujContext));
-    ujError = uj ? UJ_OK : UJ_OUT_OF_MEM;
+    //FIXME uj->error = uj ? UJ_OK : UJ_OUT_OF_MEM;
     return (ujImage) uj;
 }
 
@@ -980,36 +981,36 @@ void ujDisableDecoding(ujImage img) {
     ujContext *uj = (ujContext*) img;
     if (uj) {
         uj->no_decode = 1;
-        ujError = UJ_OK;
+        uj->error = UJ_OK;
     } else
-        ujError = UJ_NO_CONTEXT;
+        uj->error = UJ_NO_CONTEXT;
 }
 
 void ujSetChromaMode(ujImage img, int mode) {
     ujContext *uj = (ujContext*) img;
     if (uj) {
         uj->fast_chroma = mode;
-        ujError = UJ_OK;
+        uj->error = UJ_OK;
     } else
-        ujError = UJ_NO_CONTEXT;
+        uj->error = UJ_NO_CONTEXT;
 }
 
 ujImage ujDecode(ujImage img, const void* jpeg, const int size) {
     ujContext *uj = (ujContext*) (img ? img : ujCreate());
     if (img) ujInit(uj);
-    ujError = UJ_OK;
+    uj->error = UJ_OK;
     if (!uj)
-        { ujError = UJ_OUT_OF_MEM; goto out; }
+        { uj->error = UJ_OUT_OF_MEM; goto out; }
     uj->pos = (const unsigned char*) jpeg;
     uj->size = size & 0x7FFFFFFF;
     if (uj->size < 2)
-        { ujError = UJ_NO_JPEG; goto out; }
+        { uj->error = UJ_NO_JPEG; goto out; }
     if ((uj->pos[0] ^ 0xFF) | (uj->pos[1] ^ 0xD8))
-        { ujError = UJ_NO_JPEG; goto out; }
+        { uj->error = UJ_NO_JPEG; goto out; }
     ujSkip(uj, 2);
-    while (!ujError) {
+    while (!uj->error) {
         if ((uj->size < 2) || (uj->pos[0] != 0xFF))
-            { ujError = UJ_SYNTAX_ERROR; goto out; }
+            { uj->error = UJ_SYNTAX_ERROR; goto out; }
         ujSkip(uj, 2);
         switch (uj->pos[-1]) {
             case 0xC0: ujDecodeSOF(uj);  break;
@@ -1023,14 +1024,15 @@ ujImage ujDecode(ujImage img, const void* jpeg, const int size) {
                 if ((uj->pos[-1] & 0xF0) == 0xE0)
                     ujSkipMarker(uj);
                 else
-                    { ujError = UJ_UNSUPPORTED; goto out; }
+                    { uj->error = UJ_UNSUPPORTED; goto out; }
         }
     }
-    if (ujError == __UJ_FINISHED) ujError = UJ_OK;
+    if (uj->error == __UJ_FINISHED) uj->error = UJ_OK;
   out:
-    if (ujError && !uj->valid) {
+    if (uj->error && !uj->valid) {
         if (!img)
             ujFree(uj);
+        abort(); //FIXME
         return NULL;
     }
     return (ujImage) uj;
@@ -1039,19 +1041,19 @@ ujImage ujDecode(ujImage img, const void* jpeg, const int size) {
 ujImage ujDecodeArea(ujImage img, const void* jpeg, const int size, const int x, const int y, const int w, const int h) {
     ujContext *uj = (ujContext*) (img ? img : ujCreate());
     if (img) ujInit(uj);
-    ujError = UJ_OK;
+    uj->error = UJ_OK;
     if (!uj)
-        { ujError = UJ_OUT_OF_MEM; goto out; }
+        { abort();}//FIXME uj->error = UJ_OUT_OF_MEM; goto out; }
     uj->pos = (const unsigned char*) jpeg;
     uj->size = size & 0x7FFFFFFF;
     if (uj->size < 2)
-        { ujError = UJ_NO_JPEG; goto out; }
+        { uj->error = UJ_NO_JPEG; goto out; }
     if ((uj->pos[0] ^ 0xFF) | (uj->pos[1] ^ 0xD8))
-        { ujError = UJ_NO_JPEG; goto out; }
+        { uj->error = UJ_NO_JPEG; goto out; }
     ujSkip(uj, 2);
-    while (!ujError) {
+    while (!uj->error) {
         if ((uj->size < 2) || (uj->pos[0] != 0xFF))
-            { ujError = UJ_SYNTAX_ERROR; goto out; }
+            { uj->error = UJ_SYNTAX_ERROR; goto out; }
         ujSkip(uj, 2);
         switch (uj->pos[-1]) {
             case 0xC0: ujDecodeSOFArea(uj, x, y, w, h);  break;
@@ -1065,12 +1067,12 @@ ujImage ujDecodeArea(ujImage img, const void* jpeg, const int size, const int x,
                 if ((uj->pos[-1] & 0xF0) == 0xE0)
                     ujSkipMarker(uj);
                 else
-                    { ujError = UJ_UNSUPPORTED; goto out; }
+                    { uj->error = UJ_UNSUPPORTED; goto out; }
         }
     }
-    if (ujError == __UJ_FINISHED) ujError = UJ_OK;
+    if (uj->error == __UJ_FINISHED) uj->error = UJ_OK;
   out:
-    if (ujError && !uj->valid) {
+    if (uj->error && !uj->valid) {
         if (!img)
             ujFree(uj);
         return NULL;
@@ -1081,10 +1083,10 @@ ujImage ujDecodeArea(ujImage img, const void* jpeg, const int size, const int x,
 ujImage ujDecodeFile(ujImage img, const char* filename) {
     FILE *f; size_t size;
     void *buf;
-    ujError = UJ_OK;
+    ((ujContext*)img)->error = UJ_OK;
     f = fopen(filename, "rb");
     if (!f) {
-        ujError = UJ_IO_ERROR;
+        ((ujContext*)img)->error = UJ_IO_ERROR;
         return NULL;
     }
     fseek(f, 0, SEEK_END);
@@ -1097,7 +1099,7 @@ ujImage ujDecodeFile(ujImage img, const char* filename) {
     buf = malloc(size);
     if (!buf) {
         fclose(f);
-        ujError = UJ_OUT_OF_MEM;
+        ((ujContext*)img)->error = UJ_OUT_OF_MEM;
         return NULL;
     }
     size = fread(buf, 1, size, f);
@@ -1110,10 +1112,11 @@ ujImage ujDecodeFile(ujImage img, const char* filename) {
 ujImage ujDecodeFileArea(ujImage img, const char* filename, const int x, const int y, const int w, const int h) {
     FILE *f; size_t size;
     void *buf;
-    ujError = UJ_OK;
+    img = ujCreate();
+    ((ujContext*)img)->error = UJ_OK;
     f = fopen(filename, "rb");
     if (!f) {
-        ujError = UJ_IO_ERROR;
+        ((ujContext*)img)->error = UJ_IO_ERROR;
         return NULL;
     }
     fseek(f, 0, SEEK_END);
@@ -1126,7 +1129,7 @@ ujImage ujDecodeFileArea(ujImage img, const char* filename, const int x, const i
     buf = malloc(size);
     if (!buf) {
         fclose(f);
-        ujError = UJ_OUT_OF_MEM;
+        ((ujContext*)img)->error = UJ_OUT_OF_MEM;
         return NULL;
     }
     size = fread(buf, 1, size, f);
@@ -1136,65 +1139,65 @@ ujImage ujDecodeFileArea(ujImage img, const char* filename, const int x, const i
     return img;
 }
 
-ujResult ujGetError(void) {
-    return ujError;
+ujResult ujGetError(ujImage *img) {
+    return ((ujContext*)img)->error;
 }
 
 int ujIsValid(ujImage img) {
     ujContext *uj = (ujContext*) img;
-    if (!uj) { ujError = UJ_NO_CONTEXT; return 0; }
+    if (!uj) { uj->error = UJ_NO_CONTEXT; return 0; }
     return uj->valid;
 }
 
 int ujGetWidth(ujImage img) {
     ujContext *uj = (ujContext*) img;
-    ujError = !uj ? UJ_NO_CONTEXT : (uj->valid ? UJ_OK : UJ_NOT_DECODED);
-    return ujError ? 0 : uj->width;
+    uj->error = !uj ? UJ_NO_CONTEXT : (uj->valid ? UJ_OK : UJ_NOT_DECODED);
+    return uj->error ? 0 : uj->width;
 }
 
 int ujGetHeight(ujImage img) {
     ujContext *uj = (ujContext*) img;
-    ujError = !uj ? UJ_NO_CONTEXT : (uj->valid ? UJ_OK : UJ_NOT_DECODED);
-    return ujError ? 0 : uj->height;
+    uj->error = !uj ? UJ_NO_CONTEXT : (uj->valid ? UJ_OK : UJ_NOT_DECODED);
+    return uj->error ? 0 : uj->height;
 }
 
 int ujIsColor(ujImage img) {
     ujContext *uj = (ujContext*) img;
-    ujError = !uj ? UJ_NO_CONTEXT : (uj->valid ? UJ_OK : UJ_NOT_DECODED);
-    return ujError ? 0 : (uj->ncomp != 1);
+    uj->error = !uj ? UJ_NO_CONTEXT : (uj->valid ? UJ_OK : UJ_NOT_DECODED);
+    return uj->error ? 0 : (uj->ncomp != 1);
 }
 
 int ujGetImageSize(ujImage img) {
     ujContext *uj = (ujContext*) img;
-    ujError = !uj ? UJ_NO_CONTEXT : (uj->valid ? UJ_OK : UJ_NOT_DECODED);
-    return ujError ? 0 : (uj->width * uj->height * uj->ncomp);
+    uj->error = !uj ? UJ_NO_CONTEXT : (uj->valid ? UJ_OK : UJ_NOT_DECODED);
+    return uj->error ? 0 : (uj->width * uj->height * uj->ncomp);
 }
 
 ujPlane* ujGetPlane(ujImage img, int num) {
     ujContext *uj = (ujContext*) img;
-    ujError = !uj ? UJ_NO_CONTEXT : (uj->decoded ? UJ_OK : UJ_NOT_DECODED);
-    if (!ujError && (num >= uj->ncomp)) ujError = UJ_INVALID_ARG;
-    return ujError ? NULL : ((ujPlane*) &uj->comp[num]);
+    uj->error = !uj ? UJ_NO_CONTEXT : (uj->decoded ? UJ_OK : UJ_NOT_DECODED);
+    if (!uj->error && (num >= uj->ncomp)) uj->error = UJ_INVALID_ARG;
+    return uj->error ? NULL : ((ujPlane*) &uj->comp[num]);
 }
 
 unsigned char* ujGetImage(ujImage img, unsigned char* dest) {
     ujContext *uj = (ujContext*) img;
-    ujError = !uj ? UJ_NO_CONTEXT : (uj->decoded ? UJ_OK : UJ_NOT_DECODED);
-    if (ujError) return NULL;
+    uj->error = !uj ? UJ_NO_CONTEXT : (uj->decoded ? UJ_OK : UJ_NOT_DECODED);
+    if (uj->error) return NULL;
     if (dest) {
         if (uj->rgb)
             memcpy(dest, uj->rgb, uj->width * uj->height * uj->ncomp);
         else {
             ujConvert(uj, dest);
-            if (ujError) return NULL;
+            if (uj->error) return NULL;
         }
         return dest;
     } else {
         if (!uj->rgb) {
             uj->rgb = malloc(uj->width * uj->height * uj->ncomp);
-            if (!uj->rgb) { ujError = UJ_OUT_OF_MEM; return NULL; }
+            if (!uj->rgb) { uj->error = UJ_OUT_OF_MEM; return NULL; }
             ujConvert(uj, uj->rgb);
-            if (ujError) return NULL;
+            if (uj->error) return NULL;
         }
         return uj->rgb;
     }
@@ -1203,32 +1206,30 @@ unsigned char* ujGetImage(ujImage img, unsigned char* dest) {
 
 unsigned char* ujGetImageArea(ujImage img, unsigned char* dest, const int x, int y, const int w, const int h) {
     ujContext *uj = (ujContext*) img;
-    ujError = !uj ? UJ_NO_CONTEXT : (uj->decoded ? UJ_OK : UJ_NOT_DECODED);
-    if (ujError) return NULL;
+    uj->error = !uj ? UJ_NO_CONTEXT : (uj->decoded ? UJ_OK : UJ_NOT_DECODED);
+    if (uj->error) return NULL;
     if (dest) {
         if (uj->rgb)
             memcpy(dest, uj->rgb, w/*uj->width*/ * h/*uj->height*/*uj->ncomp);
         else {
             ujConvertArea(uj, dest, x, y, w, h);
-            if (ujError) return NULL;
+            if (uj->error) return NULL;
         }
         return dest;
     } else {
         if (!uj->rgb) {
             uj->rgb = malloc(w/*uj->width*/ * h/*uj->height*/*uj->ncomp);
-            printf("malloced %p\n", uj->rgb);
-            if (!uj->rgb) { ujError = UJ_OUT_OF_MEM; return NULL; }
+            if (!uj->rgb) { uj->error = UJ_OUT_OF_MEM; return NULL; }
             ujConvertArea(uj, uj->rgb, x, y, w, h);
-            printf("error %d\n", ujError);
-            if (ujError) return NULL;
+            if (uj->error) return NULL;
         }
         return uj->rgb;
     }
 }
 
 void ujDestroy(ujImage img) {
-    ujError = UJ_OK;
-    if (!img) { ujError = UJ_NO_CONTEXT; return; }
+    ((ujContext*)img)->error = UJ_OK;
+    if (!img) abort(); //FIXME { uj->error = UJ_NO_CONTEXT; return; }
     ujDone((ujContext*) img);
     free(img);
 }

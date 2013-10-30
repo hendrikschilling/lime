@@ -71,9 +71,9 @@ static int _get_exif_orientation(const char *file)
 }
 
 
-void _loadjpeg_worker(Filter *f, Eina_Array *in, Eina_Array *out, Rect *area, int thread_id)
+void _loadjpeg_worker_ujpeg(Filter *f, Eina_Array *in, Eina_Array *out, Rect *area, int thread_id)
 {
-  _Data *data = ea_data(f->data, thread_id);
+  _Data *data = ea_data(f->data, 0);
   
   uint8_t *r, *g, *b;
   uint8_t *rp, *gp, *bp;
@@ -96,7 +96,7 @@ void _loadjpeg_worker(Filter *f, Eina_Array *in, Eina_Array *out, Rect *area, in
   b = ((Tiledata*)ea_data(out, 2))->data;
   
   buffer = ujGetImageArea(uj, NULL, area->corner.x, area->corner.y, area->width, area->height);
-  
+    
   switch (data->rot) {
     case 6 : 
       rp = r + area->height - 1;
@@ -132,7 +132,7 @@ void _loadjpeg_worker(Filter *f, Eina_Array *in, Eina_Array *out, Rect *area, in
   ujDestroy(uj);
 }
 
-void _loadjpeg_worker_ur(Filter *f, Eina_Array *in, Eina_Array *out, Rect *area, int thread_id)
+void _loadjpeg_worker_ijg(Filter *f, Eina_Array *in, Eina_Array *out, Rect *area, int thread_id)
 {
   _Data *data = ea_data(f->data, 0);
   
@@ -236,6 +236,15 @@ void _loadjpeg_worker_ur(Filter *f, Eina_Array *in, Eina_Array *out, Rect *area,
   fclose(file);
 }
 
+void _loadjpeg_worker(Filter *f, Eina_Array *in, Eina_Array *out, Rect *area, int thread_id)
+{
+  if (!area->corner.scale)
+    _loadjpeg_worker_ujpeg(f, in, out, area, thread_id);
+  else
+    _loadjpeg_worker_ijg(f, in, out, area, thread_id);
+
+}
+
 int _loadjpeg_input_fixed(Filter *f)
 {
   int i;
@@ -275,10 +284,13 @@ int _loadjpeg_input_fixed(Filter *f)
   }
   ((Dim*)data->dim)->scaledown_max = 0;
   
-  /*f->tw_s = malloc(sizeof(int)*4);
+  f->tw_s = malloc(sizeof(int)*4);
   f->th_s = malloc(sizeof(int)*4);
 
-  for(i=0;i<4;i++) {
+  f->tw_s[0] = JPEG_TILE_SIZE;
+  f->th_s[0] = JPEG_TILE_SIZE;
+  
+  for(i=1;i<4;i++) {
     cinfo.scale_num = 1;
     cinfo.scale_denom = 1u << i;
     jpeg_calc_output_dimensions(&cinfo);
@@ -290,9 +302,9 @@ int _loadjpeg_input_fixed(Filter *f)
       f->tw_s[i] = cinfo.output_height;
       f->th_s[i] = cinfo.output_width;
     }
-  }*/
-  f->tile_width = JPEG_TILE_SIZE;
-  f->tile_height = JPEG_TILE_SIZE;
+  }
+  //f->tile_width = JPEG_TILE_SIZE;
+  //f->tile_height = JPEG_TILE_SIZE;
   
   jpeg_destroy_decompress(&cinfo);
   
@@ -324,7 +336,7 @@ Filter *filter_loadjpeg_new(void)
   filter->mode_buffer = filter_mode_buffer_new();
   filter->mode_buffer->worker = &_loadjpeg_worker;
   filter->mode_buffer->threadsafe = 1;
-  filter->mode_buffer->data_new = &_data_new;
+  //filter->mode_buffer->data_new = &_data_new;
   filter->input_fixed = &_loadjpeg_input_fixed;
   filter->fixme_outcount = 3;
   ea_push(filter->data, data);
