@@ -149,6 +149,7 @@ extern ujPlane* ujGetPlane(ujImage img, int num);
 extern unsigned char* ujGetImage(ujImage img, unsigned char* dest);
 unsigned char* ujGetImageArea(ujImage img, unsigned char* dest, const int x, int y, const int w, const int h);
 
+extern void ujDecodeScanAreaP(ujImage *img, int x, int y, int w, int h);
 
 // destroy a uJPEG image handle
 extern void ujDestroy(ujImage img);

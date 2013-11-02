@@ -54,7 +54,13 @@ Bench_Step bench_eval[] = {{0,0,-1, &filter_core_gauss}, {0,300,12}, {0,500,8}, 
 
 Bench_Step bench_redo[] = {{0,0,-1, &filter_core_sharpen}, {0,300,12}, {0,500,8}, {600,1600,4}, {1700,3500,2}, {4000,8000,1, NULL, "strength", NULL, 1, &f02}, {4000,8000,1, NULL, "strength", NULL, 1, &f04}, {4000,8000,1, NULL, "strength", NULL, 1, &f06}, {4000,8000,1, NULL, "strength", NULL, 1, &f10}, {0,0,-1, &filter_core_exposure}, {0,300,12}, {0,500,8}, {600,1600,4}, {1700,3500,2}, {4000,8000,1}, {4000,8000,1, NULL, "strength", NULL, 2, &f02}, {4000,8000,1, NULL, "strength", NULL, 2, &f04}, {4000,8000,1, NULL, "strength", NULL, 2, &f06}, {4000,8000,1, NULL, "strength", NULL, 2, &f08}, {-1}};
 
-Bench_Step bench_s0[] = {{4096,4096,1}, {-1}};
+/*Bench_Step bench_s0[] = {{4096,4096,1}, {-1}};
+Bench_Step bench_s1[] = {{2048,2048,2}, {-1}};
+Bench_Step bench_s2[] = {{1024,1024,4}, {-1}};
+Bench_Step bench_s3[] = {{512,512,8}, {-1}};*/
+
+
+Bench_Step bench_s0[] = {{2048,2048,1}, {-1}};
 Bench_Step bench_s1[] = {{2048,2048,2}, {-1}};
 Bench_Step bench_s2[] = {{1024,1024,4}, {-1}};
 Bench_Step bench_s3[] = {{512,512,8}, {-1}};

@@ -66,7 +66,7 @@ typedef struct _uj_ctx {
     int mbsizex, mbsizey;
     int ncomp;
     ujComponent comp[3];
-    int qtused, qtavail;
+    //int qtused, qtavail;
     unsigned char qtab[4][64];
     ujVLCCode vlctab[4][65536];
     int buf, bufbits;
@@ -76,7 +76,13 @@ typedef struct _uj_ctx {
     int exif_le;
     int co_sited_chroma;
     ujResult error;
-    unsigned char dht_counts[16]
+    //unsigned char dht_counts[16];
+    unsigned char *save_pos;
+    int c_width[3];
+    int c_height[3];
+    int c_stride[3];
+    int save_size;
+    void *save_context;
 } ujContext;
 
 //static ujResult uj->error = UJ_OK;
@@ -91,6 +97,34 @@ UJ_FORCE_INLINE unsigned char ujClip(const int x) {
 }
 
 ///////////////////////////////////////////////////////////////////////////////
+
+void ujSavePos(ujContext *uj) {
+  int i;
+  uj->save_pos = uj->pos;
+  uj->save_size = uj->size;
+  for(i=0;i<uj->ncomp;i++) {
+    uj->c_width[i] = uj->comp[i].width;
+    uj->c_height[i] = uj->comp[i].height;
+    uj->c_stride[i] = uj->comp[i].stride;
+  }
+  //memcpy(uj->save_context, uj, sizeof(ujContext));
+}
+
+void ujRestorePos(ujContext *uj) {
+  int i;
+  uj->pos = uj->save_pos;
+  uj->size = uj->save_size;
+  for(i=0;i<uj->ncomp;i++) {
+    uj->comp[i].width = uj->c_width[i];
+    uj->comp[i].height = uj->c_height[i];
+    uj->comp[i].stride = uj->c_stride[i];
+  }
+  //memcpy(uj, uj->save_context, sizeof(ujContext));
+  /*uj->pos = uj->save_pos;
+  uj->size = uj->save_size;*/
+  uj->buf = 0;
+  uj->bufbits = 0;
+}
 
 #define W1 2841
 #define W2 2676
@@ -300,7 +334,7 @@ UJ_INLINE void ujDecodeSOF(ujContext *uj) {
         if (c->ssy & (c->ssy - 1)) ujThrow(UJ_UNSUPPORTED);  // non-power of two
         if ((c->qtsel = uj->pos[2]) & 0xFC) ujThrow(UJ_SYNTAX_ERROR);
         ujSkip(uj, 3);
-        uj->qtused |= 1 << c->qtsel;
+        //uj->qtused |= 1 << c->qtsel;
         if (c->ssx > ssxmax) ssxmax = c->ssx;
         if (c->ssy > ssymax) ssymax = c->ssy;
     }
@@ -353,7 +387,7 @@ UJ_INLINE void ujDecodeSOFArea(ujContext *uj, const int x, int y, const int w, c
         if (c->ssy & (c->ssy - 1)) ujThrow(UJ_UNSUPPORTED);  // non-power of two
         if ((c->qtsel = uj->pos[2]) & 0xFC) ujThrow(UJ_SYNTAX_ERROR);
         ujSkip(uj, 3);
-        uj->qtused |= 1 << c->qtsel;
+        //uj->qtused |= 1 << c->qtsel;
         if (c->ssx > ssxmax) ssxmax = c->ssx;
         if (c->ssy > ssymax) ssymax = c->ssy;
     }
@@ -384,7 +418,7 @@ UJ_INLINE void ujDecodeSOFArea(ujContext *uj, const int x, int y, const int w, c
 UJ_INLINE void ujDecodeDHT(ujContext *uj) {
     int codelen, currcnt, remain, spread, i, j;
     ujVLCCode *vlc;
-    //static unsigned char counts[16];
+    unsigned char counts[16];
     ujDecodeLength(uj);
     while (uj->length >= 17) {
         i = uj->pos[0];
@@ -392,13 +426,13 @@ UJ_INLINE void ujDecodeDHT(ujContext *uj) {
         if (i & 0x02) ujThrow(UJ_UNSUPPORTED);
         i = (i | (i >> 3)) & 3;  // combined DC/AC + tableid value
         for (codelen = 1;  codelen <= 16;  ++codelen)
-            uj->dht_counts[codelen - 1] = uj->pos[codelen];
+            counts[codelen - 1] = uj->pos[codelen];
         ujSkip(uj, 17);
         vlc = &uj->vlctab[i][0];
         remain = spread = 65536;
         for (codelen = 1;  codelen <= 16;  ++codelen) {
             spread >>= 1;
-            currcnt = uj->dht_counts[codelen - 1];
+            currcnt = counts[codelen - 1];
             if (!currcnt) continue;
             if (uj->length < currcnt) ujThrow(UJ_SYNTAX_ERROR);
             remain -= currcnt << (16 - codelen);
@@ -428,7 +462,7 @@ UJ_INLINE void ujDecodeDQT(ujContext *uj) {
     while (uj->length >= 65) {
         i = uj->pos[0];
         if (i & 0xFC) ujThrow(UJ_SYNTAX_ERROR);
-        uj->qtavail |= 1 << i;
+        //uj->qtavail |= 1 << i;
         t = &uj->qtab[i][0];
         for (i = 0;  i < 64;  ++i)
             t[i] = uj->pos[i + 1];
@@ -535,6 +569,10 @@ UJ_INLINE void ujDecodeScan(ujContext *uj) {
 
 void ujSeekCoord(ujContext *uj, int *mbx, int *mby, int seekx, int seeky) {
   int s;
+  int i;
+  
+  for (i = 0;  i < 3;  ++i)
+    uj->comp[i].dcpred = 0;
   
   if (!seekx && !seeky)
     return;
@@ -562,6 +600,7 @@ UJ_INLINE void ujDecodeScanArea(ujContext *uj, int x, int y, int w, int h) {
     int s;
     int rstcount = uj->rstinterval, nextrst = 0;
     ujComponent* c;
+    ujRestorePos(uj);
     ujDecodeLength(uj);
     if (uj->length < (4 + 2 * uj->ncomp)) ujThrow(UJ_SYNTAX_ERROR);
     if (uj->pos[0] != uj->ncomp) ujThrow(UJ_UNSUPPORTED);
@@ -635,6 +674,16 @@ UJ_INLINE void ujDecodeScanArea(ujContext *uj, int x, int y, int w, int h) {
         }
     }
     uj->error = __UJ_FINISHED;
+}
+
+
+void ujDecodeScanAreaP(ujImage *img, int x, int y, int w, int h) {
+  ujDecodeScanArea((ujContext*)img, x, y, w, h);
+  
+  if (((ujContext*)img)->error == __UJ_FINISHED) ((ujContext*)img)->error = UJ_OK;
+  else
+  { printf("error %d\n", ((ujContext*)img)->error); abort(); }
+  
 }
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -851,20 +900,20 @@ UJ_INLINE void ujConvertArea(ujContext *uj, unsigned char *pout, const int x, co
             ujUpsampleFast(uj, c);
             ujCheckError();
         } else {
-            while ((c->width < w/*uj->width*/) || (c->height < h/*uj->height*/)) {
-                if (c->width < w/*uj->width*/) {
+            while ((c->width < w) || (c->height < h)) {
+                if (c->width < w) {
                     if (uj->co_sited_chroma) ujUpsampleHCoSited(c);
                                         else ujUpsampleHCentered(c);
                 }
                 ujCheckError();
-                if (c->height < h/*uj->height*/) {
+                if (c->height < h) {
                     if (uj->co_sited_chroma) ujUpsampleVCoSited(c);
                                         else ujUpsampleVCentered(c);
                 }
                 ujCheckError();
             }
         }
-        if ((c->width < w/*uj->width*/) || (c->height < h/*uj->height*/)) ujThrow(UJ_INTERNAL_ERR);
+        if ((c->width < w) || (c->height < h)) ujThrow(UJ_INTERNAL_ERR);
     }
     if (uj->ncomp == 3) {
         // convert to RGB
@@ -1060,7 +1109,9 @@ ujImage ujDecodeArea(ujImage img, const void* jpeg, const int size, const int x,
             case 0xC4: ujDecodeDHT(uj);  break;
             case 0xDB: ujDecodeDQT(uj);  break;
             case 0xDD: ujDecodeDRI(uj);  break;
-            case 0xDA: ujDecodeScanArea(uj, x, y, w, h); break;
+            case 0xDA: ujSavePos(uj);
+                       ujDecodeScanArea(uj, x, y, w, h);
+                       break;
             case 0xFE: ujSkipMarker(uj); break;
             case 0xE1: ujDecodeExif(uj); break;
             default:
@@ -1135,7 +1186,7 @@ ujImage ujDecodeFileArea(ujImage img, const char* filename, const int x, const i
     size = fread(buf, 1, size, f);
     fclose(f);
     img = ujDecodeArea(img, buf, (int) size, x, y, w, h);
-    free(buf);
+    //free(buf);
     return img;
 }
 
@@ -1223,7 +1274,9 @@ unsigned char* ujGetImageArea(ujImage img, unsigned char* dest, const int x, int
             ujConvertArea(uj, uj->rgb, x, y, w, h);
             if (uj->error) return NULL;
         }
-        return uj->rgb;
+        dest = uj->rgb;
+        uj->rgb = NULL;
+        return dest;
     }
 }
 

@@ -29,6 +29,7 @@ typedef struct {
   Meta *input;
   Meta *dim;
   int rot;
+  ujImage uimg;
 } _Data;
 
 void *_data_new(Filter *f, void *data)
@@ -36,6 +37,8 @@ void *_data_new(Filter *f, void *data)
   _Data *newdata = calloc(sizeof(_Data), 1);
   
   *newdata = *(_Data*)data;
+  
+  newdata->uimg = NULL;
   
   return newdata;
 }
@@ -73,7 +76,7 @@ static int _get_exif_orientation(const char *file)
 
 void _loadjpeg_worker_ujpeg(Filter *f, Eina_Array *in, Eina_Array *out, Rect *area, int thread_id)
 {
-  _Data *data = ea_data(f->data, 0);
+  _Data *data = ea_data(f->data, thread_id);
   
   uint8_t *r, *g, *b;
   uint8_t *rp, *gp, *bp;
@@ -84,9 +87,10 @@ void _loadjpeg_worker_ujpeg(Filter *f, Eina_Array *in, Eina_Array *out, Rect *ar
   FILE *file;
   int lines_read;
   
-  ujImage uj;
-  
-  uj = ujDecodeFileArea(NULL, data->input->data, area->corner.x, area->corner.y, area->width, area->height);
+  if (!data->uimg)
+    data->uimg = ujDecodeFileArea(NULL, data->input->data, area->corner.x, area->corner.y, area->width, area->height);
+  else
+    ujDecodeScanAreaP(data->uimg, area->corner.x, area->corner.y, area->width, area->height);
   
   //maximum scaledown: 1/1
   assert(area->corner.scale <= 0);
@@ -95,7 +99,7 @@ void _loadjpeg_worker_ujpeg(Filter *f, Eina_Array *in, Eina_Array *out, Rect *ar
   g = ((Tiledata*)ea_data(out, 1))->data;
   b = ((Tiledata*)ea_data(out, 2))->data;
   
-  buffer = ujGetImageArea(uj, NULL, area->corner.x, area->corner.y, area->width, area->height);
+  buffer = ujGetImageArea(data->uimg, NULL, area->corner.x, area->corner.y, area->width, area->height);
     
   switch (data->rot) {
     case 6 : 
@@ -129,12 +133,13 @@ void _loadjpeg_worker_ujpeg(Filter *f, Eina_Array *in, Eina_Array *out, Rect *ar
         bp[0] = buffer[(j*area->width+i)*3+2];
       }
       
-  ujDestroy(uj);
+  //ujDestroy(data->uimg);
+  free(buffer);
 }
 
 void _loadjpeg_worker_ijg(Filter *f, Eina_Array *in, Eina_Array *out, Rect *area, int thread_id)
 {
-  _Data *data = ea_data(f->data, 0);
+  _Data *data = ea_data(f->data, thread_id);
   
   uint8_t *r, *g, *b;
   uint8_t *rp, *gp, *bp;
@@ -336,7 +341,7 @@ Filter *filter_loadjpeg_new(void)
   filter->mode_buffer = filter_mode_buffer_new();
   filter->mode_buffer->worker = &_loadjpeg_worker;
   filter->mode_buffer->threadsafe = 1;
-  //filter->mode_buffer->data_new = &_data_new;
+  filter->mode_buffer->data_new = &_data_new;
   filter->input_fixed = &_loadjpeg_input_fixed;
   filter->fixme_outcount = 3;
   ea_push(filter->data, data);
