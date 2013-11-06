@@ -10,15 +10,15 @@
 #include "Lime.h"
 #include "cli.h"
 
-#define MAX_FAST_SCALEDOWN 5
 #define TILE_SIZE DEFAULT_TILE_SIZE
 #define MAX_XMP_FILE 1024*1024
 
 #define RSYNC_INSTANCE_COUNT 1
 
-int high_quality_delay =  150;
+int high_quality_delay =  300;
 int max_reaction_delay =  1000;
 int fullscreen = 0;
+int max_fast_scaledown = 5;
 
 Eina_Hash *known_tags;
 Elm_Genlist_Item_Class *tags_list_itc;
@@ -715,7 +715,7 @@ void mat_cache_obj_stack(Mat_Cache *mat_cache, Evas_Object *obj, int scale)
     }
     
     
-  for(i=scale+1;i<=size.scaledown_max;i++)
+  for(i=scale+1;i<=mat_cache->scale_max;i++)
     if (mat_cache->high_of_layer[i]) {
       evas_object_stack_above(obj, mat_cache->high_of_layer[i]);
       mat_cache->low_of_layer[scale] = obj;
@@ -869,8 +869,6 @@ Eina_Bool _display_preview(void *data)
   }
   eina_array_free(finished_threads);
   finished_threads = NULL;
-  
-  
       
   printf("finaly delay forced: %f\n", bench_delay_get());
 
@@ -900,19 +898,24 @@ _finished_tile(void *data, Ecore_Thread *th)
   
   worker--;
   
-  if (delay < max_reaction_delay)
+  /*if (delay < max_reaction_delay && !pending_action)
     fill_scroller_preview();
   
   if (!pending_action)
+    fill_scroller();*/
+  
+  if (!pending_action) {
+    fill_scroller_preview();
     fill_scroller();
+  }
   
   if (mat_cache_old) {
     if (preview_tiles || (!pending_action && delay < high_quality_delay && worker)) {
-      printf("delay for now: %f\n", delay);
+      printf("delay for now: %f (%d)\n", delay, tdata->scale);
       eina_array_push(finished_threads, data);
       
       if (!preview_timer && !preview_tiles) {
-	preview_timer = ecore_timer_add((high_quality_delay - delay)*0.001, &_display_preview, NULL);
+        preview_timer = ecore_timer_add((high_quality_delay - delay)*0.001, &_display_preview, NULL);
       }
 
       return;
@@ -1055,7 +1058,7 @@ int fill_area(int xm, int ym, int wm, int hm, int minscale, int preview)
   if (minscale > size.scaledown_max)
     minscale = size.scaledown_max;
   
-  scale_start = minscale + MAX_FAST_SCALEDOWN;
+  scale_start = minscale + max_fast_scaledown;
   
   if (scale_start > size.scaledown_max)
     scale_start = size.scaledown_max;
@@ -1152,7 +1155,8 @@ int fill_area(int xm, int ym, int wm, int hm, int minscale, int preview)
 
 void fill_scroller_preview(void)
 {
-  preview_tiles += fill_area(0,0,0,0, MAX_FAST_SCALEDOWN, 1);
+  if (max_fast_scaledown)
+    preview_tiles += fill_area(0,0,0,0, max_fast_scaledown, 1);
 }
 
 static void fill_scroller(void)
@@ -1183,7 +1187,7 @@ static void fill_scroller(void)
   if (!h)
     h++;
 
-  if (fill_area(0,0,0,0, MAX_FAST_SCALEDOWN, 0))
+  if (fill_area(0,0,0,0, max_fast_scaledown, 0))
     return;
     
   if (fill_area(0,0,0,0,0, 0))
@@ -2369,9 +2373,14 @@ void _on_max_reaction_set(void *data, Evas_Object *obj, void *event_info)
     elm_spinner_value_set(other_spinner, max_reaction_delay);
 }
 
+void _on_max_scaledown_set(void *data, Evas_Object *obj, void *event_info)
+{ 
+  max_fast_scaledown = elm_spinner_value_get(obj);
+}
+
 Evas_Object *settings_box_add(Evas_Object *parent)
 {
-  Evas_Object *box, *frame, *spinner_hq, *spinner_mr, *inbox;
+  Evas_Object *box, *frame, *spinner_hq, *spinner_mr, *inbox, *lbl, *spinner_scale;
   
   box = elm_box_add(parent);
   evas_object_size_hint_weight_set(box, EVAS_HINT_EXPAND, EVAS_HINT_EXPAND);
@@ -2391,6 +2400,12 @@ Evas_Object *settings_box_add(Evas_Object *parent)
   
   spinner_hq = elm_spinner_add(parent);
   spinner_mr = elm_spinner_add(parent);
+  spinner_scale = elm_spinner_add(parent);
+  
+  lbl = elm_label_add(parent);
+  elm_object_text_set(lbl, "hq delay");
+  elm_box_pack_end(inbox, lbl);
+  evas_object_show(lbl);
   
   evas_object_size_hint_weight_set(spinner_hq, EVAS_HINT_EXPAND, 0);
   evas_object_size_hint_align_set(spinner_hq, EVAS_HINT_FILL, 0);
@@ -2402,6 +2417,11 @@ Evas_Object *settings_box_add(Evas_Object *parent)
   elm_box_pack_end(inbox, spinner_hq);
   evas_object_show(spinner_hq);  
 
+  lbl = elm_label_add(parent);
+  elm_object_text_set(lbl, "max delay");
+  elm_box_pack_end(inbox, lbl);
+  evas_object_show(lbl);
+  
   evas_object_size_hint_weight_set(spinner_mr, EVAS_HINT_EXPAND, 0);
   evas_object_size_hint_align_set(spinner_mr, EVAS_HINT_FILL, 0);
   elm_spinner_min_max_set (spinner_mr, 0, 1000);
@@ -2411,6 +2431,21 @@ Evas_Object *settings_box_add(Evas_Object *parent)
   evas_object_smart_callback_add(spinner_mr, "delay,changed", _on_max_reaction_set, spinner_hq);
   elm_box_pack_end(inbox, spinner_mr);
   evas_object_show(spinner_mr);
+  
+  lbl = elm_label_add(parent);
+  elm_object_text_set(lbl, "preview scale steps");
+  elm_box_pack_end(inbox, lbl);
+  evas_object_show(lbl);
+  
+  evas_object_size_hint_weight_set(spinner_scale, EVAS_HINT_EXPAND, 0);
+  evas_object_size_hint_align_set(spinner_scale, EVAS_HINT_FILL, 0);
+  elm_spinner_min_max_set (spinner_scale, 0, 10);
+  elm_spinner_step_set (spinner_scale, 1);
+  elm_spinner_round_set(spinner_scale, 1);
+  elm_spinner_value_set (spinner_scale, max_fast_scaledown);
+  evas_object_smart_callback_add(spinner_scale, "delay,changed", _on_max_scaledown_set, NULL);
+  elm_box_pack_end(inbox, spinner_scale);
+  evas_object_show(spinner_scale);
   
   return box;
 }
