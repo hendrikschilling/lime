@@ -83,6 +83,7 @@ typedef struct _uj_ctx {
     int c_stride[3];
     int save_size;
     void *save_context;
+    unsigned char **index;
 } ujContext;
 
 //static ujResult uj->error = UJ_OK;
@@ -567,17 +568,41 @@ UJ_INLINE void ujDecodeScan(ujContext *uj) {
     uj->error = __UJ_FINISHED;
 }
 
-void ujSeekCoord(ujContext *uj, int *mbx, int *mby, int seekx, int seeky) {
+void ujSeekCoord(ujContext *uj, int *mbx, int *mby, int x, int y, int w, int h) {
   int s;
   int i;
+  int fx = w/uj->mbsizex;
+  int iw = uj->mbwidth/fx;
+  int ih = uj->mbheight;
+  int cx = *mbx;
+  int cy = *mby;
   
   for (i = 0;  i < 3;  ++i)
     uj->comp[i].dcpred = 0;
   
-  if (!seekx && !seeky)
+  if (!x && !y)
     return;
+
+  if (!uj->index) {
+    uj->index = calloc(sizeof(unsigned char*)*iw*ih, 1);
+    
+    for(s=0;s<uj->size-1;s++) {
+      if (uj->pos[s] == 0xFF && ((uj->pos[s+1] & 0xF0) == 0xD0)) {
+          int nstart = (uj->pos[s+1] & 0x0F);
+          cx += uj->rstinterval;
+        if (cx >= uj->mbwidth) {
+          cx = 0;
+          cy++;
+          //if (++cy >= uj->mbheight) ujThrow(UJ_SYNTAX_ERROR);
+        }
+        //printf("%dx%d - %dx%d\n", (*mbx)/fx, (*mby)/fy, iw, ih);
+        if ((cx*uj->mbsizex) % w == 0)
+          uj->index[cy*iw + cx/fx] = uj->pos+s+2;
+      }
+    }
+  }
   
-  for(s=0;s<uj->size;s++) {
+  /*for(s=0;s<uj->size;s++) {
     if (uj->pos[s] == 0xFF && ((uj->pos[s+1] & 0xF0) == 0xD0)) {
         int nstart = (uj->pos[s+1] & 0x0F);
         *mbx += uj->rstinterval;
@@ -585,12 +610,17 @@ void ujSeekCoord(ujContext *uj, int *mbx, int *mby, int seekx, int seeky) {
         *mbx = 0;
         if (++(*mby) >= uj->mbheight) ujThrow(UJ_SYNTAX_ERROR);
       }
-      if (*mbx == seekx && *mby == seeky) {
+      if (*mbx == x && *mby == y) {
         ujSkip(uj, s+2);
         return;
       }
     }
-  }
+  }*/
+  
+  *mbx = x;
+  *mby = y;
+  ujSkip(uj, uj->index[y*iw + x/fx] - uj->pos);
+  return;
 }
 
 UJ_INLINE void ujDecodeScanArea(ujContext *uj, int x, int y, int w, int h) {
@@ -636,7 +666,7 @@ UJ_INLINE void ujDecodeScanArea(ujContext *uj, int x, int y, int w, int h) {
     
     mbx = 0;
     mby = 0;
-    ujSeekCoord(uj, &mbx, &mby, x, y);
+    ujSeekCoord(uj, &mbx, &mby, x, y, w, h);
     
     while (1)
     /*for (mbx = mby = 0;;)*/ { 
@@ -667,10 +697,10 @@ UJ_INLINE void ujDecodeScanArea(ujContext *uj, int x, int y, int w, int h) {
               if (mby+1 >= uj->mbheight || mby+1 >= y+h)
                 break;
               else
-                ujSeekCoord(uj, &mbx, &mby, x, mby+1);
+                ujSeekCoord(uj, &mbx, &mby, x, mby+1, w, h);
             }
             if (x && !mbx)
-              ujSeekCoord(uj, &mbx, &mby, x, mby);
+              ujSeekCoord(uj, &mbx, &mby, x, mby, w, h);
         }
     }
     uj->error = __UJ_FINISHED;

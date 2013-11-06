@@ -29,6 +29,7 @@ typedef struct {
   Meta *input;
   Meta *dim;
   int rot;
+  int seekable;
   ujImage uimg;
 } _Data;
 
@@ -243,7 +244,9 @@ void _loadjpeg_worker_ijg(Filter *f, Eina_Array *in, Eina_Array *out, Rect *area
 
 void _loadjpeg_worker(Filter *f, Eina_Array *in, Eina_Array *out, Rect *area, int thread_id)
 {
-  if (!area->corner.scale)
+  _Data *data = ea_data(f->data, 0);
+
+  if (!area->corner.scale && data->seekable)
     _loadjpeg_worker_ujpeg(f, in, out, area, thread_id);
   else
     _loadjpeg_worker_ijg(f, in, out, area, thread_id);
@@ -279,6 +282,9 @@ int _loadjpeg_input_fixed(Filter *f)
   jpeg_read_header(&cinfo, TRUE);
   jpeg_calc_output_dimensions(&cinfo);
 
+  if (cinfo.restart_interval && JPEG_TILE_SIZE % (cinfo.restart_interval * 16) == 0)
+    data->seekable = 1;
+  
   if (data->rot <= 4) {
     ((Dim*)data->dim)->width = cinfo.output_width;
     ((Dim*)data->dim)->height = cinfo.output_height;
@@ -287,7 +293,7 @@ int _loadjpeg_input_fixed(Filter *f)
     ((Dim*)data->dim)->width = cinfo.output_height;
     ((Dim*)data->dim)->height = cinfo.output_width;
   }
-  ((Dim*)data->dim)->scaledown_max = 0;
+  ((Dim*)data->dim)->scaledown_max = 3;
   
   f->tw_s = malloc(sizeof(int)*4);
   f->th_s = malloc(sizeof(int)*4);
@@ -295,7 +301,9 @@ int _loadjpeg_input_fixed(Filter *f)
   f->tw_s[0] = JPEG_TILE_SIZE;
   f->th_s[0] = JPEG_TILE_SIZE;
   
-  for(i=1;i<4;i++) {
+  printf("seekable %d\n", data->seekable);
+  
+  for(i=data->seekable;i<4;i++) {
     cinfo.scale_num = 1;
     cinfo.scale_denom = 1u << i;
     jpeg_calc_output_dimensions(&cinfo);
