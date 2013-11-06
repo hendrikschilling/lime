@@ -1,4 +1,5 @@
 #include <Elementary.h>
+#include <elm_win_legacy.h>
 #include <Ecore.h>
 #include <Eio.h>
 #include <fcntl.h>
@@ -17,6 +18,7 @@
 
 int high_quality_delay =  150;
 int max_reaction_delay =  1000;
+int fullscreen = 0;
 
 Eina_Hash *known_tags;
 Elm_Genlist_Item_Class *tags_list_itc;
@@ -72,8 +74,8 @@ int max_workers;
 Filter *sink, *contr, *blur, *load;
 Evas_Object *clipper, *win, *scroller, *file_slider, *filter_list, *select_filter, *pos_label;
 Evas_Object *tab_group, *tab_filter, *tab_settings, *tab_tags, *tab_current, *tab_box, *tab_export, *tab_tags, *tags_list, *tags_filter_list, *seg_rating;
-Evas_Object *group_list, *export_box, *export_extensions, *export_path;
-Evas_Object *grid = NULL;
+Evas_Object *group_list, *export_box, *export_extensions, *export_path, *main_vbox;
+Evas_Object *grid = NULL, *vbox_bottom, *bg;
 char *labelbuf;
 char *pos_lbl_buf;
 int posx, posy;
@@ -1915,6 +1917,25 @@ on_fit_image(void *data, Evas_Object *obj, void *event_info)
 }
 
 static void
+on_fullscreen(void *data, Evas_Object *obj, void *event_info)
+{
+  
+  if (!fullscreen) {
+    elm_bg_color_set(bg, 0, 0, 0);
+    elm_win_fullscreen_set(win, EINA_TRUE);
+    elm_box_unpack(main_vbox, vbox_bottom);
+    evas_object_hide(vbox_bottom);
+  }
+  else {
+    elm_win_fullscreen_set(win, EINA_FALSE);
+    elm_box_pack_end(main_vbox, vbox_bottom);
+    evas_object_show(vbox_bottom);
+  }
+  
+  fullscreen = 1-fullscreen;
+}
+
+static void
 on_origscale_image(void *data, Evas_Object *obj, void *event_info)
 {
   Elm_Transit *trans;
@@ -2287,6 +2308,8 @@ Eina_Bool shortcut_elm(void *data, Evas_Object *obj, Evas_Object *src, Evas_Call
       workerfinish_schedule(&insert_rotation_do, (void*)(intptr_t)3, NULL);
     else if (!strcmp(key->keyname, "f"))
       on_fit_image(NULL, NULL, NULL);
+    else if (!strcmp(key->keyname, "a"))
+      on_fullscreen(NULL, NULL, NULL);
     else {
       printf("keyboard! \"%s\"\n", key->keyname);
       return EINA_TRUE;
@@ -2768,7 +2791,7 @@ elm_main(int argc, char **argv)
   int help;
   int cache_strategy, cache_metric, cache_size;
   char *file;
-  Evas_Object *hbox, *vbox, *frame, *bg, *hpane, *seg_filter_rating, *entry, *btn;
+  Evas_Object *hbox, *vbox, *frame, *hpane, *seg_filter_rating, *entry, *btn;
   Eina_List *filters = NULL;
   Eina_List *list_iter;
   Filter *last;
@@ -2844,14 +2867,20 @@ elm_main(int argc, char **argv)
   //elm_object_tree_focus_allow_set(hpane, EINA_FALSE);
   evas_object_show(hpane);
   
-  vbox = elm_box_add(win);
-  evas_object_size_hint_weight_set(vbox, EVAS_HINT_EXPAND, EVAS_HINT_EXPAND);
-  evas_object_size_hint_align_set(vbox, EVAS_HINT_FILL, EVAS_HINT_FILL);
-  elm_object_part_content_set(hpane, "left", vbox);
-  evas_object_show(vbox);
+  main_vbox = elm_box_add(win);
+  evas_object_size_hint_weight_set(main_vbox, EVAS_HINT_EXPAND, EVAS_HINT_EXPAND);
+  evas_object_size_hint_align_set(main_vbox, EVAS_HINT_FILL, EVAS_HINT_FILL);
+  elm_object_part_content_set(hpane, "left", main_vbox);
+  evas_object_show(main_vbox);
+  
+  vbox_bottom = elm_box_add(win);
+  evas_object_size_hint_weight_set(vbox_bottom, EVAS_HINT_EXPAND, 0);
+  evas_object_size_hint_align_set(vbox_bottom, EVAS_HINT_FILL, 0);
+  elm_box_pack_end(main_vbox, vbox_bottom);
+  evas_object_show(vbox_bottom);
 
   file_slider = elm_slider_add(win);
-  elm_box_pack_end(vbox, file_slider);
+  elm_box_pack_end(vbox_bottom, file_slider);
   evas_object_size_hint_weight_set(file_slider, EVAS_HINT_EXPAND, 0);
   evas_object_size_hint_align_set(file_slider, EVAS_HINT_FILL, 0);
   elm_slider_min_max_set(file_slider, 0, 0);
@@ -2861,7 +2890,7 @@ elm_main(int argc, char **argv)
   evas_object_size_hint_weight_set(hbox, EVAS_HINT_EXPAND, 0);
   evas_object_size_hint_align_set(hbox, EVAS_HINT_FILL, 0);
   elm_box_horizontal_set(hbox, EINA_TRUE);
-  elm_box_pack_end(vbox, hbox);
+  elm_box_pack_end(vbox_bottom, hbox);
   evas_object_show(hbox);
   
   elm_button_add_pack(hbox, "exit", &on_done);
@@ -2875,7 +2904,7 @@ elm_main(int argc, char **argv)
   
   pos_lbl_buf = malloc(1024);
   pos_label = elm_label_add(win);
-  elm_box_pack_end(vbox, pos_label);
+  elm_box_pack_end(vbox_bottom, pos_label);
   evas_object_show(pos_label);
 
   lime_cache_set(cache_size, cache_strategy | cache_metric);
@@ -2889,7 +2918,7 @@ elm_main(int argc, char **argv)
   scroller = elm_scroller_add(win);
   evas_object_size_hint_weight_set(scroller, EVAS_HINT_EXPAND, EVAS_HINT_EXPAND);
   evas_object_size_hint_align_set(scroller, EVAS_HINT_FILL, EVAS_HINT_FILL);
-  elm_box_pack_start(vbox, scroller);
+  elm_box_pack_start(main_vbox, scroller);
   evas_object_smart_callback_add(scroller, "scroll", &on_scroller_move, NULL);
   evas_object_smart_callback_add(scroller, "scroll,drag,stop", &on_scroller_move, NULL);
   evas_object_event_callback_add(scroller, EVAS_CALLBACK_RESIZE, _scroller_resize_cb, NULL);
