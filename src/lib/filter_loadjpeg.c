@@ -293,7 +293,7 @@ int _loadjpeg_input_fixed(Filter *f)
     ((Dim*)data->dim)->width = cinfo.output_height;
     ((Dim*)data->dim)->height = cinfo.output_width;
   }
-  ((Dim*)data->dim)->scaledown_max = 3;
+  ((Dim*)data->dim)->scaledown_max = 0;
   
   f->tw_s = malloc(sizeof(int)*4);
   f->th_s = malloc(sizeof(int)*4);

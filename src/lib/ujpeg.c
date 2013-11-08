@@ -569,7 +569,7 @@ UJ_INLINE void ujDecodeScan(ujContext *uj) {
 }
 
 void ujSeekCoord(ujContext *uj, int *mbx, int *mby, int x, int y, int w, int h) {
-  int s;
+  int s, sg;
   int i;
   int fx = w/uj->mbsizex;
   int iw = uj->mbwidth/fx;
@@ -585,21 +585,75 @@ void ujSeekCoord(ujContext *uj, int *mbx, int *mby, int x, int y, int w, int h) 
 
   if (!uj->index) {
     uj->index = calloc(sizeof(unsigned char*)*iw*ih, 1);
-    
-    for(s=0;s<uj->size-1;s++) {
-      if (uj->pos[s] == 0xFF && ((uj->pos[s+1] & 0xF0) == 0xD0)) {
-          int nstart = (uj->pos[s+1] & 0x0F);
+    /*0xFF D?
+           FF D?
+              FF D?
+                 FF?
+        00 10 00 10
+        00 80 00 80
+        00 40 00 40
+        
+      D == 1101 = 8 + 4 + 1
+      ? == must contain one zero bit!
+      
+      
+      */
+      
+    for(sg=0;sg<uj->size-1-3;sg+=2) {
+      int test = *(int*)(uj->pos+sg);
+      if (((test & 0x00001000) | (test & 0x00004000) | (test & 0x00008000)) == 0x0000D000)
+        if ((test & 0x0000D0FF) == 0x0000D0FF) {
           cx += uj->rstinterval;
-        if (cx >= uj->mbwidth) {
-          cx = 0;
-          cy++;
-          //if (++cy >= uj->mbheight) ujThrow(UJ_SYNTAX_ERROR);
+          if (cx >= uj->mbwidth) {
+            cx = 0;
+            cy++;
+            //if (++cy >= uj->mbheight) ujThrow(UJ_SYNTAX_ERROR);
+          }
+          //printf("%dx%d - %dx%d\n", (*mbx)/fx, (*mby)/fy, iw, ih);
+          if ((cx*uj->mbsizex) % w == 0)
+            uj->index[cy*iw + cx/fx] = uj->pos+sg+2;
         }
-        //printf("%dx%d - %dx%d\n", (*mbx)/fx, (*mby)/fy, iw, ih);
-        if ((cx*uj->mbsizex) % w == 0)
-          uj->index[cy*iw + cx/fx] = uj->pos+s+2;
-      }
-    }
+        else if ((test & 0x00D0FF00) == 0x00D0FF00) {
+          cx += uj->rstinterval;
+            if (cx >= uj->mbwidth) {
+              cx = 0;
+              cy++;
+              //if (++cy >= uj->mbheight) ujThrow(UJ_SYNTAX_ERROR);
+            }
+            //printf("%dx%d - %dx%d\n", (*mbx)/fx, (*mby)/fy, iw, ih);
+            if ((cx*uj->mbsizex) % w == 0)
+              uj->index[cy*iw + cx/fx] = uj->pos+sg+1+2;
+        }
+          /*for(s=sg;s<sg+2;s++) {
+          if (uj->pos[s] == 0xFF && ((uj->pos[s+1] & 0xF0) == 0xD0)) {
+              int nstart = (uj->pos[s+1] & 0x0F);
+              cx += uj->rstinterval;
+            if (cx >= uj->mbwidth) {
+              cx = 0;
+              cy++;
+              //if (++cy >= uj->mbheight) ujThrow(UJ_SYNTAX_ERROR);
+            }
+            //printf("%dx%d - %dx%d\n", (*mbx)/fx, (*mby)/fy, iw, ih);
+            if ((cx*uj->mbsizex) % w == 0)
+              uj->index[cy*iw + cx/fx] = uj->pos+s+2;
+        }
+      }*/
+    /*else  for(s=sg;s<sg+2;s++) {
+          if (uj->pos[s] == 0xFF && ((uj->pos[s+1] & 0xF0) == 0xD0)) {
+              int nstart = (uj->pos[s+1] & 0x0F);
+              printf("error: %2x%2x%2x%2x\n", uj->pos[sg],uj->pos[sg+1],uj->pos[sg+2],uj->pos[sg+3]);
+              cx += uj->rstinterval;
+            if (cx >= uj->mbwidth) {
+              cx = 0;
+              cy++;
+              //if (++cy >= uj->mbheight) ujThrow(UJ_SYNTAX_ERROR);
+            }
+            //printf("%dx%d - %dx%d\n", (*mbx)/fx, (*mby)/fy, iw, ih);
+            if ((cx*uj->mbsizex) % w == 0)
+              uj->index[cy*iw + cx/fx] = uj->pos+s+2;
+        }
+      }*/
+  }
   }
   
   /*for(s=0;s<uj->size;s++) {
