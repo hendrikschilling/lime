@@ -154,6 +154,8 @@ void grid_setsize(void)
 {
   int x,y,w,h;
   
+  forbid_fill++;
+  
   size_recalc();
   
   if (size.width && size.height) {
@@ -162,9 +164,11 @@ void grid_setsize(void)
     elm_box_recalculate(gridbox);
   }
   else {
+    printf("FIXME image has no size!");
     elm_grid_size_set(grid, 200, 200);
     elm_grid_pack_set(clipper, 0, 0, 200, 200);
     elm_box_recalculate(gridbox);
+    forbid_fill--;
     return;
   }
   
@@ -180,6 +184,7 @@ void grid_setsize(void)
     //FIXME!!!
     if (!w || !h) {
       printf("scroller has no area!\n");
+      forbid_fill--;
       return;
     }
     else {
@@ -191,6 +196,8 @@ void grid_setsize(void)
     
   evas_object_size_hint_min_set(grid,  size.width/scale_goal, size.height/scale_goal);
   elm_box_recalculate(gridbox);
+  
+  forbid_fill--;
 }
 
 void xmp_gettags(const char *file, File_Group *group)
@@ -348,13 +355,46 @@ void _on_filter_select(void *data, Evas_Object *obj, void *event_info)
   filter_last_selected = data;
 }
 
+void fc_insert_filter(Filter *f, Eina_List *src, Eina_List *sink)
+{
+  Filter_Chain *fc_src, *fc_sink;
+  Filter_Chain *fc;
+  fc = fc_new(f);
+  
+  //we always have src or sink, but those might not have an elm_item!
+  assert(src);
+  assert(sink);
+  
+  fc_src = eina_list_data_get(src);
+  fc_sink = eina_list_data_get(sink);
+  
+  filter_chain = eina_list_append_relative_list(filter_chain, fc, src);
+
+  if (fc_src->item)
+    fc->item = elm_list_item_insert_after(filter_list, fc_src->item, f->fc->name, NULL, NULL, &_on_filter_select, eina_list_prev(sink));
+  else if (fc_sink->item)
+    fc->item = elm_list_item_insert_before(filter_list, fc_sink->item, f->fc->name, NULL, NULL, &_on_filter_select, eina_list_prev(sink));
+  else
+    fc->item = elm_list_item_append(filter_list, f->fc->name, NULL, NULL, &_on_filter_select, eina_list_prev(sink));
+  
+  elm_list_item_selected_set(fc->item, EINA_TRUE);
+  elm_list_go(filter_list);
+  
+  filter_connect(fc_src->f, 0, f, 0);
+  filter_connect(f, 0, fc_sink->f, 0);
+
+  delgrid();
+  
+  //FIXME do we need this, shouldn't size recalc trigger reconfigure?
+  lime_config_test(fc_sink->f);
+  //size_recalc();
+}
+
 void insert_before_do(void *data, Evas_Object *obj)
 {
-  Filter_Chain *fc_source, *fc_sink, *fc;
   Eina_List *source_l, *sink_l;
-  Filter *f;
-
-  forbid_fill++;
+  
+  if (!select_filter_func) return;
   
   if (!filter_last_selected) {
     sink_l = eina_list_last(filter_chain);
@@ -364,32 +404,8 @@ void insert_before_do(void *data, Evas_Object *obj)
     sink_l = filter_last_selected;
     source_l = eina_list_prev(sink_l);
   }
-    
-  fc_sink = eina_list_data_get(sink_l);
-  fc_source = eina_list_data_get(source_l);
-  f = select_filter_func();
-  fc = fc_new(f);
   
-  filter_chain = eina_list_append_relative_list(filter_chain, fc, source_l);
-  
-  if (filter_last_selected)
-    fc->item = elm_list_item_insert_after(filter_list, fc_sink->item, f->fc->name, NULL, NULL, &_on_filter_select, eina_list_prev(sink_l));
-  else
-    fc->item = elm_list_item_prepend(filter_list, f->fc->name, NULL, NULL, &_on_filter_select, eina_list_next(source_l));
-
-  elm_list_item_selected_set(fc->item, EINA_TRUE);
-  elm_list_go(filter_list);
-  
-  filter_connect(fc_source->f, 0, f, 0);
-  filter_connect(f, 0, fc_sink->f, 0);
-
-  delgrid();
-  
-  lime_config_test(sink);
-  
-  size_recalc();
-  
-  forbid_fill--;
+  fc_insert_filter(select_filter_func(), source_l, sink_l);
   
   fill_scroller_preview();
   fill_scroller();
@@ -397,43 +413,17 @@ void insert_before_do(void *data, Evas_Object *obj)
 
 void insert_rotation_do(void *data, Evas_Object *obj)
 {
-  int rotation = (intptr_t)data;
-  Filter_Chain *fc_source, *fc_sink, *fc;
-  Eina_List *source_l, *sink_l;
   Filter *f;
+  int rotation = (intptr_t)data;
+  Eina_List *src, *sink;
+  
+  sink = eina_list_last(filter_chain);
+  src = eina_list_prev(sink);
 
-  forbid_fill++;
-  
-  sink_l = eina_list_last(filter_chain);
-  source_l = eina_list_prev(sink_l);
-    
-  fc_sink = eina_list_data_get(sink_l);
-  fc_source = eina_list_data_get(source_l);
   f = filter_core_simplerotate.filter_new_f();
-  fc = fc_new(f);
-  
   lime_setting_int_set(f, "rotation", rotation); 
   
-  filter_chain = eina_list_append_relative_list(filter_chain, fc, source_l);
-  
-  if (filter_last_selected)
-    fc->item = elm_list_item_insert_after(filter_list, fc_sink->item, f->fc->name, NULL, NULL, &_on_filter_select, eina_list_prev(sink_l));
-  else
-    fc->item = elm_list_item_prepend(filter_list, f->fc->name, NULL, NULL, &_on_filter_select, eina_list_next(source_l));
-
-  elm_list_item_selected_set(fc->item, EINA_TRUE);
-  elm_list_go(filter_list);
-  
-  filter_connect(fc_source->f, 0, f, 0);
-  filter_connect(f, 0, fc_sink->f, 0);
-
-  delgrid();
-  
-  lime_config_test(sink);
-  
-  size_recalc();
-  
-  forbid_fill--;
+  fc_insert_filter(f, src, sink);
   
   fill_scroller_preview();
   fill_scroller();
@@ -441,13 +431,9 @@ void insert_rotation_do(void *data, Evas_Object *obj)
 
 void insert_after_do(void *data, Evas_Object *obj)
 {
-  Filter_Chain *fc_source, *fc_sink, *fc;
   Eina_List *source_l, *sink_l;
-  Filter *f;
   
   if (!select_filter_func) return;
-  
-  forbid_fill++;
   
   if (!filter_last_selected) {
     source_l = filter_chain;
@@ -458,30 +444,7 @@ void insert_after_do(void *data, Evas_Object *obj)
     sink_l = eina_list_next(source_l);
   }
     
-  fc_sink = eina_list_data_get(sink_l);
-  fc_source = eina_list_data_get(source_l);
-  f = select_filter_func();
-  fc = fc_new(f);
-  
-  filter_chain = eina_list_append_relative_list(filter_chain, fc, source_l);
-  
-  if (filter_last_selected)
-    fc->item = elm_list_item_insert_before(filter_list, fc_source->item, f->fc->name, NULL, NULL, &_on_filter_select, eina_list_next(source_l));
-  else
-    fc->item = elm_list_item_append(filter_list, strdup(f->fc->name), NULL, NULL, &_on_filter_select, eina_list_next(source_l));
-
-  elm_list_item_selected_set(fc->item, EINA_TRUE);
-  elm_list_go(filter_list);
-  
-  filter_connect(fc_source->f, 0, f, 0);
-  filter_connect(f, 0, fc_sink->f, 0);
-  
-  lime_config_test(sink);
-  
-  delgrid();
-  //grid_setsize();
-  
-  forbid_fill--;
+  fc_insert_filter(select_filter_func(), source_l, sink_l);
   
   fill_scroller_preview();
   fill_scroller();
@@ -858,7 +821,11 @@ void _insert_image(_Img_Thread_Data *tdata)
 Eina_Bool _display_preview(void *data)
 {
   int i;
-    
+  
+  grid_setsize();  
+  fill_scroller_preview();
+  fill_scroller();
+  
   evas_object_show(clipper);
   mat_cache_del(mat_cache_old);
   mat_cache_old = NULL;
@@ -923,6 +890,10 @@ _finished_tile(void *data, Ecore_Thread *th)
     }
     
     printf("finaly delay: %f\n", bench_delay_get());
+    
+    grid_setsize();  
+    fill_scroller_preview();
+    fill_scroller();
     
     evas_object_show(clipper);
     mat_cache_del(mat_cache_old);
@@ -2334,6 +2305,31 @@ Evas_Object *elm_button_add_pack(Evas_Object *p, const char *text, void (*cb)(vo
   return btn;
 }
 
+void fc_new_from_filters(Eina_List *filters)
+{
+  Filter *f, *last;
+  Eina_List *list_iter;
+  Filter_Chain *fc;
+  
+  last = NULL;
+  EINA_LIST_FOREACH(filters, list_iter, f) {
+    //filter chain
+    fc = fc_new(f);
+    filter_chain = eina_list_append(filter_chain, fc);
+    
+    //create gui, but not for first and last filters
+    if (list_iter != filters && list_iter != eina_list_last(filters))
+      fc->item = elm_list_item_prepend(filter_list, f->fc->name, NULL, NULL, &_on_filter_select, eina_list_last(filter_chain));
+    
+    //filter graph
+    if (last)
+      filter_connect(last, 0, f, 0);
+    
+    last = f;
+  }
+  elm_list_go(filter_list);
+}
+
 void print_help(void)
 {
   printf("usage: limeview - scale invariant image editor/viewer\n");
@@ -2823,12 +2819,8 @@ elm_main(int argc, char **argv)
   int help;
   int cache_strategy, cache_metric, cache_size;
   char *file;
-  Evas_Object *hbox, *vbox, *frame, *hpane, *seg_filter_rating, *entry, *btn;
+  Evas_Object *hbox, *frame, *hpane, *seg_filter_rating, *entry, *btn;
   Eina_List *filters = NULL;
-  Eina_List *list_iter;
-  Filter *last;
-  Filter *f;
-  Filter_Chain *fc;
   select_filter_func = NULL;
   int winsize;
   
@@ -3121,23 +3113,7 @@ elm_main(int argc, char **argv)
   elm_object_content_set(frame, filter_list);
   evas_object_show(filter_list);
   
-  last = NULL;
-  EINA_LIST_FOREACH(filters, list_iter, f) {
-    //filter chain
-    fc = fc_new(f);
-    filter_chain = eina_list_append(filter_chain, fc);
-    
-    //create gui, but not for first and last filters
-    if (list_iter != filters && list_iter != eina_list_last(filters))
-      fc->item = elm_list_item_prepend(filter_list, f->fc->name, NULL, NULL, &_on_filter_select, eina_list_last(filter_chain));
-    
-    //filter graph
-    if (last)
-      filter_connect(last, 0, f, 0);
-    
-    last = f;
-  }
-  elm_list_go(filter_list);
+  fc_new_from_filters(filters);
   
   files = eina_inarray_new(sizeof(File_Group), 32);
   
