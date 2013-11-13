@@ -123,6 +123,7 @@ struct _Filter
 Tilehash tile_hash_calc(Filter *f, Rect *area);
 int lime_setting_float_set(Filter *f, const char *setting, float value);
 Fg_Node *fg_node_new(Filter *f);
+char *lime_filter_chain_serialize(Filter *f);
 Con *filter_connect(Filter *source, int out, Filter *sink, int in);
 void filter_hash_recalc(Filter *f);
 Hash *filter_hash_get(Filter *f);
@@ -135,7 +136,7 @@ void filter_fill_thread_data(Filter *f, int thread_id);
 void *filter_core_by_name(Filter *f, const char *name);
 void *filter_core_by_type(Filter *f, int type);
 Filter_Mode_Buffer *filter_mode_buffer_new(void);
-int lime_setting_string_set(Filter *f, const char *setting, char *value);
+int lime_setting_string_set(Filter *f, const char *setting, const char *value);
 int tw_get(Filter *f, int scale);
 int th_get(Filter *f, int scale);
 Filter_Mode_Iter *filter_mode_iter_new(void);

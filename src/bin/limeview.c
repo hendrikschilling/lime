@@ -898,16 +898,11 @@ _finished_tile(void *data, Ecore_Thread *th)
   
   worker--;
   
-  /*if (delay < max_reaction_delay && !pending_action)
+  if (delay < max_reaction_delay && !pending_action)
     fill_scroller_preview();
   
   if (!pending_action)
-    fill_scroller();*/
-  
-  if (!pending_action) {
-    fill_scroller_preview();
     fill_scroller();
-  }
   
   if (mat_cache_old) {
     if (preview_tiles || (!pending_action && delay < high_quality_delay && worker)) {
@@ -915,7 +910,7 @@ _finished_tile(void *data, Ecore_Thread *th)
       eina_array_push(finished_threads, data);
       
       if (!preview_timer && !preview_tiles) {
-        preview_timer = ecore_timer_add((high_quality_delay - delay)*0.001, &_display_preview, NULL);
+          preview_timer = ecore_timer_add((high_quality_delay - delay)*0.001, &_display_preview, NULL);
       }
 
       return;
@@ -1493,6 +1488,8 @@ void step_image_do(void *data, Evas_Object *obj)
       return;
     }
   }
+  
+  printf("serialized fc: %s\n", lime_filter_chain_serialize(((Filter_Chain*)eina_list_data_get(filter_chain))->f));
   
   elm_list_clear(group_list);
   for(i=0;i<eina_inarray_count(group->files);i++)
