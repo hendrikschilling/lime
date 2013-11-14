@@ -43,6 +43,7 @@ typedef struct {
 typedef struct {
   Eina_Inarray *files; //tagged files
   const char *sidecar; //sidecar file used for the image group
+  char *last_fc; //serialization of the last filter chain
   Eina_Hash *tags; //all tags of the group or a file in the group
   int32_t tag_rating;
   //Eina_Array *group_tags; //tags that are assigned specifically to the group
@@ -92,6 +93,8 @@ Eina_List *files_unsorted = NULL;
 int verbose;
 Eina_Array *finished_threads = NULL;
 Ecore_Timer *preview_timer = NULL;
+void fc_new_from_filters(Eina_List *filters);
+
 
 int export_count;
 int file_step = 1;
@@ -116,6 +119,7 @@ static void fill_scroller(void);
 void workerfinish_schedule(void (*func)(void *data, Evas_Object *obj), void *data, Evas_Object *obj);
 void filter_settings_create_gui(Eina_List *chain_node, Evas_Object *box);
 void fill_scroller_preview(void);
+void save_sidecar(File_Group *group);
 
 Filter_Chain *fc_new(Filter *f)
 {
@@ -164,7 +168,7 @@ void grid_setsize(void)
     elm_box_recalculate(gridbox);
   }
   else {
-    printf("FIXME image has no size!");
+    printf("FIXME image has no size!\n");
     elm_grid_size_set(grid, 200, 200);
     elm_grid_pack_set(clipper, 0, 0, 200, 200);
     elm_box_recalculate(gridbox);
@@ -255,6 +259,16 @@ void xmp_gettags(const char *file, File_Group *group)
       group->tag_rating = 0;
   }
   
+  if (xmp_prefix_namespace_uri("lime", NULL))
+  {
+    propValue = xmp_string_new();
+    if (xmp_get_property(xmp, "http://technik-stinkt.de/lime/0.1/", "lime:lastFilterChain", propValue, NULL))
+      group->last_fc = strdup(xmp_string_cstr(propValue));
+    else
+      group->last_fc = NULL;
+    xmp_string_free(propValue);
+  }
+  
   
   xmp_free(xmp);
   free(buf);
@@ -317,6 +331,7 @@ void remove_filter_do(void *data, Evas_Object *obj)
   Eina_List *chain_node = data;
   Filter_Chain *fc = eina_list_data_get(chain_node);
   Filter_Chain *prev, *next;
+  File_Group *group = eina_inarray_nth(files, file_idx);
   
   assert(!worker);
 
@@ -334,6 +349,11 @@ void remove_filter_do(void *data, Evas_Object *obj)
   
   elm_object_item_del(fc->item);
   filter_connect(prev->f, 0, next->f, 0);
+  
+  group->last_fc = lime_filter_chain_serialize(((Filter_Chain*)eina_list_data_get(filter_chain))->f);
+  if (strrchr(group->last_fc, ','))
+    *strrchr(group->last_fc, ',') = '\0';
+  save_sidecar(group);
   
   delgrid();
   
@@ -360,7 +380,8 @@ void fc_insert_filter(Filter *f, Eina_List *src, Eina_List *sink)
   Filter_Chain *fc_src, *fc_sink;
   Filter_Chain *fc;
   fc = fc_new(f);
-  
+  File_Group *group = eina_inarray_nth(files, file_idx);
+    
   //we always have src or sink, but those might not have an elm_item!
   assert(src);
   assert(sink);
@@ -382,7 +403,12 @@ void fc_insert_filter(Filter *f, Eina_List *src, Eina_List *sink)
   
   filter_connect(fc_src->f, 0, f, 0);
   filter_connect(f, 0, fc_sink->f, 0);
-
+  
+  group->last_fc = lime_filter_chain_serialize(((Filter_Chain*)eina_list_data_get(filter_chain))->f);
+  if (strrchr(group->last_fc, ','))
+    *strrchr(group->last_fc, ',') = '\0';
+  save_sidecar(group);
+  
   delgrid();
   
   //FIXME do we need this, shouldn't size recalc trigger reconfigure?
@@ -483,8 +509,8 @@ void slider_insert(Evas_Object *vbox, Meta *setting)
   int i;
   Meta *sub;
   Evas_Object *slider;
-  int imin = 0, imax = 100;
-  float fmin = 0.0, fmax = 100.0;
+  int imin = 0, imax = 100, istep = 0;
+  float fmin = 0.0, fmax = 100.0, fstep = 0.0;
   
   slider = elm_slider_add(vbox);
 
@@ -500,9 +526,14 @@ void slider_insert(Evas_Object *vbox, Meta *setting)
 	imin = *(int*)sub->data;
       else if (!strcmp("PARENT_SETTING_MAX", sub->name))
 	imax = *(int*)sub->data;
+      else if (!strcmp("PARENT_SETTING_STEP", sub->name))
+        istep = *(int*)sub->data;
       
     }
     elm_slider_min_max_set(slider, (float)imin, (float)imax);
+    //FIXME
+    //if (istep)
+    //  elm_slider_step_set(slider, istep);
     elm_slider_value_set(slider, (float)*(int*)setting->data);
   }
   else if (setting->type == MT_FLOAT) {
@@ -514,8 +545,13 @@ void slider_insert(Evas_Object *vbox, Meta *setting)
 	fmin = *(float*)sub->data;
       else if (!strcmp("PARENT_SETTING_MAX", sub->name))
 	fmax = *(float*)sub->data;
+      else if (!strcmp("PARENT_SETTING_STEP", sub->name))
+        fstep = *(float*)sub->data;
     }
     elm_slider_min_max_set(slider, fmin, fmax);
+    //FIXME
+    //if (fstep)
+    //  elm_slider_step_set(slider, fstep);
     elm_slider_value_set(slider, *(float*)setting->data);
   }
   elm_box_pack_end(vbox, slider);
@@ -1119,6 +1155,23 @@ int fill_area(int xm, int ym, int wm, int hm, int minscale, int preview)
   return started;
 }
 
+
+void fc_del(void)
+{
+  Eina_List *list_iter;
+  Filter_Chain *fc;
+  
+  EINA_LIST_FOREACH(filter_chain, list_iter, fc) {
+    //FIXME actually remove filters!
+    if (fc->item) {
+      elm_object_item_del(fc->item);
+      printf("del %p\n", fc->item);
+    }
+  }
+  
+  filter_chain = NULL;
+}
+
 void fill_scroller_preview(void)
 {
   if (max_fast_scaledown)
@@ -1394,6 +1447,7 @@ void step_image_do(void *data, Evas_Object *obj)
   File_Group *group;
   const char *filename;
   Elm_Object_Item *item;
+  Eina_List *filters;
   
   file_idx = elm_slider_value_get(file_slider);
   
@@ -1436,10 +1490,34 @@ void step_image_do(void *data, Evas_Object *obj)
 	  group_idx++;
 	  continue;
 	}
+	
+	if (group->last_fc) {
+    fc_del();
+    filters = lime_filter_chain_deserialize(group->last_fc);
+    
+    //FIXME select group according to load file 
+    load = eina_list_data_get(filters);
+    sink = lime_filter_new("memsink");
+    lime_setting_int_set(sink, "add alpha", 1);
+    filters = eina_list_append(filters, sink);
+    
+    fc_new_from_filters(filters);
+  }
+  else {
+    fc_del();
+    
+    load = lime_filter_new("load");
+    filters = eina_list_append(NULL, load);
+    sink = lime_filter_new("memsink");
+    lime_setting_int_set(sink, "add alpha", 1);
+    filters = eina_list_append(filters, sink);
+    
+    fc_new_from_filters(filters);
+  } 
 	  
 	strcpy(image_file, filename);
 	lime_setting_string_set(load, "filename", image_path);
-
+  
 	failed = lime_config_test(sink);
 	if (failed)
 	  group_idx++;
@@ -1459,9 +1537,7 @@ void step_image_do(void *data, Evas_Object *obj)
       return;
     }
   }
-  
-  printf("serialized fc: %s\n", lime_filter_chain_serialize(((Filter_Chain*)eina_list_data_get(filter_chain))->f));
-  
+    
   elm_list_clear(group_list);
   for(i=0;i<eina_inarray_count(group->files);i++)
     if (((Tagged_File*)eina_inarray_nth(group->files, i))->filename) {
@@ -1472,6 +1548,7 @@ void step_image_do(void *data, Evas_Object *obj)
 	elm_list_item_selected_set(item, EINA_TRUE);
       }
     }
+    
 
   elm_list_go(group_list);
   
@@ -2275,9 +2352,9 @@ Eina_Bool shortcut_elm(void *data, Evas_Object *obj, Evas_Object *src, Evas_Call
     else if (!strcmp(key->keyname, "o"))
       on_origscale_image(NULL, NULL, NULL);
     else if (!strcmp(key->keyname, "r"))
-      workerfinish_schedule(&insert_rotation_do, (void*)(intptr_t)1, NULL);
+      workerfinish_schedule(&insert_rotation_do, (void*)(intptr_t)90, NULL);
     else if (!strcmp(key->keyname, "l"))
-      workerfinish_schedule(&insert_rotation_do, (void*)(intptr_t)3, NULL);
+      workerfinish_schedule(&insert_rotation_do, (void*)(intptr_t)270, NULL);
     else if (!strcmp(key->keyname, "f"))
       on_fit_image(NULL, NULL, NULL);
     else if (!strcmp(key->keyname, "a"))
@@ -2491,6 +2568,7 @@ static void new_tag_file(File_Group *group)
   xmp_register_namespace("http://ns.adobe.com/lightroom/1.0/", "lr", NULL);
   xmp_register_namespace("http://purl.org/dc/elements/1.1/", "dc", NULL);
   xmp_register_namespace("http://www.digikam.org/ns/1.0/", "digiKam", NULL);
+  xmp_register_namespace("http://technik-stinkt.de/lime/0.1/", "lime", NULL);
   
   eina_hash_foreach(group->tags, xmp_add_tags_lr_func, xmp);
   eina_hash_foreach(group->tags, xmp_add_tags_dc_func, xmp);
@@ -2501,6 +2579,9 @@ static void new_tag_file(File_Group *group)
       xmp_register_namespace("http://ns.adobe.com/xap/1.0/", "xmp", NULL);
     xmp_set_property_int32(xmp, "http://ns.adobe.com/xap/1.0/", "xmp:Rating", group->tag_rating, 0);
   }
+  
+  if (group->last_fc)
+    xmp_set_property(xmp, "http://technik-stinkt.de/lime/0.1/", "lime:lastFilterChain", group->last_fc, 0);
   
   xmp_serialize(xmp, xmp_buf, XMP_SERIAL_OMITPACKETWRAPPER | XMP_SERIAL_USECOMPACTFORMAT, 0);
   
@@ -2548,9 +2629,7 @@ void save_sidecar(File_Group *group)
   XmpPtr xmp;
   
   add_group_sidecar(group);
-  
-  printf("write sidecar: %s\n", group->sidecar);
-  
+    
   f = fopen(group->sidecar, "r");
   
   if (!f) {
@@ -2580,12 +2659,16 @@ void save_sidecar(File_Group *group)
   if (!xmp_prefix_namespace_uri("digiKam", NULL))
     xmp_register_namespace("http://www.digikam.org/ns/1.0/", "digiKam", NULL);
   
+  if (!xmp_prefix_namespace_uri("lime", NULL))
+    xmp_register_namespace("http://technik-stinkt.de/lime/0.1/", "lime", NULL);
+  
   //delete all keyword tags 
   xmp_delete_property(xmp, "http://ns.adobe.com/lightroom/1.0/", "lr:hierarchicalSubject");
   xmp_delete_property(xmp, "http://www.digikam.org/ns/1.0/", "digiKam:TagsList");
   xmp_delete_property(xmp, "http://ns.microsoft.com/photo/1.0/", "MicrosoftPhoto:LastKeywordXMP");
   xmp_delete_property(xmp, "http://purl.org/dc/elements/1.1/", "dc:subject");
   xmp_delete_property(xmp, "http://ns.adobe.com/xap/1.0/", "xmp:Rating");
+  xmp_delete_property(xmp, "http://technik-stinkt.de/lime/0.1/", "lime:lastFilterChain");
 
   eina_hash_foreach(group->tags, xmp_add_tags_lr_func, xmp);
   eina_hash_foreach(group->tags, xmp_add_tags_dc_func, xmp);
@@ -2596,6 +2679,9 @@ void save_sidecar(File_Group *group)
       xmp_register_namespace("http://ns.adobe.com/xap/1.0/", "xmp", NULL);
     xmp_set_property_int32(xmp, "http://ns.adobe.com/xap/1.0/", "xmp:Rating", group->tag_rating, 0);
   }
+
+  if (group->last_fc)
+    xmp_set_property(xmp, "http://technik-stinkt.de/lime/0.1/", "lime:lastFilterChain", group->last_fc, 0);
       
   xmp_serialize(xmp, xmp_buf, XMP_SERIAL_OMITPACKETWRAPPER | XMP_SERIAL_USECOMPACTFORMAT, 0);
   
@@ -2607,12 +2693,8 @@ void save_sidecar(File_Group *group)
   fprintf(f, "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n%s\n", buf);
   fclose(f);
   
-  printf("write sidecar: %s %d\n", group->sidecar, (int)strlen(buf));
-  
   xmp_string_free(xmp_buf);
   xmp_free(xmp);
-  
-  printf("freed xmp\n");
 }
 
 static void on_new_tag(void *data, Evas_Object *obj, void *event_info)

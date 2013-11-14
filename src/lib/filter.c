@@ -97,6 +97,8 @@ char *lime_filter_chain_serialize(Filter *f)
             str += sprintf(str, ":%s=%s", m->name, (char*)m->data);
             break;
       }
+    else
+      printf("no data for %s\n", m->name);
     }
     
     if (f->node_orig->con_trees_out &&  ea_count(f->node_orig->con_trees_out))

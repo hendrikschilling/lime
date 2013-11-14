@@ -31,6 +31,7 @@ typedef struct {
   int rot;
   int seekable;
   ujImage uimg;
+  char *filename;
 } _Data;
 
 void *_data_new(Filter *f, void *data)
@@ -89,7 +90,7 @@ void _loadjpeg_worker_ujpeg(Filter *f, Eina_Array *in, Eina_Array *out, Rect *ar
   int lines_read;
   
   if (!data->uimg)
-    data->uimg = ujDecodeFileArea(NULL, data->input->data, area->corner.x, area->corner.y, area->width, area->height);
+    data->uimg = ujDecodeFileArea(NULL, data->filename, area->corner.x, area->corner.y, area->width, area->height);
   else
     ujDecodeScanAreaP(data->uimg, area->corner.x, area->corner.y, area->width, area->height);
   
@@ -168,7 +169,7 @@ void _loadjpeg_worker_ijg(Filter *f, Eina_Array *in, Eina_Array *out, Rect *area
   g = ((Tiledata*)ea_data(out, 1))->data;
   b = ((Tiledata*)ea_data(out, 2))->data;
   
-  file = fopen(data->input->data, "rb");
+  file = fopen(data->filename, "rb");
     
   if (!file)
     abort();
@@ -257,6 +258,7 @@ int _loadjpeg_input_fixed(Filter *f)
 {
   int i;
   _Data *data = ea_data(f->data, 0);
+  _Data *tdata;
   struct jpeg_decompress_struct cinfo;
   struct my_error_mgr jerr;
   FILE *file;
@@ -265,6 +267,16 @@ int _loadjpeg_input_fixed(Filter *f)
   
   if (!file)
     return -1;
+  
+  for(i=0;i<ea_count(f->data);i++) {
+    tdata = ea_data(f->data, i);
+    if (!tdata->filename || strcmp(tdata->filename, data->input->data)) {
+      if (tdata->uimg)
+        ujDestroy(tdata->uimg);
+      tdata->uimg = NULL;
+      tdata->filename = data->input->data;
+    }
+  }
   
   cinfo.err = jpeg_std_error(&jerr.pub);
   jerr.pub.error_exit = my_error_exit;
@@ -275,7 +287,7 @@ int _loadjpeg_input_fixed(Filter *f)
     return -1;
   }
   
-  data->rot = _get_exif_orientation(data->input->data);
+  data->rot = _get_exif_orientation(data->filename);
   
   jpeg_create_decompress(&cinfo);
   jpeg_stdio_src(&cinfo, file);
@@ -293,7 +305,7 @@ int _loadjpeg_input_fixed(Filter *f)
     ((Dim*)data->dim)->width = cinfo.output_height;
     ((Dim*)data->dim)->height = cinfo.output_width;
   }
-  ((Dim*)data->dim)->scaledown_max = 0;
+  ((Dim*)data->dim)->scaledown_max = 3;
   
   f->tw_s = malloc(sizeof(int)*4);
   f->th_s = malloc(sizeof(int)*4);

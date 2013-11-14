@@ -40,3 +40,65 @@ void lime_filter_add(Filter_Core *fc)
 {
   eina_hash_add(lime_filters, fc->shortname, fc);
 }
+
+Filter_Core *lime_filtercore_find(const char *name)
+{
+  return eina_hash_find(lime_filters, name);
+}
+
+Eina_List *lime_filter_chain_deserialize(char *str)
+{
+  Filter_Core *fc;
+  Filter *f, *last_f = NULL;
+  Eina_List *filters = NULL;
+  
+  str = strdup(str);
+  
+  char *last = str + strlen(str);
+  char *next = str;
+  char *cur = str;
+  while (cur) {
+    next = strchr(cur, ':');
+    if (next)
+      *next = '\0';
+    
+    printf("add %s\n", cur);
+    
+    fc = lime_filtercore_find(cur);
+    //FIXME
+    if (next+1 < last)
+      cur = next+1;
+    else
+      cur = NULL;
+    
+    printf("cur %s\n", cur);
+    
+    if (!fc)
+      abort();
+    
+    f = fc->filter_new_f();
+    
+    if (last_f)
+      lime_filter_connect(last_f, f);
+    
+    last_f = f;
+    
+    filters = eina_list_append(filters, f);
+    
+    //settings
+    if (cur) {
+      cur = strchr(cur, ',');
+      if (cur) {
+        cur++;
+        if (cur >= last)
+          cur = NULL;
+      }
+    }
+    
+    printf("cur %s\n", cur);
+  }
+  
+  free(str);
+  
+  return filters;
+}
