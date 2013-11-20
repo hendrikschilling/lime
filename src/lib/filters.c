@@ -28,10 +28,14 @@ Filter *lime_filter_new(const char *shortname)
 {
   Filter_Core *f = eina_hash_find(lime_filters, shortname);
   
-  if (!f)
+  if (!f) {
+    printf("%d -%s--%s-\n",strcmp(shortname, filter_core_load.shortname), shortname, filter_core_load.shortname);
     return NULL;
+  }
   
   assert(f->filter_new_f);
+  
+  printf("have filter %s\n", shortname);
   
   return f->filter_new_f();
 }
@@ -57,6 +61,7 @@ Eina_List *lime_filter_chain_deserialize(char *str)
   char *last = str + strlen(str);
   char *next = str;
   char *cur = str;
+  char *setting;
   while (cur) {
     next = strchr(cur, ':');
     if (next)
@@ -64,7 +69,13 @@ Eina_List *lime_filter_chain_deserialize(char *str)
     
     printf("add %s\n", cur);
     
-    fc = lime_filtercore_find(cur);
+    f = lime_filter_new(cur);
+    
+    if (!f) {
+      printf("no filter for %s\n", cur);
+      abort();
+    }
+    
     //FIXME
     if (next+1 < last)
       cur = next+1;
@@ -73,10 +84,8 @@ Eina_List *lime_filter_chain_deserialize(char *str)
     
     printf("cur %s\n", cur);
     
-    if (!fc)
-      abort();
     
-    f = fc->filter_new_f();
+    //f = fc->filter_new_f();
     
     if (last_f)
       lime_filter_connect(last_f, f);
@@ -87,15 +96,54 @@ Eina_List *lime_filter_chain_deserialize(char *str)
     
     //settings
     if (cur) {
-      cur = strchr(cur, ',');
-      if (cur) {
-        cur++;
-        if (cur >= last)
-          cur = NULL;
+      
+    printf("cur1 %s\n", cur);
+      next = strchr(cur, '=');
+      if (strchr(cur, ',') && next > strchr(cur, ','))
+        break;
+      while (next) {
+        *next = '\0';
+        printf("set %s\n", cur);
+        
+          setting = cur;
+          
+    printf("cur2 %s\n", cur);
+          assert(next+1 < last);
+          cur = next+1;
+          
+          
+    printf("cur2,5 %s\n", cur);
+          
+        if (lime_setting_type_get(f, setting) == MT_INT) {
+          
+    printf("cur3 %s\n", cur);
+          lime_setting_int_set(f, setting, atoi(cur));
+          }
+          
+          next = strchr(cur, ':');
+          if (next && next+1 < last && (!strchr(cur, ',') || next < strchr(cur, ','))) {
+            cur = next+1;
+            next = strchr(cur, '=');
+          }
+          else
+            next = NULL;
+          
+          
+    printf("cur4 %s\n", cur);
+        
+        
       }
+      
+    }
+      
+    cur = strchr(cur, ',');
+    if (cur) {
+      cur++;
+      if (cur >= last)
+        cur = NULL;
     }
     
-    printf("cur %s\n", cur);
+    printf("cure %s\n", cur);
   }
   
   free(str);
