@@ -237,8 +237,8 @@ int _input_fixed(Filter *f)
 	 TIFFSetField(data->file, TIFFTAG_PHOTOMETRIC, PHOTOMETRIC_CIELAB);
 	 break;
      }
-     TIFFSetField(data->file, TIFFTAG_COMPRESSION, COMPRESSION_JPEG);
-     TIFFSetField(data->file, TIFFTAG_JPEGQUALITY, 85);
+     //TIFFSetField(data->file, TIFFTAG_COMPRESSION, COMPRESSION_JPEG);
+     //TIFFSetField(data->file, TIFFTAG_JPEGQUALITY, 85);
      
      TIFFCheckpointDirectory(data->file);
      TIFFWriteDirectory(data->file);

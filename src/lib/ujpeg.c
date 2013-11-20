@@ -701,11 +701,14 @@ void ujSeekCoord(ujContext *uj, int *mbx, int *mby, int x, int y, int w, int h) 
           if (cx >= uj->mbwidth) {
             cx = 0;
             cy++;
+            printf("\n");
             //if (++cy >= uj->mbheight) ujThrow(UJ_SYNTAX_ERROR);
           }
           //printf("%dx%d - %dx%d\n", (*mbx)/fx, (*mby)/fy, iw, ih);
-          if ((cx*uj->mbsizex) % w == 0)
+          if ((cx*uj->mbsizex) % w == 0) {
+            printf("%4dx%4d ", cx*uj->mbsizex, cy*uj->mbsizey);
             uj->index[cy*iw + cx/fx] = uj->pos+sg+2;
+          }
         }
         else if ((test & 0x00D0FF00) == 0x00D0FF00) {
           cx += uj->rstinterval;

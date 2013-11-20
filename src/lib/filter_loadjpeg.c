@@ -1,11 +1,15 @@
 #include "filter_loadjpeg.h"
-#include "ujpeg.h"
 
 #include <libexif/exif-data.h>
 #include <jpeglib.h>
 #include <setjmp.h>
 
-#define JPEG_TILE_SIZE 256
+//# USE_UJPEG
+
+#ifdef USE_UJPEG
+  #define JPEG_TILE_SIZE 256
+  #include "ujpeg.h"
+#endif
 
 struct my_error_mgr {
   struct jpeg_error_mgr pub;	/* "public" fields */
@@ -30,7 +34,9 @@ typedef struct {
   Meta *dim;
   int rot;
   int seekable;
+#ifdef USE_UJPEG
   ujImage uimg;
+#endif
   char *filename;
 } _Data;
 
@@ -39,8 +45,10 @@ void *_data_new(Filter *f, void *data)
   _Data *newdata = calloc(sizeof(_Data), 1);
   
   *newdata = *(_Data*)data;
-  
+
+#ifdef USE_UJPEG  
   newdata->uimg = NULL;
+#endif
   
   return newdata;
 }
@@ -75,7 +83,7 @@ static int _get_exif_orientation(const char *file)
    return orientation;
 }
 
-
+#ifdef USE_UJPEG
 void _loadjpeg_worker_ujpeg(Filter *f, Eina_Array *in, Eina_Array *out, Rect *area, int thread_id)
 {
   _Data *data = ea_data(f->data, thread_id);
@@ -88,6 +96,8 @@ void _loadjpeg_worker_ujpeg(Filter *f, Eina_Array *in, Eina_Array *out, Rect *ar
   int row_stride;   /* physical row width in output buffer */
   FILE *file;
   int lines_read;
+  
+  printf("%dx%d %dx%d\n", area->corner.x, area->corner.y, ((Dim*)data->dim)->width, ((Dim*)data->dim)->height);
   
   if (!data->uimg)
     data->uimg = ujDecodeFileArea(NULL, data->filename, area->corner.x, area->corner.y, area->width, area->height);
@@ -138,6 +148,7 @@ void _loadjpeg_worker_ujpeg(Filter *f, Eina_Array *in, Eina_Array *out, Rect *ar
   //ujDestroy(data->uimg);
   free(buffer);
 }
+#endif
 
 void _loadjpeg_worker_ijg(Filter *f, Eina_Array *in, Eina_Array *out, Rect *area, int thread_id)
 {
@@ -247,9 +258,11 @@ void _loadjpeg_worker(Filter *f, Eina_Array *in, Eina_Array *out, Rect *area, in
 {
   _Data *data = ea_data(f->data, 0);
 
+#ifdef USE_UJPEG
   if (!area->corner.scale && data->seekable)
     _loadjpeg_worker_ujpeg(f, in, out, area, thread_id);
   else
+#endif
     _loadjpeg_worker_ijg(f, in, out, area, thread_id);
 
 }
@@ -271,9 +284,11 @@ int _loadjpeg_input_fixed(Filter *f)
   for(i=0;i<ea_count(f->data);i++) {
     tdata = ea_data(f->data, i);
     if (!tdata->filename || strcmp(tdata->filename, data->input->data)) {
+#ifdef USE_UJPEG
       if (tdata->uimg)
         ujDestroy(tdata->uimg);
       tdata->uimg = NULL;
+#endif
       tdata->filename = data->input->data;
     }
   }
@@ -294,8 +309,10 @@ int _loadjpeg_input_fixed(Filter *f)
   jpeg_read_header(&cinfo, TRUE);
   jpeg_calc_output_dimensions(&cinfo);
 
+#ifdef USE_UJPEG
   if (cinfo.restart_interval && JPEG_TILE_SIZE % (cinfo.restart_interval * 16) == 0)
     data->seekable = 1;
+#endif
   
   if (data->rot <= 4) {
     ((Dim*)data->dim)->width = cinfo.output_width;
@@ -310,8 +327,10 @@ int _loadjpeg_input_fixed(Filter *f)
   f->tw_s = malloc(sizeof(int)*4);
   f->th_s = malloc(sizeof(int)*4);
 
+#ifdef USE_UJPEG
   f->tw_s[0] = JPEG_TILE_SIZE;
   f->th_s[0] = JPEG_TILE_SIZE;
+#endif
   
   printf("seekable %d\n", data->seekable);
   
