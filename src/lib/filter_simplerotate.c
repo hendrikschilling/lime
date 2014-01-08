@@ -98,7 +98,7 @@ static void _worker(Filter *f, Eina_Array *in, Eina_Array *out, Rect *area, int 
         }
       }
     else
-      printf("rot: %d\n", data->rotation);
+      printf("rotation not (yet) implemented: %d\n", data->rotation);
   }
 
 }

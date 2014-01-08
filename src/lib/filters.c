@@ -116,9 +116,12 @@ Eina_List *lime_filter_chain_deserialize(char *str)
           
         if (lime_setting_type_get(f, setting) == MT_INT) {
           
-    printf("cur3 %s\n", cur);
+        printf("cur3 %s\n", cur);
           lime_setting_int_set(f, setting, atoi(cur));
+          printf("deserialize: set %s to %d\n", setting, atoi(cur));
           }
+          else
+            printf("FIXME implement type %s settings parsing\n", mt_type_str(lime_setting_type_get(f, setting)));
           
           next = strchr(cur, ':');
           if (next && next+1 < last && (!strchr(cur, ',') || next < strchr(cur, ','))) {

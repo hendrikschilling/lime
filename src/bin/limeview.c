@@ -535,6 +535,7 @@ void slider_insert(Evas_Object *vbox, Meta *setting)
     //if (istep)
     //  elm_slider_step_set(slider, istep);
     elm_slider_value_set(slider, (float)*(int*)setting->data);
+    printf("set val to %f\n", (float)*(int*)setting->data);
   }
   else if (setting->type == MT_FLOAT) {
     evas_object_smart_callback_add(slider, "delay,changed", on_float_changed, setting);
@@ -1461,7 +1462,8 @@ void step_image_do(void *data, Evas_Object *obj)
     return;
   
   delgrid();
-    
+  del_filter_settings();  
+  
   forbid_fill++;
   
   start_idx = file_idx;
