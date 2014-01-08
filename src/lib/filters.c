@@ -62,6 +62,7 @@ Eina_List *lime_filter_chain_deserialize(char *str)
   char *next = str;
   char *cur = str;
   char *setting;
+  char *tmp;
   while (cur) {
     next = strchr(cur, ':');
     if (next)
@@ -73,11 +74,11 @@ Eina_List *lime_filter_chain_deserialize(char *str)
     
     if (!f) {
       printf("no filter for %s\n", cur);
-      abort();
+      return NULL;
     }
     
     //FIXME
-    if (next+1 < last)
+    if (next && next+1 < last)
       cur = next+1;
     else
       cur = NULL;
@@ -114,14 +115,25 @@ Eina_List *lime_filter_chain_deserialize(char *str)
           
     printf("cur2,5 %s\n", cur);
           
-        if (lime_setting_type_get(f, setting) == MT_INT) {
-          
-        printf("cur3 %s\n", cur);
-          lime_setting_int_set(f, setting, atoi(cur));
-          printf("deserialize: set %s to %d\n", setting, atoi(cur));
-          }
-          else
+        switch (lime_setting_type_get(f, setting)) {
+          case MT_INT :
+            lime_setting_int_set(f, setting, atoi(cur));
+            printf("deserialize: set %s to %d\n", setting, atoi(cur));
+            break;
+          case MT_STRING : 
+            printf("FIXME escaping in deserialization (\',\',\':\',\' \')!!!");
+            tmp = strdup(cur);
+            if (strchr(tmp, ':'))
+              *strchr(tmp, ':') = '\0';
+            if (strchr(tmp, ','))
+              *strchr(tmp, ',') = '\0';
+            lime_setting_string_set(f, setting, tmp);
+            printf("deserialize: set %s to %s\n", setting, tmp);
+            free(tmp);
+            break;
+          default :
             printf("FIXME implement type %s settings parsing\n", mt_type_str(lime_setting_type_get(f, setting)));
+        }
           
           next = strchr(cur, ':');
           if (next && next+1 < last && (!strchr(cur, ',') || next < strchr(cur, ','))) {
@@ -139,7 +151,8 @@ Eina_List *lime_filter_chain_deserialize(char *str)
       
     }
       
-    cur = strchr(cur, ',');
+    if (cur)
+      cur = strchr(cur, ',');
     if (cur) {
       cur++;
       if (cur >= last)

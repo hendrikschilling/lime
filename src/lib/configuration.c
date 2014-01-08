@@ -1086,6 +1086,10 @@ int lime_config_test(Filter *f_sink)
   
   Filter *source_f, *sink_f;
   
+  if (!f->node_orig->con_trees_out || !ea_count(f->node_orig->con_trees_out)) {
+    printf("expected connection from filter %s!\n",f->fc->name);
+    abort();
+  }
   con_orig = ea_data(f->node_orig->con_trees_out, 0);
   
   while (con_orig) {

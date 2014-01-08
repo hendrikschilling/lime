@@ -162,13 +162,7 @@ int parse_cli(int argc, char **argv, Eina_List **filters, Bench_Step **bench, in
   char *subopts, *value;
   char *remain;
   struct stat statbuf;
-  Filter *filter;
-  char *opts;
-  int sub_idx;
-  float valf;
-  int vali;
-  char *subopt;
-  char *next_eq, *next_space, *end;
+  Eina_List *new_filters = NULL;
   
   if (bench)
     *bench = 0;
@@ -253,7 +247,7 @@ int parse_cli(int argc, char **argv, Eina_List **filters, Bench_Step **bench, in
 	}
       case 'h' :
 	if (help)
-	*help = 1;
+    *help = 1;
 	else {
 	  printf("ERROR help not available!\n");
 	  return 0;
@@ -315,114 +309,56 @@ int parse_cli(int argc, char **argv, Eina_List **filters, Bench_Step **bench, in
     *metric = CACHE_M_LRU;
   
   while (optind < argc) {
-
-    filter = NULL;
-    opts = NULL;
-    
-    end = strchr(argv[optind], '\0');
-    next_space = strchr(argv[optind], ' ');
-    next_eq = strchr(argv[optind], '=');
-    
-    if (!next_eq || (next_space && (next_space < next_eq))) {
-      if (next_space)
-	next_space = '\0';
-      opts = end;
-      filter = lime_filter_new(argv[optind]);
-    }
+    assert(filters);
+    new_filters = lime_filter_chain_deserialize(argv[optind]);
+    if (*filters && new_filters)
+      printf("FIXME append multiple filter chains!\n");
+    if (new_filters)
+      *filters = new_filters;
     else {
-      *next_eq = '\0'; 
-      filter = lime_filter_new(argv[optind]);
-      opts = next_eq;
-      *opts = '=';
-    }
-
-    if (filter) {
-      *filters = eina_list_append(*filters, filter);
-      
-      printf("[GRAPH] added filter %s\n", filter->fc->name);
-      
-      if (opts[0] == '=') {
-	if (!filter->settings || !ea_count(filter->settings)) {
-	  printf("ERROR parsing settings of filter %s, filter has not settings!\n", filter->fc->name);
-	  return -1;
-	}
-	
-	opts++;
-	sub_idx = 0;
-	
-	while (opts[0] != '\0') {
-	  subopt = opts;
-	  
-	  if (getsubopt(&opts, nosubopt, &value) == -1) {
-	    if (ea_count(filter->settings) <= sub_idx) {
-	      printf("ERROR parsing settings of filter %s, given were at least %d settings, but filter has only %d setting(s)!\n", filter->fc->name, sub_idx+1, ea_count(filter->settings));
-	      return -1;
-	    }
-	    
-	    switch (((Meta*)ea_data(filter->settings, sub_idx))->type) {
-	      case MT_FLOAT : 
-		valf = atof(subopt);
-		printf("set: %s of %s to %f\n", ((Meta*)ea_data(filter->settings, sub_idx))->name, filter->fc->name, valf);
-		lime_setting_float_set(filter, ((Meta*)ea_data(filter->settings, sub_idx))->name, valf);
-		break;
-	      case MT_INT : 
-		vali = atoi(subopt);
-		printf("set: %s of %s to %d\n", ((Meta*)ea_data(filter->settings, sub_idx))->name, filter->fc->name, vali);
-		lime_setting_int_set(filter, ((Meta*)ea_data(filter->settings, sub_idx))->name, vali);
-		break;
-	      case MT_STRING : 
-		printf("set: %s of %s to %s\n", ((Meta*)ea_data(filter->settings, sub_idx))->name, filter->fc->name, subopt);
-		lime_setting_string_set(filter, ((Meta*)ea_data(filter->settings, sub_idx))->name, subopt);
-		break;
-	      default :
-		printf("unknown type for settings %d (%s) of filter %s : type %d\n", sub_idx, ((Meta*)ea_data(filter->settings, sub_idx))->name, filter->fc->name, ((Meta*)ea_data(filter->settings, sub_idx))->type);
-		return -1;
-	    }
-	    
-	    sub_idx++;
-	  }
-	  else
-	    break;
-	}
-      }
-    }
-    else {
-      
       remain = eina_file_path_sanitize(argv[optind]);
       if (stat(remain, &statbuf)) {
-	printf("ERROR parsing command line: %s is not a filter and %s does not exist\n", argv[optind], remain);
-	return -1;
+        printf("ERROR parsing command line: %s is not a filter and %s does not exist\n", argv[optind], remain);
+        return -1;
       }
       if (S_ISDIR(statbuf.st_mode)) {
-	if (!dir) {
-	  printf("ERROR parsing command line: %s: directory as argument not supported!\n", remain);
-	  return -1;
-	}
-	*dir = clean_dirpath(argv[optind]);
+        if (!dir) {
+          printf("ERROR parsing command line: %s: directory as argument not supported!\n", remain);
+          return -1;
+        }
+        *dir = clean_dirpath(argv[optind]);
       }
       else if (S_ISREG(statbuf.st_mode)) {
-	if (!file) {
-	  printf("ERROR parsing command line: %s: file as argument not supported!\n", remain);
-	  return -1;
-	}
-	*file = remain;
-	if (dir) {
-	  *dir = strdup(remain);
-	  for(i=strlen(remain)-1;i>0;i--)
-	    if ((*dir)[i] != '/')
-	      (*dir)[i] = '\0';
-	    else
-	      break;
-	}
+        if (!file) {
+          printf("ERROR parsing command line: %s: file as argument not supported!\n", remain);
+          return -1;
+        }
+        *file = remain;
+        if (dir) {
+          *dir = strdup(remain);
+          for(i=strlen(remain)-1;i>0;i--)
+            if ((*dir)[i] != '/')
+              (*dir)[i] = '\0';
+            else
+              break;
+        }
       }
       else
-	printf("ERROR parsing command line: %s is not a filter and %s is neither a regular file nor a directory\n", argv[optind], remain);
+          printf("ERROR parsing command line: %s could not be parsed and %s is neither a regular file nor a directory\n", argv[optind], remain);
     }
-    
     optind++;
   }
-  
-  
+    
+    
+     
+  if (*file)
+    printf("filename: %s\n", *file);
+  else if (*dir)
+    printf("dir: %s\n", *dir);
+  else
+    printf("no file and no dir specified!\n");
+      
+    
   if (dir && !*dir)
     *dir = clean_dirpath(getcwd(NULL, 0));
   

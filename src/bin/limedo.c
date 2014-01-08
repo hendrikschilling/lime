@@ -4,7 +4,7 @@
 void print_help(void)
 {
   printf("usage: limedo - execute filter chain\n");
-  printf("   limedo [options] [filter1[=val1[,val2]]] [filter2] ... inputfile\n");
+  printf("   limedo [options] [filter1[:set1=val1[:set2=val2]]][,filter2] ... inputfile\n");
   printf("filter may be one of:\n   \"gauss\", \"sharpen\", \"denoise\", \"contrast\", \"exposure\", \"convert\", \"assert\"\n");
   printf("source filter is set by the application\nsink filter is the last filter in the chain and has to be set to either\n   \"\"savetiff\" or \"compare\", e.g. \"savetiff=0,blablub.tif\" to save to blablub.tif in sRGB colorspace,\n   or \"compare=1\" to compare scales in LAB color space\n");
   printf("options:\n");

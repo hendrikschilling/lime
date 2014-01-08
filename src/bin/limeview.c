@@ -2412,7 +2412,7 @@ void fc_new_from_filters(Eina_List *filters)
 void print_help(void)
 {
   printf("usage: limeview - scale invariant image editor/viewer\n");
-  printf("limeview [options] [filter1[=val1[,val2]]] [filter2] ... [inputfile/dir]\n");
+  printf("limeview [options] [filter1[:set1=val1[:set2=val2]]][,filter2] ... [inputfile/dir]\n");
   printf("   where filter may be one of:\n   \"gauss\", \"sharpen\", \"denoise\", \"contrast\", \"exposure\", \"convert\", \"assert\"\n");
   printf("   source and sink filter in the chain are set by the application\n");
   printf("options:\n");
