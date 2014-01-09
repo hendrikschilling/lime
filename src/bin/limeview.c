@@ -286,7 +286,7 @@ void int_changed_do(void *data, Evas_Object *obj)
   
   bench_delay_start();
   
-  lime_setting_int_set(m->filter, m->name, (int)elm_slider_value_get(obj));
+  lime_setting_int_set(m->filter, m->name, (int)elm_spinner_value_get(obj));
   
   lime_config_test(sink);
   
@@ -310,7 +310,7 @@ void float_changed_do(void *data, Evas_Object *obj)
   
   bench_delay_start();
   
-  lime_setting_float_set(m->filter, m->name, (float)elm_slider_value_get(obj));
+  lime_setting_float_set(m->filter, m->name, (float)elm_spinner_value_get(obj));
   
   lime_config_test(sink);
   
@@ -504,59 +504,64 @@ on_float_changed(void *data, Evas_Object *obj, void *event_info)
   workerfinish_schedule(&float_changed_do, data, obj);
 }
 
-void slider_insert(Evas_Object *vbox, Meta *setting)
+void setting_spinner_insert(Evas_Object *vbox, Meta *setting)
 {
   int i;
   Meta *sub;
-  Evas_Object *slider;
+  Evas_Object *spinner;
   int imin = 0, imax = 100, istep = 0;
   float fmin = 0.0, fmax = 100.0, fstep = 0.0;
   
-  slider = elm_slider_add(vbox);
+  spinner = elm_spinner_add(vbox);
 
-  elm_slider_unit_format_set(slider, "%.1f");
-  evas_object_size_hint_weight_set(slider, EVAS_HINT_EXPAND, 0);
-  evas_object_size_hint_align_set(slider, EVAS_HINT_FILL, 0);
+  //elm_spinner_unit_format_set(spinner, "%.1f");
+  evas_object_size_hint_weight_set(spinner, EVAS_HINT_EXPAND, 0);
+  evas_object_size_hint_align_set(spinner, EVAS_HINT_FILL, 0);
   if (setting->type == MT_INT) {
-    evas_object_smart_callback_add(slider, "delay,changed", on_int_changed, setting);
+    evas_object_smart_callback_add(spinner, "delay,changed", on_int_changed, setting);
     for(i=0;i<ma_count(setting->childs);i++) {
       sub = ma_data(setting->childs, i);
       assert(sub->type == setting->type);
       if (!strcmp("PARENT_SETTING_MIN", sub->name))
-	imin = *(int*)sub->data;
+  imin = *(int*)sub->data;
       else if (!strcmp("PARENT_SETTING_MAX", sub->name))
-	imax = *(int*)sub->data;
+  imax = *(int*)sub->data;
       else if (!strcmp("PARENT_SETTING_STEP", sub->name))
         istep = *(int*)sub->data;
       
     }
-    elm_slider_min_max_set(slider, (float)imin, (float)imax);
-    //FIXME
-    //if (istep)
-    //  elm_slider_step_set(slider, istep);
-    elm_slider_value_set(slider, (float)*(int*)setting->data);
+    elm_spinner_min_max_set(spinner, (float)imin, (float)imax);
+    if (!istep)
+      fstep = 0.01;
+    else
+      fstep = istep;
+    elm_spinner_step_set(spinner, fstep);
+    elm_spinner_label_format_set(spinner, "%.3f");
+    elm_spinner_value_set(spinner, (float)*(int*)setting->data);
     printf("set val to %f\n", (float)*(int*)setting->data);
   }
   else if (setting->type == MT_FLOAT) {
-    evas_object_smart_callback_add(slider, "delay,changed", on_float_changed, setting);
+    evas_object_smart_callback_add(spinner, "delay,changed", on_float_changed, setting);
     for(i=0;i<ma_count(setting->childs);i++) {
       sub = ma_data(setting->childs, i);
       assert(sub->type == setting->type);
       if (!strcmp("PARENT_SETTING_MIN", sub->name))
-	fmin = *(float*)sub->data;
+  fmin = *(float*)sub->data;
       else if (!strcmp("PARENT_SETTING_MAX", sub->name))
-	fmax = *(float*)sub->data;
+  fmax = *(float*)sub->data;
       else if (!strcmp("PARENT_SETTING_STEP", sub->name))
         fstep = *(float*)sub->data;
     }
-    elm_slider_min_max_set(slider, fmin, fmax);
-    //FIXME
-    //if (fstep)
-    //  elm_slider_step_set(slider, fstep);
-    elm_slider_value_set(slider, *(float*)setting->data);
+    elm_spinner_min_max_set(spinner, fmin, fmax);
+    if (!fstep)
+      fstep = 0.01;
+    
+    elm_spinner_step_set(spinner, fstep);
+    elm_spinner_label_format_set(spinner, "%.3f");
+    elm_spinner_value_set(spinner, *(float*)setting->data);
   }
-  elm_box_pack_end(vbox, slider);
-  evas_object_show(slider);
+  elm_box_pack_end(vbox, spinner);
+  evas_object_show(spinner);
 }
 
 void filter_settings_create_gui(Eina_List *chain_node, Evas_Object *box)
@@ -588,7 +593,7 @@ void filter_settings_create_gui(Eina_List *chain_node, Evas_Object *box)
   
   
   for(i=0;i<ea_count(fc->f->settings);i++)
-    slider_insert(vbox, ea_data(fc->f->settings, i));
+    setting_spinner_insert(vbox, ea_data(fc->f->settings, i));
   
   evas_object_show(vbox);
   evas_object_show(fc->frame);
