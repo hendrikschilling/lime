@@ -254,6 +254,110 @@ void _loadjpeg_worker_ijg(Filter *f, Eina_Array *in, Eina_Array *out, Rect *area
   fclose(file);
 }
 
+void _loadjpeg_worker_ijg_original(Filter *f, Eina_Array *in, Eina_Array *out, Rect *area, int thread_id)
+{
+  _Data *data = ea_data(f->data, thread_id);
+  
+  uint8_t *r, *g, *b;
+  uint8_t *rp, *gp, *bp;
+  int i, j;
+  int xstep, ystep;
+  JSAMPARRAY buffer;    /* Output row buffer */
+  int row_stride;   /* physical row width in output buffer */
+  FILE *file;
+  int lines_read;
+  
+  struct jpeg_decompress_struct cinfo;
+  struct my_error_mgr jerr;
+  
+  assert(out && ea_count(out) == 3);
+  
+  //maximum scaledown: 1/8
+  assert(area->corner.scale <= 3);
+  
+  if (area->corner.x || area->corner.y) {
+    printf("FIXME: invalid tile requested in loadjpg: %dx%d\n", area->corner.x, area->corner.y);
+    return;
+  }
+  
+  r = ((Tiledata*)ea_data(out, 0))->data;
+  g = ((Tiledata*)ea_data(out, 1))->data;
+  b = ((Tiledata*)ea_data(out, 2))->data;
+  
+  file = fopen(data->filename, "rb");
+    
+  if (!file)
+    abort();
+  
+  cinfo.err = jpeg_std_error(&jerr.pub);
+  //jerr.pub.error_exit = my_error_exit;
+  
+  if (setjmp(jerr.setjmp_buffer)) {
+    jpeg_destroy_decompress(&cinfo);
+    fclose(file);
+    abort();
+  }
+  jpeg_create_decompress(&cinfo);
+
+  jpeg_stdio_src(&cinfo, file);
+
+  (void) jpeg_read_header(&cinfo, TRUE);
+
+  cinfo.scale_num = 1;
+  cinfo.scale_denom = 1u << area->corner.scale;
+  //cinfo.out_color_space = cinfo.jpeg_color_space;
+  
+  /*cinfo.dct_method = JDCT_IFAST;
+  cinfo.do_fancy_upsampling = FALSE;*/
+  jpeg_start_decompress(&cinfo);
+   
+  printf("restart every %d mcus, mcus per row: %d \n", cinfo.restart_interval, cinfo.MCUs_per_row);
+  
+  row_stride = cinfo.output_width * cinfo.output_components;
+  buffer = (*cinfo.mem->alloc_sarray)
+  ((j_common_ptr) &cinfo, JPOOL_IMAGE, row_stride, 16);
+  
+  switch (data->rot) {
+    case 6 : 
+      rp = r + cinfo.output_height - 1;
+      gp = g + cinfo.output_height - 1;
+      bp = b + cinfo.output_height - 1;
+      xstep = cinfo.output_height;
+      ystep = -cinfo.output_height*cinfo.output_width - 1;
+      break;
+    case 8 : 
+      rp = r + cinfo.output_height*(cinfo.output_width - 1);
+      gp = g + cinfo.output_height*(cinfo.output_width - 1);
+      bp = b + cinfo.output_height*(cinfo.output_width - 1);
+      xstep = -cinfo.output_height;
+      ystep = cinfo.output_height*cinfo.output_width+1;
+      break;
+    case 1 :  
+    default : //FIXME more cases!
+      rp = r;
+      gp = g;
+      bp = b;
+      xstep = 1;
+      ystep = 0;
+      break;
+  }
+
+  while (cinfo.output_scanline < cinfo.output_height) {
+    lines_read = jpeg_read_scanlines(&cinfo, buffer, 16);
+    for(j=0;j<lines_read;j++,rp+=ystep,gp+=ystep,bp+=ystep)
+      for(i=0;i<cinfo.output_width;i++,rp+=xstep,gp+=xstep,bp+=xstep) {
+        rp[0] = buffer[j][i*3];
+        gp[0] = buffer[j][i*3+1];
+        bp[0] = buffer[j][i*3+2];
+      }
+  }
+  
+  jpeg_finish_decompress(&cinfo);
+  jpeg_destroy_decompress(&cinfo);
+  
+  fclose(file);
+}
+
 void _loadjpeg_worker(Filter *f, Eina_Array *in, Eina_Array *out, Rect *area, int thread_id)
 {
   _Data *data = ea_data(f->data, 0);

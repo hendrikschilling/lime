@@ -2850,12 +2850,16 @@ static Evas_Object *export_box_add(Evas_Object *parent)
   
   //file endings to process
   export_extensions = elm_entry_add(export_box);
-  evas_object_size_hint_weight_set(export_extensions, EVAS_HINT_EXPAND, 0);
-  evas_object_size_hint_align_set(export_extensions, EVAS_HINT_FILL, 0);
+  elm_entry_scrollable_set(export_extensions, EINA_TRUE);
+  elm_entry_single_line_set(export_extensions, EINA_TRUE);
+  evas_object_size_hint_weight_set(export_extensions, EVAS_HINT_EXPAND, 0.0);
+  evas_object_size_hint_align_set(export_extensions, EVAS_HINT_FILL, 0.0);
   elm_box_pack_end(export_box, export_extensions);
   evas_object_show(export_extensions);
   
   export_path = elm_entry_add(export_box);
+  elm_entry_scrollable_set(export_path, EINA_TRUE);
+  elm_entry_single_line_set(export_path, EINA_TRUE);
   evas_object_size_hint_weight_set(export_path, EVAS_HINT_EXPAND, 0);
   evas_object_size_hint_align_set(export_path, EVAS_HINT_FILL, 0);
   elm_object_text_set(export_path, "caren@technik-stinkt.de:/home/caren/fotos_upload/");
@@ -3068,6 +3072,8 @@ elm_main(int argc, char **argv)
   evas_object_show(hbox);
   
   entry = elm_entry_add(win);
+  elm_entry_scrollable_set(entry, EINA_TRUE);
+  elm_entry_single_line_set(entry, EINA_TRUE);
   evas_object_size_hint_weight_set(entry, EVAS_HINT_EXPAND, EVAS_HINT_FILL);
   evas_object_size_hint_align_set(entry, EVAS_HINT_FILL, EVAS_HINT_FILL);
   elm_box_pack_end(hbox, entry);
