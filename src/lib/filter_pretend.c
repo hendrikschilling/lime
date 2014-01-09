@@ -1,4 +1,4 @@
-#include "filter_assert.h"
+#include "filter_pretend.h"
 
 typedef struct {
   Meta *dim_in_meta;
@@ -13,22 +13,22 @@ static int _setting_changed(Filter *f)
   _Data *data = ea_data(f->data, 0);
   
   switch (data->in_cs) {
-    case 0 : 
+    case CS_RGB : 
       *(int*)(data->color_in[0]->data) = CS_RGB_R;
       *(int*)(data->color_in[1]->data) = CS_RGB_G;
       *(int*)(data->color_in[2]->data) = CS_RGB_B;
       break;
-    case 1 : 
+    case CS_LAB : 
       *(int*)(data->color_in[0]->data) = CS_LAB_L;
       *(int*)(data->color_in[1]->data) = CS_LAB_A;
       *(int*)(data->color_in[2]->data) = CS_LAB_B;
       break;
-    case 2 : 
+    case CS_YUV : 
       *(int*)(data->color_in[0]->data) = CS_YUV_Y;
       *(int*)(data->color_in[1]->data) = CS_YUV_U;
       *(int*)(data->color_in[2]->data) = CS_YUV_V;
       break;
-    case 3 : 
+    case CS_HSV : 
       *(int*)(data->color_in[0]->data) = CS_HSV_H;
       *(int*)(data->color_in[1]->data) = CS_HSV_S;
       *(int*)(data->color_in[2]->data) = CS_HSV_V;
@@ -38,22 +38,22 @@ static int _setting_changed(Filter *f)
   }
   
   switch (data->out_cs) {
-    case 0 : 
+    case CS_RGB : 
       *(int*)(data->color_out[0]->data) = CS_RGB_R;
       *(int*)(data->color_out[1]->data) = CS_RGB_G;
       *(int*)(data->color_out[2]->data) = CS_RGB_B;
       break;
-    case 1 : 
+    case CS_LAB : 
       *(int*)(data->color_out[0]->data) = CS_LAB_L;
       *(int*)(data->color_out[1]->data) = CS_LAB_A;
       *(int*)(data->color_out[2]->data) = CS_LAB_B;
       break;
-    case 2 : 
+    case CS_YUV : 
       *(int*)(data->color_out[0]->data) = CS_YUV_Y;
       *(int*)(data->color_out[1]->data) = CS_YUV_U;
       *(int*)(data->color_out[2]->data) = CS_YUV_V;
       break;
-    case 3 : 
+    case CS_HSV : 
       *(int*)(data->color_out[0]->data) = CS_HSV_H;
       *(int*)(data->color_out[1]->data) = CS_HSV_S;
       *(int*)(data->color_out[2]->data) = CS_HSV_V;
@@ -106,9 +106,9 @@ static void _area_calc(Filter *f, Rect *in, Rect *out)
 
 }
 
-Filter *filter_assert_new(void)
+Filter *filter_pretend_new(void)
 {
-  Filter *filter = filter_new(&filter_core_assert);
+  Filter *filter = filter_new(&filter_core_pretend);
   Meta *in, *out, *channel, *bitdepth, *setting, *bound, *size_in, *size_out;
   Meta *ch_out[3];
   filter->fixme_outcount = 3;
@@ -232,9 +232,9 @@ Filter *filter_assert_new(void)
   return filter;
 }
 
-Filter_Core filter_core_assert = {
-  "Assert colorspace",
-  "assert",
-  "states output color space without actual conversion from the input color space",
-  &filter_assert_new
+Filter_Core filter_core_pretend = {
+  "change metadata",
+  "pretend",
+  "pretends output color space/scale without actual conversion from the input",
+  &filter_pretend_new
 };
