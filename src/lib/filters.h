@@ -14,7 +14,7 @@
 #include "filter_comparator.h"
 #include "filter_sharpen.h"
 #include "filter_denoise.h"
-#include "filter_assert.h"
+#include "filter_pretend.h"
 #include "filter_crop.h"
 #include "filter_simplerotate.h"
 

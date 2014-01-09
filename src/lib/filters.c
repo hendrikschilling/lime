@@ -19,7 +19,7 @@ void lime_filters_init(void)
   eina_hash_add(lime_filters, filter_core_savetiff.shortname, &filter_core_savetiff);
   eina_hash_add(lime_filters, filter_core_sharpen.shortname, &filter_core_sharpen);
   eina_hash_add(lime_filters, filter_core_denoise.shortname, &filter_core_denoise);
-  eina_hash_add(lime_filters, filter_core_assert.shortname, &filter_core_assert);
+  eina_hash_add(lime_filters, filter_core_pretend.shortname, &filter_core_pretend);
   eina_hash_add(lime_filters, filter_core_crop.shortname, &filter_core_crop);
   eina_hash_add(lime_filters, filter_core_simplerotate.shortname, &filter_core_simplerotate);
 }
@@ -52,6 +52,8 @@ Filter_Core *lime_filtercore_find(const char *name)
 
 Eina_List *lime_filter_chain_deserialize(char *str)
 {
+  int i;
+  Meta *m;
   Filter_Core *fc;
   Filter *f, *last_f = NULL;
   Eina_List *filters = NULL;
@@ -114,7 +116,19 @@ Eina_List *lime_filter_chain_deserialize(char *str)
           
           
     printf("cur2,5 %s\n", cur);
-          
+  
+        if (!ea_count(f->settings))
+          return NULL;
+  
+        for(i=0;i<ea_count(f->settings);i++) {
+          m = ea_data(f->settings, i);
+          if (!strncmp(setting, m->name, strlen(setting))) {
+            printf("matched setting %s for string %s\n", m->name, setting);
+            setting = m->name;
+            break;
+          }
+        }
+            
         switch (lime_setting_type_get(f, setting)) {
           case MT_INT :
             lime_setting_int_set(f, setting, atoi(cur));
