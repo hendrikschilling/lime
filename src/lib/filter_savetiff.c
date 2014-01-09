@@ -230,10 +230,10 @@ int _input_fixed(Filter *f)
      TIFFSetField(data->file, TIFFTAG_TILELENGTH, 256);
      TIFFSetField(data->file, TIFFTAG_PLANARCONFIG, PLANARCONFIG_SEPARATE);
      switch (data->colorspace) {
-       case 0 :
+       case CS_RGB :
 	 TIFFSetField(data->file, TIFFTAG_PHOTOMETRIC, PHOTOMETRIC_RGB);
 	 break;
-       case 1 : 
+       case CS_LAB : 
 	 TIFFSetField(data->file, TIFFTAG_PHOTOMETRIC, PHOTOMETRIC_CIELAB);
 	 break;
      }
@@ -422,14 +422,15 @@ static int _setting_changed(Filter *f)
   _Data *data = ea_data(f->data, 0);
   
   switch (data->colorspace) {
-    case 0 : 
+    case CS_RGB : 
+      printf("set colorspace rgb\n");
       *(int*)(data->color[0]->data) = CS_RGB_R;
       *(int*)(data->color[1]->data) = CS_RGB_G;
       *(int*)(data->color[2]->data) = CS_RGB_B;
       f->mode_iter->worker = &_worker_gamma;
       f->mode_iter->finish = &_finish_gamma;
       break;
-    case 1 : 
+    case CS_LAB : 
       *(int*)(data->color[0]->data) = CS_LAB_L;
       *(int*)(data->color[1]->data) = CS_LAB_A;
       *(int*)(data->color[2]->data) = CS_LAB_B;
@@ -472,7 +473,7 @@ Filter *filter_savetiff_new(void)
   
   channel = meta_new_channel(filter, 1);
   data->color[0] = meta_new_data(MT_COLOR, filter, malloc(sizeof(int)));
-  *(int*)(data->color[0]->data) = CS_RGB_R;
+  *(int*)(data->color[0]->data) = CS_LAB_L;
   meta_attach(channel, data->color[0]);
   meta_attach(channel, bitdepth);
   meta_attach(channel, size);
@@ -480,7 +481,7 @@ Filter *filter_savetiff_new(void)
   
   channel = meta_new_channel(filter, 2);
   data->color[1] = meta_new_data(MT_COLOR, filter, malloc(sizeof(int)));
-  *(int*)(data->color[1]->data) = CS_RGB_G;
+  *(int*)(data->color[1]->data) = CS_LAB_A;
   meta_attach(channel, data->color[1]);
   meta_attach(channel, bitdepth);
   meta_attach(channel, size);
@@ -488,7 +489,7 @@ Filter *filter_savetiff_new(void)
   
   channel = meta_new_channel(filter, 3);
   data->color[2] = meta_new_data(MT_COLOR, filter, malloc(sizeof(int)));
-  *(int*)(data->color[2]->data) = CS_RGB_B;
+  *(int*)(data->color[2]->data) = CS_LAB_B;
   meta_attach(channel, data->color[2]);
   meta_attach(channel, bitdepth);
   meta_attach(channel, size);
