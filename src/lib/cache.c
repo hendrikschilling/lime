@@ -258,7 +258,7 @@ void cache_stats_print(void)
   printf("[CACHE] stats:\n");
   
   EINA_ITERATOR_FOREACH(iter, stat) {
-    printf("       req to %12.12s hr: %4.1f%% (%lu/%lu) tiles: %4lu time: %4.3fms per tile from %d iters\n",
+    printf("       req to %12.12s hr: %4.1f%% (%llu/%llu) tiles: %4llu time: %4.3fms per tile from %llu iters\n",
 	   stat->f->fc->name, 100.0*stat->hits/(stat->misses+stat->hits), stat->hits, stat->misses, stat->tiles, 0.000001*stat->time/stat->time_count, stat->time_count);
   }
 }
