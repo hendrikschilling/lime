@@ -642,6 +642,17 @@ void mat_cache_flush(Mat_Cache *mat_cache)
   }
 }
 
+void mat_cache_check(Mat_Cache *mat_cache)
+{
+  int layer = 0;
+  float scale = actual_scale_get();
+  
+  while (scale > 1.0) {
+    layer++;
+    scale /= 2;
+  }
+}
+
 void mat_cache_del(Mat_Cache *mat_cache)
 {
   mat_cache_flush(mat_cache);

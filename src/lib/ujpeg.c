@@ -1243,13 +1243,13 @@ ujImage ujDecode(ujImage img, const void* jpeg, const int size) {
             { uj->error = UJ_SYNTAX_ERROR; goto out; }
         ujSkip(uj, 2);
         switch (uj->pos[-1]) {
-            case 0xC0: ujDecodeSOF(uj);  break;
-            case 0xC4: ujDecodeDHT(uj);  break;
-            case 0xDB: ujDecodeDQT(uj);  break;
-            case 0xDD: ujDecodeDRI(uj);  break;
-            case 0xDA: ujDecodeScan(uj); break;
-            case 0xFE: ujSkipMarker(uj); break;
-            case 0xE1: ujDecodeExif(uj); break;
+            case 0xC0: printf("foun c0 at %d\n", uj->size-uj->length); ujDecodeSOF(uj);  break;
+            case 0xC4: printf("foun c4 at %d\n", uj->size-uj->length); ujDecodeDHT(uj);  break;
+            case 0xDB: printf("foun db at %d\n", uj->size-uj->length); ujDecodeDQT(uj);  break;
+            case 0xDD: printf("foun dd at %d\n", uj->size-uj->length); ujDecodeDRI(uj);  break;
+            case 0xDA: printf("foun da at %d\n", uj->size-uj->length); ujDecodeScan(uj); break;
+            case 0xFE: printf("foun fe at %d\n", uj->size-uj->length); ujSkipMarker(uj); break;
+            case 0xE1: printf("foun e1 at %d\n", uj->size-uj->length); ujDecodeExif(uj); break;
             default:
                 if ((uj->pos[-1] & 0xF0) == 0xE0)
                     ujSkipMarker(uj);
@@ -1262,6 +1262,7 @@ ujImage ujDecode(ujImage img, const void* jpeg, const int size) {
     if (uj->error && !uj->valid) {
         if (!img)
             ujFree(uj);
+        printf("error %dx%d\n", uj->width, uj->height);
         abort(); //FIXME
         return NULL;
     }
