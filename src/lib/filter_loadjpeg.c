@@ -4,9 +4,6 @@
 #include <jpeglib.h>
 #include <setjmp.h>
 
-//# USE_UJPEG
-
-#include "ujpeg.h"
 #define JPEG_TILE_SIZE 256
 
 #include "jinclude.h"
@@ -37,6 +34,9 @@ typedef struct {
   int serve_maxy;
   int serve_fakejpg;
   int serve_bytes;
+  int serve_width;
+  int serve_height;
+  int iw, ih;
 #ifdef USE_UJPEG
   ujImage uimg;
 #endif
@@ -100,10 +100,8 @@ int jpeg_read_infos(FILE *f, _Data *data)
   int next_restart;
   unsigned char buf[2*BUF_SIZE];
   unsigned char *pos = buf;
-  int iw = data->w / (data->mcu_w*data->rst_int),
-      ih = data->h / data->mcu_h;
   int ix, iy;
-  data->index = calloc(sizeof(int)*iw*ih, 1);
+  data->index = calloc(sizeof(int)*data->iw*data->ih, 1);
   
   fseek(f, 0, SEEK_SET);
   ATLEAST_BUF(BUF_SIZE);
@@ -137,7 +135,8 @@ int jpeg_read_infos(FILE *f, _Data *data)
         printf("here lies the actual image!\nbuilding index!\n");
         //2B Marker + 2B Length + 1B comp_count (FIXME compare/use) + 2B*comp_count+ marker length
         len = pos[2] * 256 + pos[3];
-        SKIP_BUF(2+2+1+2*data->comp_count+len-2);
+        assert(pos[4] == data->comp_count);
+        SKIP_BUF(2+2+1+2*data->comp_count+len);
         //FIXME does the image start with the first restart marker or here?
         next_restart = 0;
         //FIXME index[0] = ...
@@ -151,17 +150,17 @@ int jpeg_read_infos(FILE *f, _Data *data)
           {
             assert((pos[i+1] & 0x0F) == next_restart);
             ix++;
-            if (ix >= iw) {
+            if (ix >= data->iw) {
               ix = 0;
               iy++;
             }
             //printf("%4dx%4d ", ix*data->mcu_w, iy*data->mcu_h);
             //we point to after the restart marker
-            data->index[iy*iw + ix] = file_pos - remain + i + 2; 
+            data->index[iy*data->iw + ix] = file_pos - remain + i+2; 
             //printf("found %d\n", next_restart);
             next_restart = (next_restart+1) % 8;
             
-            if (iy == ih-1 && ix == iw-1) {
+            if (iy == data->ih-1 && ix == data->iw-1) {
               printf("built index!\n");
               break;
             }
@@ -200,9 +199,6 @@ int jpeg_read_infos(FILE *f, _Data *data)
     }
     ATLEAST_BUF(4)
   }
-  
-  printf("finished!\n");
-  free(data->index);
   
   return 0;
 }
@@ -259,7 +255,6 @@ fill_input_buffer (j_decompress_ptr cinfo)
   my_src_ptr src = (my_src_ptr) cinfo->src;
   size_t nbytes;
   int size;
-  int iw = src->data->w / (src->data->mcu_w*src->data->rst_int);
 
   //makes sure we have the whole jpeg size memory area in one piece
   if (src->data->serve_fakejpg) {
@@ -267,14 +262,13 @@ fill_input_buffer (j_decompress_ptr cinfo)
         && src->data->serve_ix == src->data->serve_maxx-1)
       size = INPUT_BUF_SIZE;
     else
-      size = src->data->index[src->data->serve_iy*iw+src->data->serve_ix+1]-src->data->index[src->data->serve_iy*iw+src->data->serve_ix];
-    fseek(src->infile, src->data->index[src->data->serve_iy*iw+src->data->serve_ix], SEEK_SET);
+      size = src->data->index[src->data->serve_iy*src->data->iw+src->data->serve_ix+1]-src->data->index[src->data->serve_iy*src->data->iw+src->data->serve_ix];
+    fseek(src->infile, src->data->index[src->data->serve_iy*src->data->iw+src->data->serve_ix], SEEK_SET);
     //FIXME should not fail (size above prob. wrong!
-    //assert(INPUT_BUF_SIZE >= size);
+    assert(2*INPUT_BUF_SIZE >= size);
     nbytes = JFREAD(src->infile, src->buffer, size);
-    //FIXME should not fail!
-    //assert(nbytes == size);
-    src->data->file_pos = src->data->index[src->data->serve_iy*iw+src->data->serve_ix] + nbytes;
+    //FIXME check size?
+    src->data->file_pos = src->data->index[src->data->serve_iy*src->data->iw+src->data->serve_ix] + nbytes;
     src->data->serve_ix++;
     if (src->data->serve_ix >= src->data->serve_maxx) {
       src->data->serve_ix = src->data->serve_minx;
@@ -294,8 +288,8 @@ fill_input_buffer (j_decompress_ptr cinfo)
     //FIXME
     int i = src->data->size_pos - src->data->file_pos;
     printf("size on fill: %dx%d\n%x %x %x %x %x %x\n%d\n", src->buffer[i+2]*256+src->buffer[i+3],src->buffer[i]*256+src->buffer[i+1],src->buffer[i],src->buffer[i+1],src->buffer[i+2],src->buffer[i+3],src->buffer[i+4],src->buffer[i+5],src->data->size_pos);
-    src->buffer[i+2] = 1; //pretend size to be 256!
-    src->buffer[i+3] = 0;
+    src->buffer[i+2] = src->data->serve_width / 256; //pretend size to be 256!
+    src->buffer[i+3] = src->data->serve_width % 256;
     }
   else if (src->data->file_pos < src->data->index[0]
       && src->data->file_pos + INPUT_BUF_SIZE >= src->data->index[0]) {
@@ -304,12 +298,12 @@ fill_input_buffer (j_decompress_ptr cinfo)
   else if (src->data->file_pos == src->data->index[0]) {
     printf("wohoo now feed fake jpeg\n");
     src->data->serve_fakejpg = 1;
-    size = src->data->index[src->data->serve_iy*iw+src->data->serve_ix+1]-src->data->index[src->data->serve_iy*iw+src->data->serve_ix];
-    fseek(src->infile, src->data->index[src->data->serve_iy*iw+src->data->serve_ix], SEEK_SET);
+    size = src->data->index[src->data->serve_iy*src->data->iw+src->data->serve_ix+1]-src->data->index[src->data->serve_iy*src->data->iw+src->data->serve_ix];
+    fseek(src->infile, src->data->index[src->data->serve_iy*src->data->iw+src->data->serve_ix], SEEK_SET);
     assert(INPUT_BUF_SIZE > size);
     nbytes = JFREAD(src->infile, src->buffer, size);
     assert(nbytes == size);
-    src->data->file_pos = src->data->index[src->data->serve_iy*iw+src->data->serve_ix] + nbytes;
+    src->data->file_pos = src->data->index[src->data->serve_iy*src->data->iw+src->data->serve_ix] + nbytes;
     src->data->serve_ix++;
     if (src->data->serve_ix >= src->data->serve_maxx) {
       src->data->serve_ix = src->data->serve_minx;
@@ -470,9 +464,8 @@ void *_data_new(Filter *f, void *data)
   
   *newdata = *(_Data*)data;
 
-#ifdef USE_UJPEG  
-  newdata->uimg = NULL;
-#endif
+  //FIXME reuse (create on input_fixed?)
+  newdata->index = NULL;
   
   return newdata;
 }
@@ -507,80 +500,13 @@ static int _get_exif_orientation(const char *file)
    return orientation;
 }
 
-#ifdef USE_UJPEG
-void _loadjpeg_worker_ujpeg(Filter *f, Eina_Array *in, Eina_Array *out, Rect *area, int thread_id)
+void _loadjpeg_worker_ijg(Filter *f, Eina_Array *in, Eina_Array *out, Rect *area, int thread_id)
 {
   _Data *data = ea_data(f->data, thread_id);
   
   uint8_t *r, *g, *b;
   uint8_t *rp, *gp, *bp;
-  int i, j;
-  int xstep, ystep;
-  unsigned char *buffer;    /* Output row buffer */
-  int row_stride;   /* physical row width in output buffer */
-  FILE *file;
-  int lines_read;
-  
-  printf("%dx%d %dx%d\n", area->corner.x, area->corner.y, ((Dim*)data->dim)->width, ((Dim*)data->dim)->height);
-  
-  if (!data->uimg)
-    data->uimg = ujDecodeFileArea(NULL, data->filename, area->corner.x, area->corner.y, area->width, area->height);
-  else
-    ujDecodeScanAreaP(data->uimg, area->corner.x, area->corner.y, area->width, area->height);
-  
-  //maximum scaledown: 1/1
-  assert(area->corner.scale <= 0);
-  
-  r = ((Tiledata*)ea_data(out, 0))->data;
-  g = ((Tiledata*)ea_data(out, 1))->data;
-  b = ((Tiledata*)ea_data(out, 2))->data;
-  
-  buffer = ujGetImageArea(data->uimg, NULL, area->corner.x, area->corner.y, area->width, area->height);
-    
-  switch (data->rot) {
-    case 6 : 
-      rp = r + area->height - 1;
-      gp = g + area->height - 1;
-      bp = b + area->height - 1;
-      xstep = area->height;
-      ystep = -area->height*area->height - 1;
-      break;
-    case 8 : 
-      rp = r + area->height*(area->width - 1);
-      gp = g + area->height*(area->width - 1);
-      bp = b + area->height*(area->width - 1);
-      xstep = -area->height;
-      ystep = area->height*area->width+1;
-      break;
-    case 1 :  
-    default : //FIXME more cases!
-      rp = r;
-      gp = g;
-      bp = b;
-      xstep = 1;
-      ystep = 0;
-      break;
-  }
-
-    for(j=0;j<area->height;j++,rp+=ystep,gp+=ystep,bp+=ystep)
-      for(i=0;i<area->width;i++,rp+=xstep,gp+=xstep,bp+=xstep) {
-        rp[0] = buffer[(j*area->width+i)*3];
-        gp[0] = buffer[(j*area->width+i)*3+1];
-        bp[0] = buffer[(j*area->width+i)*3+2];
-      }
-      
-  //ujDestroy(data->uimg);
-  free(buffer);
-}
-#endif
-
-void _loadjpeg_worker_ijg(Filter *f, Eina_Array *in, Eina_Array *out, Rect *area, int thread_id)
-{
-  _Data *data = ea_data(f->data, 0);
-  
-  uint8_t *r, *g, *b;
-  uint8_t *rp, *gp, *bp;
-  int i, j;
+  int i, j, l;
   int xstep, ystep;
   JSAMPARRAY buffer;		/* Output row buffer */
   int row_stride;		/* physical row width in output buffer */
@@ -594,19 +520,28 @@ void _loadjpeg_worker_ijg(Filter *f, Eina_Array *in, Eina_Array *out, Rect *area
  
   //maximum scaledown: 1/8
   assert(area->corner.scale <= 3);
+  int mul = 1u << area->corner.scale;
  
-  data->serve_minx = area->corner.x / (data->rst_int*data->mcu_w);
-  data->serve_miny = area->corner.y / data->mcu_h;
-  data->serve_maxx = data->serve_minx+JPEG_TILE_SIZE / (data->rst_int*data->mcu_w);
-  //FIXME rounding on odd imaeg dimensions: round up?
-  if (data->serve_maxx > data->w / (data->rst_int*data->mcu_w))
-    data->serve_maxx = data->w / (data->rst_int*data->mcu_w);
-  data->serve_maxy = data->serve_miny+JPEG_TILE_SIZE / data->mcu_h;
+  //FIXME the mul* is strange!
+  data->serve_minx = mul*area->corner.x / (data->rst_int*data->mcu_w);
+  data->serve_miny = mul*area->corner.y / data->mcu_h;
+  if (mul*area->corner.x + mul*area->width > data->w)
+      data->serve_width = data->w-mul*area->corner.x;
+  else
+    data->serve_width = mul*area->width;
+  if (mul*area->corner.y + mul*area->height > data->h)
+      data->serve_height = data->h-mul*area->corner.y;
+  else
+    data->serve_width = mul*area->width;
+  data->serve_maxx = data->serve_minx+data->serve_width / (data->rst_int*data->mcu_w);
+  data->serve_maxy = data->serve_miny+data->serve_height / data->mcu_h;
   if (data->serve_maxy > data->h / data->mcu_h)
     data->serve_maxy = data->h / data->mcu_h;
   data->serve_ix = data->serve_minx;
   data->serve_iy = data->serve_miny;
   data->serve_fakejpg = 0;
+  data->iw = (data->w+data->mcu_w-1) / (data->mcu_w*data->rst_int);
+  data->ih = (data->h+data->mcu_h-1) / data->mcu_h;
   /*if (area->corner.x || area->corner.y) {
     printf("FIXME: invalid tile requested in loadjpg: %dx%d\n", area->corner.x, area->corner.y);
     return;
@@ -647,13 +582,16 @@ void _loadjpeg_worker_ijg(Filter *f, Eina_Array *in, Eina_Array *out, Rect *area
   /*cinfo.dct_method = JDCT_IFAST;
   cinfo.do_fancy_upsampling = FALSE;*/
   jpeg_start_decompress(&cinfo);
-   
-  printf("restart every %d mcus, mcus per row: %d \n", cinfo.restart_interval, cinfo.MCUs_per_row);
   
+  assert(cinfo.output_width == data->serve_width/mul);
+   
+  //printf("restart every %d mcus, mcus per row: %d \n", cinfo.restart_interval, cinfo.MCUs_per_row);
+    
   row_stride = cinfo.output_width * cinfo.output_components;
   buffer = (*cinfo.mem->alloc_sarray)
   ((j_common_ptr) &cinfo, JPOOL_IMAGE, row_stride, 16);
   
+  //FIXME does this still work?
   switch (data->rot) {
     case 6 : 
       rp = r + cinfo.output_height - 1;
@@ -675,12 +613,14 @@ void _loadjpeg_worker_ijg(Filter *f, Eina_Array *in, Eina_Array *out, Rect *area
       gp = g;
       bp = b;
       xstep = 1;
-      ystep = 0;
+      ystep = area->width - data->serve_width/mul;
       break;
   }
 
-  while (cinfo.output_scanline < JPEG_TILE_SIZE/*cinfo.output_height*/) {
+  l = 0;
+  while (l<data->serve_height/mul) {
     lines_read = jpeg_read_scanlines(&cinfo, buffer, 16);
+    l += lines_read;
     for(j=0;j<lines_read;j++,rp+=ystep,gp+=ystep,bp+=ystep)
       for(i=0;i<cinfo.output_width;i++,rp+=xstep,gp+=xstep,bp+=xstep) {
         rp[0] = buffer[j][i*3];
@@ -801,12 +741,12 @@ void _loadjpeg_worker_ijg_original(Filter *f, Eina_Array *in, Eina_Array *out, R
 
 void _loadjpeg_worker(Filter *f, Eina_Array *in, Eina_Array *out, Rect *area, int thread_id)
 {
-#ifdef USE_UJPEG
-  if (!area->corner.scale && data->seekable)
-    _loadjpeg_worker_ujpeg(f, in, out, area, thread_id);
-  else
-#endif
+  _Data *data = ea_data(f->data, thread_id);
+  
+  if (data->seekable)
     _loadjpeg_worker_ijg(f, in, out, area, thread_id);
+  else
+    _loadjpeg_worker_ijg_original(f, in, out, area, thread_id);
 
 }
 
@@ -827,11 +767,9 @@ int _loadjpeg_input_fixed(Filter *f)
   for(i=0;i<ea_count(f->data);i++) {
     tdata = ea_data(f->data, i);
     if (!tdata->filename || strcmp(tdata->filename, data->input->data)) {
-#ifdef USE_UJPEG
-      if (tdata->uimg)
-        ujDestroy(tdata->uimg);
-      tdata->uimg = NULL;
-#endif
+      if (tdata->index)
+        free(tdata->index);
+      tdata->index = NULL;
       tdata->filename = data->input->data;
     }
   }
@@ -859,9 +797,11 @@ int _loadjpeg_input_fixed(Filter *f)
   data->h = cinfo.output_height;
   data->comp_count = cinfo.num_components;
   
-  printf("seekable tile size: %dx%d\n", data->rst_int*data->mcu_w, data->mcu_h);
+  printf("seekable tile size: %dx%d $\n", data->rst_int*data->mcu_w, data->mcu_h);
 
-  if (data->rst_int && JPEG_TILE_SIZE % (data->rst_int * data->mcu_w) == 0)
+  if (data->rst_int 
+    && JPEG_TILE_SIZE % (data->rst_int * data->mcu_w) == 0
+    && data->rot != 6 && data->rot != 8)
     data->seekable = 1;
   
   if (data->rot <= 4) {
@@ -872,26 +812,41 @@ int _loadjpeg_input_fixed(Filter *f)
     ((Dim*)data->dim)->width = cinfo.output_height;
     ((Dim*)data->dim)->height = cinfo.output_width;
   }
-  ((Dim*)data->dim)->scaledown_max = 0;
+  ((Dim*)data->dim)->scaledown_max = 3;
   
   f->tw_s = malloc(sizeof(int)*4);
   f->th_s = malloc(sizeof(int)*4);
-
-  f->tw_s[0] = JPEG_TILE_SIZE;
-  f->th_s[0] = JPEG_TILE_SIZE;
   
-  for(i=data->seekable;i<4;i++) {
-    cinfo.scale_num = 1;
-    cinfo.scale_denom = 1u << i;
-    jpeg_calc_output_dimensions(&cinfo);
-    if (data->rot <= 4) { 
-      f->tw_s[i] = cinfo.output_width;
-      f->th_s[i] = cinfo.output_height;
+  if (data->seekable) {
+    for(i=0;i<4;i++) {
+      cinfo.scale_num = 1;
+      cinfo.scale_denom = 1u << i;
+      jpeg_calc_output_dimensions(&cinfo);
+      if (data->rot <= 4) { 
+        f->tw_s[i] = JPEG_TILE_SIZE;//cinfo.output_width;
+        f->th_s[i] = JPEG_TILE_SIZE;//cinfo.output_height;
+      }
+      else {
+        f->tw_s[i] = JPEG_TILE_SIZE;//cinfo.output_height;
+        f->th_s[i] = JPEG_TILE_SIZE;//cinfo.output_width;
+      }
     }
-    else {
-      f->tw_s[i] = cinfo.output_height;
-      f->th_s[i] = cinfo.output_width;
+  }
+  else {
+    for(i=0;i<4;i++) {
+      cinfo.scale_num = 1;
+      cinfo.scale_denom = 1u << i;
+      jpeg_calc_output_dimensions(&cinfo);
+      if (data->rot <= 4) { 
+        f->tw_s[i] = cinfo.output_width;
+        f->th_s[i] = cinfo.output_height;
+      }
+      else {
+        f->tw_s[i] = cinfo.output_height;
+        f->th_s[i] = cinfo.output_width;
+      }
     }
+    
   }
   //f->tile_width = JPEG_TILE_SIZE;
   //f->tile_height = JPEG_TILE_SIZE;
@@ -925,7 +880,7 @@ Filter *filter_loadjpeg_new(void)
   filter->del = &_del;
   filter->mode_buffer = filter_mode_buffer_new();
   filter->mode_buffer->worker = &_loadjpeg_worker;
-  filter->mode_buffer->threadsafe = 0;
+  filter->mode_buffer->threadsafe = 1;
   filter->mode_buffer->data_new = &_data_new;
   filter->input_fixed = &_loadjpeg_input_fixed;
   filter->fixme_outcount = 3;
