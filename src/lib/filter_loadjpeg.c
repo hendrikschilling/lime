@@ -532,7 +532,7 @@ void _loadjpeg_worker_ijg(Filter *f, Eina_Array *in, Eina_Array *out, Rect *area
   if (mul*area->corner.y + mul*area->height > data->h)
       data->serve_height = data->h-mul*area->corner.y;
   else
-    data->serve_width = mul*area->width;
+    data->serve_height = mul*area->height;
   data->serve_maxx = data->serve_minx+data->serve_width / (data->rst_int*data->mcu_w);
   data->serve_maxy = data->serve_miny+data->serve_height / data->mcu_h;
   if (data->serve_maxy > data->h / data->mcu_h)
@@ -619,7 +619,7 @@ void _loadjpeg_worker_ijg(Filter *f, Eina_Array *in, Eina_Array *out, Rect *area
 
   l = 0;
   while (l<data->serve_height/mul) {
-    lines_read = jpeg_read_scanlines(&cinfo, buffer, 16);
+    lines_read = jpeg_read_scanlines(&cinfo, buffer, data->mcu_h);
     l += lines_read;
     for(j=0;j<lines_read;j++,rp+=ystep,gp+=ystep,bp+=ystep)
       for(i=0;i<cinfo.output_width;i++,rp+=xstep,gp+=xstep,bp+=xstep) {
@@ -627,6 +627,9 @@ void _loadjpeg_worker_ijg(Filter *f, Eina_Array *in, Eina_Array *out, Rect *area
         gp[0] = buffer[j][i*3+1];
         bp[0] = buffer[j][i*3+2];
       }
+    if (lines_read != data->mcu_h) {
+      printf("lines: %d\n", lines_read);
+    }
   }
   
   jpeg_abort_decompress(&cinfo);
