@@ -28,31 +28,22 @@ void filter_memsink_buffer_set(Filter *f, uint8_t *raw_data, int thread_id)
 static void _memsink_worker(Filter *f, Eina_Array *in, Eina_Array *out, Rect *area, int thread_id)
 {
   int i, j;
-  uint8_t *buf, *r, *g, *b;
+  uint8_t *buf, *rgb;
   _Memsink_Data *data = ea_data(f->data, thread_id);
   buf = data->data;
   
-  assert(in && ea_count(in) == 3);
+  assert(in && ea_count(in) == 1);
   
-  r = ((Tiledata*)ea_data(in, 0))->data;
-  g = ((Tiledata*)ea_data(in, 1))->data;
-  b = ((Tiledata*)ea_data(in, 2))->data;
+  rgb = ((Tiledata*)ea_data(in, 0))->data;
   
   area = ((Tiledata*)ea_data(in, 0))->area;
   
   if (*data->use_alpha)
-    for(j=0;j<area->height;j++)
-      for(i=0;i<area->width;i++) {
-	buf[(j*area->width+i)*4+0] = b[j*area->width+i];
-	buf[(j*area->width+i)*4+1] = g[j*area->width+i];
-	buf[(j*area->width+i)*4+2] = r[j*area->width+i];
-      }
+    memcpy(buf, rgb, 4*area->width*area->height);
   else
     for(j=0;j<area->height;j++)
       for(i=0;i<area->width;i++) {
-	buf[(j*area->width+i)*3+0] = r[j*area->width+i];
-	buf[(j*area->width+i)*3+1] = g[j*area->width+i];
-	buf[(j*area->width+i)*3+2] = b[j*area->width+i];
+        abort();
       }
 }
 
@@ -81,23 +72,7 @@ Filter *filter_memsink_new(void)
   
   channel = meta_new_channel(filter, 1);
   color = meta_new_data(MT_COLOR, filter, malloc(sizeof(int)));
-  *(int*)(color->data) = CS_RGB_R;
-  meta_attach(channel, color);
-  meta_attach(channel, bitdepth);
-  meta_attach(channel, size);
-  meta_attach(in, channel);
-  
-  channel = meta_new_channel(filter, 2);
-  color = meta_new_data(MT_COLOR, filter, malloc(sizeof(int)));
-  *(int*)(color->data) = CS_RGB_G;
-  meta_attach(channel, color);
-  meta_attach(channel, bitdepth);
-  meta_attach(channel, size);
-  meta_attach(in, channel);
-  
-  channel = meta_new_channel(filter, 3);
-  color = meta_new_data(MT_COLOR, filter, malloc(sizeof(int)));
-  *(int*)(color->data) = CS_RGB_B;
+  *(int*)(color->data) = CS_INT_ARGB;
   meta_attach(channel, color);
   meta_attach(channel, bitdepth);
   meta_attach(channel, size);

@@ -17,6 +17,7 @@
 #include "filter_pretend.h"
 #include "filter_crop.h"
 #include "filter_simplerotate.h"
+#include "filter_interleave.h"
 
 void lime_filters_init(void);
 void lime_filter_add(Filter_Core *fc);

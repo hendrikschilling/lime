@@ -3,6 +3,7 @@
 #include "filter_convert.h"
 #include "filter_loadjpeg.h"
 #include "filter_loadtiff.h"
+#include "filter_interleave.h"
 
 #define DEBUG_OUT_GRAPH 
 
@@ -580,7 +581,12 @@ Meta *out_tree_construct(Meta *source, Eina_Array *src_con, Eina_Array *sink_con
 	sink = ea_data(sink_con, i);
 	replace = sink->replace;
 	
-	assert(replace);
+	//assert(replace);
+  if (!replace) {
+    printf("DEBUG: CONFIG: no replace for meta\n");
+    meta_print(sink);
+    printf("\n");
+  }
       }
     
     if (!replace) {
@@ -1107,6 +1113,7 @@ int lime_config_test(Filter *f_sink)
   ea_push(insert_f, filter_core_convert.filter_new_f);
   ea_push(insert_f, filter_core_loadtiff.filter_new_f);
   ea_push(insert_f, filter_core_loadjpeg.filter_new_f);
+  ea_push(insert_f, filter_core_interleave.filter_new_f);
   
   err_pos_start = test_filter_config_real(f, 0);
   

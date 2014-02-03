@@ -19,11 +19,23 @@ Tiledata *tiledata_new(Rect *area, int size, Tile *parent)
   
   assert(size == 1);
   
+  tile->size = size;
   tile->data = calloc(size*area->width*area->height, 1);
   tile->area = area;
   tile->parent = parent;
   
   return tile;
+}
+
+void hack_tiledata_fixsize(int size, Tiledata *tile)
+{
+  if (tile->size == size)
+    return;
+  
+  free(tile->data);
+  
+  tile->size = size;
+  tile->data = calloc(size*tile->area->width*tile->area->height, 1);
 }
 
 void tiledata_del(Tiledata *td)

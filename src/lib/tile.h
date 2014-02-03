@@ -13,6 +13,7 @@ typedef struct _Tile Tile;
 #include "filter.h"
 
 struct _Tiledata {
+  int size; //pixel size in bytes
   void *data; //actual pixel (or whatever) data
   Rect *area; //ref to parent tiles, area
   Tile *parent;
@@ -35,6 +36,7 @@ struct _Tile {
 };
 
 Tiledata *tiledata_new(Rect *area, int size, Tile *parent);
+void hack_tiledata_fixsize(int size, Tiledata *tile);
 Tile *tile_new(Rect *area, Tilehash hash, Filter *f, Filter *f_req);
 void tile_del(Tile *tile);
 void tiledata_del(Tiledata *td);

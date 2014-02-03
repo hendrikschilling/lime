@@ -118,6 +118,7 @@ void filter_calc_valid_req_area(Filter *f, Rect *area, Rect *req_area)
 
 void clobbertile_add(Tiledata *big, Tiledata *small)
 {
+  int size;
   int minx, miny, maxx, maxy;
   int width;
   int y;
@@ -127,6 +128,10 @@ void clobbertile_add(Tiledata *big, Tiledata *small)
   assert(big->area->corner.scale == small->area->corner.scale);
   assert(big->data);
   assert(small->data);
+  
+  //FIXME proper pixel size handling!
+  hack_tiledata_fixsize(small->size, big);
+  size = small->size;
 
   minx = big->area->corner.x;
   if (small->area->corner.x > minx) minx = small->area->corner.x;
@@ -142,10 +147,11 @@ void clobbertile_add(Tiledata *big, Tiledata *small)
   if (small->area->corner.y + small->area->height < maxy) maxy = small->area->corner.y + small->area->height;
   
   //FIXME BITDEPTH!!!
+  //assert(big->size = small->size);
   for(y=miny;y<maxy;y++) {
-    memcpy(big->  data + (y-big  ->area->corner.y)*big  ->area->width + minx-big  ->area->corner.x,
-	   small->data + (y-small->area->corner.y)*small->area->width + minx-small->area->corner.x,
-	   width);
+    memcpy(big->  data + size*((y-big  ->area->corner.y)*big  ->area->width + minx-big  ->area->corner.x),
+	   small->data + size*((y-small->area->corner.y)*small->area->width + minx-small->area->corner.x),
+	   width*size);
   }
 }
 
