@@ -642,7 +642,7 @@ void mat_cache_flush(Mat_Cache *mat_cache)
   }
 }
 
-void mat_cache_check(Mat_Cache *mat_cache)
+/*void mat_cache_check(Mat_Cache *mat_cache)
 {
   int layer = 0;
   float scale = actual_scale_get();
@@ -651,7 +651,7 @@ void mat_cache_check(Mat_Cache *mat_cache)
     layer++;
     scale /= 2;
   }
-}
+}*/
 
 void mat_cache_del(Mat_Cache *mat_cache)
 {
@@ -1324,8 +1324,6 @@ void tags_select_do(void *data, Evas_Object *obj)
 
 void delgrid(void)
 {  
-  bench_delay_start();
-  
   if (mat_cache_old)
     return;
   
@@ -1466,6 +1464,8 @@ void step_image_do(void *data, Evas_Object *obj)
   Elm_Object_Item *item;
   Eina_List *filters;
   
+  printf("non-chancellation delay: %f\n", bench_delay_get());
+  
   file_idx = elm_slider_value_get(file_slider);
   
   bench_delay_start();
@@ -1551,6 +1551,7 @@ void step_image_do(void *data, Evas_Object *obj)
     group = eina_inarray_nth(files, file_idx);
     
     if (start_idx == file_idx){
+      printf("no valid configuration found!\n");
       elm_exit_do(NULL, NULL);
       return;
     }
@@ -1582,7 +1583,8 @@ void step_image_do(void *data, Evas_Object *obj)
   forbid_fill--;
  
   size_recalc();
-  
+    
+  printf("configuration delay: %f\n", bench_delay_get());
   fill_scroller_preview();
   fill_scroller();
 }
@@ -2034,6 +2036,8 @@ static void
 on_next_image(void *data, Evas_Object *obj, void *event_info)
 {
   file_step = 1;
+  
+  bench_delay_start();
   
   //if (grid && )
   
