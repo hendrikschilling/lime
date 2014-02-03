@@ -79,7 +79,7 @@ typedef my_source_mgr * my_src_ptr;
  
 #define SKIP_BUF(N) \
   {\
-    if (N > BUF_SIZE) {\
+    if (N > BUF_SIZE || N < 0) {\
       fseek(f, file_pos + N - remain, SEEK_SET); \
       file_pos += N - remain; \
       remain = 0; \
@@ -95,6 +95,9 @@ int jpeg_read_infos(FILE *f, _Data *data)
 {
   int i;
   int len;
+  int last_interval;
+  int curr_interval;
+  int last_jump;
   int remain = 0;
   int file_pos = 0;
   int next_restart;
@@ -145,10 +148,20 @@ int jpeg_read_infos(FILE *f, _Data *data)
         iy = 0;
         i = 0;
         data->index[0] = file_pos - remain;
+        last_interval = 0;
+        curr_interval = 0;
         while(1) {
           if (pos[i] == 0xFF && (pos[i+1] & 0xF0) == 0xD0)
           {
-            assert((pos[i+1] & 0x0F) == next_restart);
+            if ((pos[i+1] & 0x0F) != next_restart) {
+              assert(last_jump > 0);
+              SKIP_BUF(-curr_interval+1)
+              //printf("back-skip %d\n", curr_interval+1);
+              curr_interval = 0;
+              ATLEAST_BUF(i+4)
+              last_jump = 0;
+              continue;
+            }
             ix++;
             if (ix >= data->iw) {
               ix = 0;
@@ -164,9 +177,21 @@ int jpeg_read_infos(FILE *f, _Data *data)
               printf("built index!\n");
               break;
             }
+            
+            last_interval = curr_interval;
+            curr_interval = 0;
+            //printf("marker interval: %d\n", last_interval);
+            SKIP_BUF(i)
+            i = 0;
+            ATLEAST_BUF(4)
+            curr_interval = last_interval*0.75;
+            last_jump = curr_interval;
+            SKIP_BUF(last_jump)
+            ATLEAST_BUF(4)
           }
           
           i++;
+          curr_interval++;
           if (i == remain-1) {
             SKIP_BUF(i)
             ATLEAST_BUF(4)
@@ -627,9 +652,9 @@ void _loadjpeg_worker_ijg(Filter *f, Eina_Array *in, Eina_Array *out, Rect *area
         gp[0] = buffer[j][i*3+1];
         bp[0] = buffer[j][i*3+2];
       }
-    if (lines_read != data->mcu_h) {
+    /*if (lines_read != data->mcu_h) {
       printf("lines: %d\n", lines_read);
-    }
+    }*/
   }
   
   jpeg_abort_decompress(&cinfo);
