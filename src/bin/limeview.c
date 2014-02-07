@@ -1085,9 +1085,10 @@ int fill_area(int xm, int ym, int wm, int hm, int minscale, int preview)
   for(scale=scale_start;scale>=minscale;scale--) {
     //additional scaledown for preview
     scalediv = ((uint32_t)1) << scale;
-    for(i=x/TILE_SIZE/scalediv;i<(x+w+TILE_SIZE*scalediv-1)/TILE_SIZE/scalediv;i++)
-      for(j=y/TILE_SIZE/scalediv;j<(y+h+TILE_SIZE*scalediv-1)/TILE_SIZE/scalediv;j++) {
-	cell = mat_cache_get(mat_cache, scale, i, j);
+    for(j=y/TILE_SIZE/scalediv;j<(y+h+TILE_SIZE*scalediv-1)/TILE_SIZE/scalediv;j++) 
+	    for(i=x/TILE_SIZE/scalediv;i<(x+w+TILE_SIZE*scalediv-1)/TILE_SIZE/scalediv;i++) {
+
+        cell = mat_cache_get(mat_cache, scale, i, j);
 	
 	if (i*TILE_SIZE*scalediv >= size.width || j*TILE_SIZE*scalediv >= size.height)
 	  continue;

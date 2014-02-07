@@ -4,7 +4,7 @@
 #include <jpeglib.h>
 #include <setjmp.h>
 
-#define JPEG_TILE_WIDTH 65535
+#define JPEG_TILE_WIDTH 256
 #define JPEG_TILE_HEIGHT 256
 
 #include "jinclude.h"
@@ -37,6 +37,7 @@ typedef struct {
   int serve_bytes;
   int serve_width;
   int serve_height;
+  int rst_next;
   int iw, ih;
 #ifdef USE_UJPEG
   ujImage uimg;
@@ -182,13 +183,13 @@ int jpeg_read_infos(FILE *f, _Data *data)
             last_interval = curr_interval;
             curr_interval = 0;
             //printf("marker interval: %d\n", last_interval);
-            SKIP_BUF(i)
+            /*SKIP_BUF(i)
             i = 0;
             ATLEAST_BUF(4)
             curr_interval = last_interval*0.75;
             last_jump = curr_interval;
             SKIP_BUF(last_jump)
-            ATLEAST_BUF(4)
+            ATLEAST_BUF(4)*/
           }
           
           i++;
@@ -293,6 +294,10 @@ fill_input_buffer (j_decompress_ptr cinfo)
     assert(2*INPUT_BUF_SIZE >= size);
     nbytes = JFREAD(src->infile, src->buffer, size);
     //FIXME check size?
+    if (size != INPUT_BUF_SIZE) {
+      src->buffer[nbytes-1] = 0xd0 | src->data->rst_next;
+      src->data->rst_next = (src->data->rst_next+1) % 8;
+    }
     src->data->file_pos = src->data->index[src->data->serve_iy*src->data->iw+src->data->serve_ix] + nbytes;
     src->data->serve_ix++;
     if (src->data->serve_ix >= src->data->serve_maxx) {
@@ -300,7 +305,7 @@ fill_input_buffer (j_decompress_ptr cinfo)
       src->data->serve_iy++;
       if (src->data->serve_iy == src->data->serve_maxy) {
         src->data->serve_fakejpg = 0;
-        printf("we have served the whole area!\n");
+        //printf("we have served the whole area!\n");
       }
     }
   }
@@ -312,7 +317,7 @@ fill_input_buffer (j_decompress_ptr cinfo)
       nbytes = JFREAD(src->infile, src->buffer, 2*INPUT_BUF_SIZE);
     //FIXME
     int i = src->data->size_pos - src->data->file_pos;
-    printf("size on fill: %dx%d\n%x %x %x %x %x %x\n%d\n", src->buffer[i+2]*256+src->buffer[i+3],src->buffer[i]*256+src->buffer[i+1],src->buffer[i],src->buffer[i+1],src->buffer[i+2],src->buffer[i+3],src->buffer[i+4],src->buffer[i+5],src->data->size_pos);
+    //printf("size on fill: %dx%d\n%x %x %x %x %x %x\n%d\n", src->buffer[i+2]*256+src->buffer[i+3],src->buffer[i]*256+src->buffer[i+1],src->buffer[i],src->buffer[i+1],src->buffer[i+2],src->buffer[i+3],src->buffer[i+4],src->buffer[i+5],src->data->size_pos);
     src->buffer[i+2] = src->data->serve_width / 256; //pretend size to be 256!
     src->buffer[i+3] = src->data->serve_width % 256;
   }
@@ -321,12 +326,15 @@ fill_input_buffer (j_decompress_ptr cinfo)
     nbytes = JFREAD(src->infile, src->buffer, src->data->index[0]-src->data->file_pos);
   }
   else if (src->data->file_pos == src->data->index[0]) {
-    printf("wohoo now feed fake jpeg\n");
+    //printf("wohoo now feed fake jpeg\n");
     src->data->serve_fakejpg = 1;
+    src->data->rst_next = 0;
     size = src->data->index[src->data->serve_iy*src->data->iw+src->data->serve_ix+1]-src->data->index[src->data->serve_iy*src->data->iw+src->data->serve_ix];
     fseek(src->infile, src->data->index[src->data->serve_iy*src->data->iw+src->data->serve_ix], SEEK_SET);
     assert(INPUT_BUF_SIZE > size);
     nbytes = JFREAD(src->infile, src->buffer, size);
+    src->buffer[nbytes-1] = 0xd0 | src->data->rst_next;
+    src->data->rst_next = (src->data->rst_next+1) % 8;
     assert(nbytes == size);
     src->data->file_pos = src->data->index[src->data->serve_iy*src->data->iw+src->data->serve_ix] + nbytes;
     src->data->serve_ix++;
@@ -335,7 +343,7 @@ fill_input_buffer (j_decompress_ptr cinfo)
       src->data->serve_iy++;
       if (src->data->serve_iy == src->data->serve_maxy) {
         src->data->serve_fakejpg = 0;
-        printf("we have served the whole area!\n");
+        //printf("we have served the whole area!\n");
       }
     }
   }
@@ -610,7 +618,7 @@ void _loadjpeg_worker_ijg(Filter *f, Eina_Array *in, Eina_Array *out, Rect *area
   
   assert(!cinfo.coef_bits);
   
-  printf("outbuf: %d\n", cinfo.rec_outbuf_height);
+  /*printf("outbuf: %d\n", cinfo.rec_outbuf_height);
   for(i=0;i<3;i++) {
     printf("comp %d hv: %dx%d\n%d %dx%d %d\n", i, 
            cinfo.comp_info[i].h_samp_factor,
@@ -619,7 +627,7 @@ void _loadjpeg_worker_ijg(Filter *f, Eina_Array *in, Eina_Array *out, Rect *area
            cinfo.comp_info[i].width_in_blocks,
            cinfo.comp_info[i].height_in_blocks,
            cinfo.comp_info[i].MCU_sample_width);
-  }
+  }*/
   
   assert(cinfo.output_width == data->serve_width/mul);
    
@@ -629,7 +637,7 @@ void _loadjpeg_worker_ijg(Filter *f, Eina_Array *in, Eina_Array *out, Rect *area
   buffer = (*cinfo.mem->alloc_sarray)
   ((j_common_ptr) &cinfo, JPOOL_IMAGE, row_stride, data->mcu_h/mul);
   
-  printf("row stride: %d\n", row_stride);
+  //printf("row stride: %d\n", row_stride);
   
   
   rp = r;
