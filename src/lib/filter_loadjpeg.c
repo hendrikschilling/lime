@@ -26,7 +26,7 @@ typedef struct {
   int mcu_w, mcu_h;
   int w, h;
   int comp_count;
-  int *index;
+  int **index;
   int serve_ix;
   int serve_iy;
   int serve_minx;
@@ -106,7 +106,7 @@ int jpeg_read_infos(FILE *f, _Data *data)
   unsigned char buf[2*BUF_SIZE];
   unsigned char *pos = buf;
   int ix, iy;
-  data->index = calloc(sizeof(int)*data->iw*data->ih, 1);
+  *data->index = calloc(sizeof(int)*data->iw*data->ih, 1);
   
   fseek(f, 0, SEEK_SET);
   ATLEAST_BUF(BUF_SIZE);
@@ -149,7 +149,7 @@ int jpeg_read_infos(FILE *f, _Data *data)
         ix = 0;
         iy = 0;
         i = 0;
-        data->index[0] = file_pos - remain;
+        (*data->index)[0] = file_pos - remain;
         last_interval = 0;
         curr_interval = 0;
         while(1) {
@@ -171,7 +171,7 @@ int jpeg_read_infos(FILE *f, _Data *data)
             }
             //printf("%4dx%4d ", ix*data->mcu_w, iy*data->mcu_h);
             //we point to after the restart marker
-            data->index[iy*data->iw + ix] = file_pos - remain + i+2; 
+            (*data->index)[iy*data->iw + ix] = file_pos - remain + i+2; 
             //printf("found %d\n", next_restart);
             next_restart = (next_restart+1) % 8;
             
@@ -186,7 +186,7 @@ int jpeg_read_infos(FILE *f, _Data *data)
             /*SKIP_BUF(i)
             i = 0;
             ATLEAST_BUF(4)
-            curr_interval = last_interval*0.75;
+            curr_interval = last_interval*0.5;
             last_jump = curr_interval;
             SKIP_BUF(last_jump)
             ATLEAST_BUF(4)*/
@@ -289,8 +289,8 @@ fill_input_buffer (j_decompress_ptr cinfo)
         && src->data->serve_ix == src->data->serve_maxx-1)
       size = INPUT_BUF_SIZE;
     else
-      size = src->data->index[src->data->serve_iy*src->data->iw+src->data->serve_ix+1]-src->data->index[src->data->serve_iy*src->data->iw+src->data->serve_ix];
-    fseek(src->infile, src->data->index[src->data->serve_iy*src->data->iw+src->data->serve_ix], SEEK_SET);
+      size = (*src->data->index)[src->data->serve_iy*src->data->iw+src->data->serve_ix+1]-(*src->data->index)[src->data->serve_iy*src->data->iw+src->data->serve_ix];
+    fseek(src->infile, (*src->data->index)[src->data->serve_iy*src->data->iw+src->data->serve_ix], SEEK_SET);
     assert(2*INPUT_BUF_SIZE >= size);
     nbytes = JFREAD(src->infile, src->buffer, size);
     //FIXME check size?
@@ -298,7 +298,7 @@ fill_input_buffer (j_decompress_ptr cinfo)
       src->buffer[nbytes-1] = 0xd0 | src->data->rst_next;
       src->data->rst_next = (src->data->rst_next+1) % 8;
     }
-    src->data->file_pos = src->data->index[src->data->serve_iy*src->data->iw+src->data->serve_ix] + nbytes;
+    src->data->file_pos = (*src->data->index)[src->data->serve_iy*src->data->iw+src->data->serve_ix] + nbytes;
     src->data->serve_ix++;
     if (src->data->serve_ix >= src->data->serve_maxx) {
       src->data->serve_ix = src->data->serve_minx;
@@ -311,8 +311,8 @@ fill_input_buffer (j_decompress_ptr cinfo)
   }
   else if (src->data->file_pos < src->data->size_pos 
       && src->data->file_pos + INPUT_BUF_SIZE >= src->data->size_pos) {
-    if (src->data->file_pos + 2*INPUT_BUF_SIZE >= src->data->index[0])
-      nbytes = JFREAD(src->infile, src->buffer, src->data->index[0]-src->data->file_pos);
+    if (src->data->file_pos + 2*INPUT_BUF_SIZE >= (*src->data->index)[0])
+      nbytes = JFREAD(src->infile, src->buffer, (*src->data->index)[0]-src->data->file_pos);
     else
       nbytes = JFREAD(src->infile, src->buffer, 2*INPUT_BUF_SIZE);
     //FIXME
@@ -321,22 +321,22 @@ fill_input_buffer (j_decompress_ptr cinfo)
     src->buffer[i+2] = src->data->serve_width / 256; //pretend size to be 256!
     src->buffer[i+3] = src->data->serve_width % 256;
   }
-  else if (src->data->file_pos < src->data->index[0]
-      && src->data->file_pos + INPUT_BUF_SIZE >= src->data->index[0]) {
-    nbytes = JFREAD(src->infile, src->buffer, src->data->index[0]-src->data->file_pos);
+  else if (src->data->file_pos < (*src->data->index)[0]
+      && src->data->file_pos + INPUT_BUF_SIZE >= (*src->data->index)[0]) {
+    nbytes = JFREAD(src->infile, src->buffer, (*src->data->index)[0]-src->data->file_pos);
   }
-  else if (src->data->file_pos == src->data->index[0]) {
+  else if (src->data->file_pos == (*src->data->index)[0]) {
     //printf("wohoo now feed fake jpeg\n");
     src->data->serve_fakejpg = 1;
     src->data->rst_next = 0;
-    size = src->data->index[src->data->serve_iy*src->data->iw+src->data->serve_ix+1]-src->data->index[src->data->serve_iy*src->data->iw+src->data->serve_ix];
-    fseek(src->infile, src->data->index[src->data->serve_iy*src->data->iw+src->data->serve_ix], SEEK_SET);
+    size = (*src->data->index)[src->data->serve_iy*src->data->iw+src->data->serve_ix+1]-(*src->data->index)[src->data->serve_iy*src->data->iw+src->data->serve_ix];
+    fseek(src->infile, (*src->data->index)[src->data->serve_iy*src->data->iw+src->data->serve_ix], SEEK_SET);
     assert(INPUT_BUF_SIZE > size);
     nbytes = JFREAD(src->infile, src->buffer, size);
     src->buffer[nbytes-1] = 0xd0 | src->data->rst_next;
     src->data->rst_next = (src->data->rst_next+1) % 8;
     assert(nbytes == size);
-    src->data->file_pos = src->data->index[src->data->serve_iy*src->data->iw+src->data->serve_ix] + nbytes;
+    src->data->file_pos = (*src->data->index)[src->data->serve_iy*src->data->iw+src->data->serve_ix] + nbytes;
     src->data->serve_ix++;
     if (src->data->serve_ix >= src->data->serve_maxx) {
       src->data->serve_ix = src->data->serve_minx;
@@ -498,7 +498,7 @@ void *_data_new(Filter *f, void *data)
   *newdata = *(_Data*)data;
 
   //FIXME reuse (create on input_fixed?)
-  newdata->index = NULL;
+  newdata->index = calloc(sizeof(int**), 1);
   
   return newdata;
 }
@@ -589,7 +589,7 @@ void _loadjpeg_worker_ijg(Filter *f, Eina_Array *in, Eina_Array *out, Rect *area
   if (!file)
     abort();
   
-  if (!data->index) {
+  if (!(*data->index)) {
     jpeg_read_infos(file, data);
     fseek(file, 0, SEEK_SET);
   }
@@ -784,7 +784,7 @@ void _loadjpeg_worker(Filter *f, Eina_Array *in, Eina_Array *out, Rect *area, in
 {
   _Data *data = ea_data(f->data, thread_id);
   
-  if (data->seekable)
+  if (area->corner.scale < data->seekable)
     _loadjpeg_worker_ijg(f, in, out, area, thread_id);
   else
     _loadjpeg_worker_ijg_original(f, in, out, area, thread_id);
@@ -800,6 +800,7 @@ int min(a, b)
 int _loadjpeg_input_fixed(Filter *f)
 {
   int i;
+  int size;
   _Data *data = ea_data(f->data, 0);
   _Data *tdata;
   struct jpeg_decompress_struct cinfo;
@@ -810,13 +811,14 @@ int _loadjpeg_input_fixed(Filter *f)
   
   if (!file)
     return -1;
-  
+    
   for(i=0;i<ea_count(f->data);i++) {
     tdata = ea_data(f->data, i);
     if (!tdata->filename || strcmp(tdata->filename, data->input->data)) {
-      if (tdata->index)
-        free(tdata->index);
-      tdata->index = NULL;
+      if (*tdata->index) {
+        free(*tdata->index);
+        *tdata->index = NULL;
+      } 
       tdata->filename = data->input->data;
     }
   }
@@ -849,7 +851,7 @@ int _loadjpeg_input_fixed(Filter *f)
   if (data->rst_int 
     && JPEG_TILE_WIDTH % (data->rst_int * data->mcu_w) == 0
     && data->rot != 6 && data->rot != 8)
-    data->seekable = 1;
+    data->seekable = 4;
   
   if (data->rot <= 4) {
     ((Dim*)data->dim)->width = cinfo.output_width;
@@ -864,33 +866,51 @@ int _loadjpeg_input_fixed(Filter *f)
   f->tw_s = malloc(sizeof(int)*4);
   f->th_s = malloc(sizeof(int)*4);
   
-  if (data->seekable) {
-    for(i=0;i<4;i++) {
-      cinfo.scale_num = 1;
-      cinfo.scale_denom = 1u << i;
-      jpeg_calc_output_dimensions(&cinfo);
-      f->tw_s[i] = min(JPEG_TILE_WIDTH, cinfo.output_width);
-      f->th_s[i] = min(JPEG_TILE_HEIGHT, cinfo.output_height);
-    }
-  }
-  else {
-    for(i=0;i<4;i++) {
-      cinfo.scale_num = 1;
-      cinfo.scale_denom = 1u << i;
-      jpeg_calc_output_dimensions(&cinfo);
-      if (data->rot <= 4) { 
-        f->tw_s[i] = cinfo.output_width;
-        f->th_s[i] = cinfo.output_height;
-      }
-      else {
-        f->tw_s[i] = cinfo.output_height;
-        f->th_s[i] = cinfo.output_width;
-      }
+  for(i=0;i<data->seekable;i++) {
+    cinfo.scale_num = 1;
+    cinfo.scale_denom = 1u << i;
+    jpeg_calc_output_dimensions(&cinfo);
+    //if image is not much larger than tile size we use image size to avoid huge overhead
+    //max overhead in x dimension is now <20%
+    //FIXME additionally choose smaler sizes depnding on tread coun!
+    /*size = JPEG_TILE_WIDTH / 2;
+    if (i == 3)
+      f->tw_s[i] = 8;*/
+    /*while ((size % (data->rst_int*data->mcu_w/cinfo.scale_denom)) && ((cinfo.output_width % f->tw_s[i]) != 0)) {
+      f->tw_s[i] = size;
+      size/= 2;
+    }*/
+    
+    //overhead <20% (for full image)
+    /*if (JPEG_TILE_HEIGHT >=  cinfo.output_height)
+      f->th_s[i] = cinfo.output_height;
+    else*/
+    
+    f->tw_s[i] = min(JPEG_TILE_WIDTH, cinfo.output_width);
+    f->th_s[i] = min(JPEG_TILE_HEIGHT, cinfo.output_height);
+    
+    if (i == 3) {
+      f->tw_s[i] = cinfo.output_width/2;
+      f->th_s[i] = cinfo.output_height/8;
     }
     
+    //f->th_s[i] = 216;
+    
+    printf("tile sizes at scale %d (%dx%d) : %dx%d\n", i, cinfo.output_width, cinfo.output_height, f->tw_s[i], f->th_s[i]);
   }
-  //f->tile_width = JPEG_TILE_SIZE;
-  //f->tile_height = JPEG_TILE_SIZE;
+  for(i=data->seekable;i<4;i++) {
+    cinfo.scale_num = 1;
+    cinfo.scale_denom = 1u << i;
+    jpeg_calc_output_dimensions(&cinfo);
+    if (data->rot <= 4) { 
+      f->tw_s[i] = cinfo.output_width;
+      f->th_s[i] = cinfo.output_height;
+    }
+    else {
+      f->tw_s[i] = cinfo.output_height;
+      f->th_s[i] = cinfo.output_width;
+    }
+  }
   
   jpeg_destroy_decompress(&cinfo);
   
@@ -916,6 +936,7 @@ Filter *filter_loadjpeg_new(void)
   Filter *filter = filter_new(&filter_core_loadjpeg);
   Meta *in, *out, *channel, *bitdepth, *color, *dim;
   _Data *data = calloc(sizeof(_Data), 1);
+  data->index = calloc(sizeof(int**), 1);
   data->dim = calloc(sizeof(Dim), 1);
   
   filter->del = &_del;

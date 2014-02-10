@@ -1,5 +1,5 @@
 #include <Elementary.h>
-#include <elm_win_legacy.h>
+//#include <elm_win_legacy.h>
 #include <Ecore.h>
 #include <Eio.h>
 #include <fcntl.h>
@@ -35,6 +35,7 @@ typedef struct {
 } Export_Data;
 
 typedef struct {
+  const char *dirname;
   const char *filename;
   const char *sidecar;
   Eina_Array *tags;
@@ -51,8 +52,8 @@ typedef struct {
 
 Eina_Inarray *files;
 
-char image_path[EINA_PATH_MAX];
-char *image_file;
+//char image_path[EINA_PATH_MAX];
+//char *image_file;
 Eina_Hash *tags_filter;
 int tags_filter_rating = 0;
 char *dir;
@@ -120,6 +121,24 @@ void workerfinish_schedule(void (*func)(void *data, Evas_Object *obj), void *dat
 void filter_settings_create_gui(Eina_List *chain_node, Evas_Object *box);
 void fill_scroller_preview(void);
 void save_sidecar(File_Group *group);
+
+
+Tagged_File *tagged_file_new_from_path(const char *path)
+{
+  Tagged_File *file = calloc(sizeof(Tagged_File), 1);
+  char *filename;
+  
+  filename = strrchr(path, '/');
+  
+  if (filename) {
+    file->dirname = eina_stringshare_add_length(path, filename-path);
+    file->filename = eina_stringshare_add(filename+1);
+  }
+  else
+    file->filename = eina_stringshare_add(path);
+
+  return file;
+}
 
 Filter_Chain *fc_new(Filter *f)
 {
@@ -804,6 +823,7 @@ _process_tile(void *data, Ecore_Thread *th)
 {
   _Img_Thread_Data *tdata = data;
     
+  eina_sched_prio_drop();
   lime_render_area(&tdata->area, sink, tdata->t_id);
 }
 
@@ -1085,8 +1105,8 @@ int fill_area(int xm, int ym, int wm, int hm, int minscale, int preview)
   for(scale=scale_start;scale>=minscale;scale--) {
     //additional scaledown for preview
     scalediv = ((uint32_t)1) << scale;
-    for(j=y/TILE_SIZE/scalediv;j<(y+h+TILE_SIZE*scalediv-1)/TILE_SIZE/scalediv;j++) 
-	    for(i=x/TILE_SIZE/scalediv;i<(x+w+TILE_SIZE*scalediv-1)/TILE_SIZE/scalediv;i++) {
+      for(i=x/TILE_SIZE/scalediv;i<(x+w+TILE_SIZE*scalediv-1)/TILE_SIZE/scalediv;i++)
+    for(j=y/TILE_SIZE/scalediv;j<(y+h+TILE_SIZE*scalediv-1)/TILE_SIZE/scalediv;j++) {
 
         cell = mat_cache_get(mat_cache, scale, i, j);
 	
@@ -1272,8 +1292,7 @@ void group_select_do(void *data, Evas_Object *obj)
       continue;
     }
       
-    strcpy(image_file, filename);
-    lime_setting_string_set(load, "filename", image_path);
+    lime_setting_string_set(load, "filename", filename);
     
     failed = lime_config_test(sink);
     if (failed)
@@ -1309,8 +1328,7 @@ void tags_select_do(void *data, Evas_Object *obj)
       continue;
     }
       
-    strcpy(image_file, filename);
-    lime_setting_string_set(load, "filename", image_path);
+    lime_setting_string_set(load, "filename", filename);
     
     failed = lime_config_test(sink);
     if (failed)
@@ -1534,12 +1552,15 @@ void step_image_do(void *data, Evas_Object *obj)
     fc_new_from_filters(filters);
   } 
 	  
-	strcpy(image_file, filename);
-	lime_setting_string_set(load, "filename", image_path);
+	//strcpy(image_file, filename);
+	lime_setting_string_set(load, "filename", filename);
   
 	failed = lime_config_test(sink);
-	if (failed)
+  printf("configuration delay test: %f\n", bench_delay_get());
+	if (failed) {
+	  printf("failed to open %s\n", filename);
 	  group_idx++;
+	}
       }
     }
     else
@@ -1552,11 +1573,20 @@ void step_image_do(void *data, Evas_Object *obj)
     group = eina_inarray_nth(files, file_idx);
     
     if (start_idx == file_idx){
-      printf("no valid configuration found!\n");
+      printf("no valid configuration found for any file!\n");
       elm_exit_do(NULL, NULL);
       return;
     }
   }
+  
+  printf("configuration delay: %f\n", bench_delay_get());
+  //we start as early as possible with rendering!
+  forbid_fill--;
+  size_recalc();
+  fill_scroller_preview();
+  fill_scroller();
+  
+  printf("configuration delay a: %f\n", bench_delay_get());
     
   elm_list_clear(group_list);
   for(i=0;i<eina_inarray_count(group->files);i++)
@@ -1569,25 +1599,27 @@ void step_image_do(void *data, Evas_Object *obj)
       }
     }
     
+    
+  printf("configuration delay b: %f\n", bench_delay_get());
 
   elm_list_go(group_list);
   
   //update tag list
   elm_genlist_clear(tags_list);
+  
+  printf("configuration delay b1: %f\n", bench_delay_get());
+  
+  //FIXME why is this so fucking slow?
   eina_hash_foreach(known_tags, tags_hash_func, group);
+  
+  printf("configuration delay b2: %f\n", bench_delay_get());
   
   //update tag rating
   elm_segment_control_item_selected_set(elm_segment_control_item_get(seg_rating, group->tag_rating), EINA_TRUE);
   
-  elm_slider_value_set(file_slider, file_idx+0.1);
+  printf("configuration delay c: %f\n", bench_delay_get());  
   
-  forbid_fill--;
- 
-  size_recalc();
-    
-  printf("configuration delay: %f\n", bench_delay_get());
-  fill_scroller_preview();
-  fill_scroller();
+  elm_slider_value_set(file_slider, file_idx+0.1);
 }
 
 void del_file_done(void *data, Eio_File *handler)
@@ -1607,7 +1639,8 @@ void file_group_del(File_Group *group)
 
 void delete_image_do(void *data, Evas_Object *obj)
 {
-  char *dest = malloc(EINA_PATH_MAX);
+  abort();
+  /*char *dest = malloc(EINA_PATH_MAX);
   char *dest_file = dest + (image_file - image_path);
 
   Tagged_File *file;
@@ -1642,7 +1675,7 @@ void delete_image_do(void *data, Evas_Object *obj)
   step_image_do(NULL, NULL);
   
   free(dest);
-  file_group_del(group);
+  file_group_del(group);*/
 }
 
 
@@ -2144,11 +2177,11 @@ static void on_insert_after(void *data, Evas_Object *obj, void *event_info)
 }
 
 static Eina_Bool
-_ls_filter_cb(void *data, Eio_File *handler, const Eina_File_Direct_Info *info)
+_ls_filter_cb(void *data, Eio_File *handler, Eina_File_Direct_Info *info)
 {  
-  if (info->type == EINA_FILE_REG || info->type == EINA_FILE_LNK || info->type == EINA_FILE_UNKNOWN)
+  if (info->type == EINA_FILE_REG || info->type == EINA_FILE_LNK || info->type == EINA_FILE_UNKNOWN || info->type == EINA_FILE_DIR)
     return EINA_TRUE;
-  
+    
   return EINA_FALSE;
 }
 
@@ -2162,8 +2195,7 @@ Tagged_File tag_file_new(File_Group *group, const char *name)
     //FIXME only one sidecar per group for now
     assert(!group->sidecar);
     group->sidecar = file.sidecar;
-    strcpy(image_file, name);
-    xmp_gettags(image_path, group);
+    xmp_gettags(name, group);
   }
   else 
     file.filename = name;
@@ -2228,6 +2260,18 @@ int cmp_img_file(char *a, char *b)
 	
 }
 
+int cmp_tagged_files(Tagged_File *a, Tagged_File *b)
+{
+  int cmp;
+   
+  cmp = strcmp(a->dirname, b->dirname);
+  
+  if (!cmp)
+    cmp = strcmp(a->filename, b->filename);
+  
+  return cmp;
+}
+
 static void
 _ls_done_cb(void *data, Eio_File *handler)
 {
@@ -2287,11 +2331,16 @@ _ls_done_cb(void *data, Eio_File *handler)
 
 static void
 _ls_main_cb(void *data, Eio_File *handler, const Eina_File_Direct_Info *info)
-{
-  const char *file = eina_stringshare_add(&info->path[info->name_start]);
-  
-  if (!eina_inarray_count(files) || strcmp(eina_inarray_nth(files, 0), file))
+{ 
+
+  const char *file = eina_stringshare_add(info->path);
+
+  if (info->type != EINA_FILE_DIR)
     files_unsorted = eina_list_append(files_unsorted, file);
+  
+  if (/*(!eina_inarray_count(files) || strcmp(eina_inarray_nth(files, 0), file)) &&*/ info->type != EINA_FILE_DIR) { 
+    //files_unsorted = eina_list_append(files_unsorted, tagged_file_new_from_path(info->path));
+  }
 }
 
 static void
@@ -2971,8 +3020,8 @@ elm_main(int argc, char **argv)
   known_tags = eina_hash_string_superfast_new(NULL);
   tags_filter = eina_hash_string_superfast_new(NULL);
   
-  strcpy(image_path, dir);
-  image_file = image_path + strlen(image_path);
+  //strcpy(image_path, dir);
+  //image_file = image_path + strlen(image_path);
   
   print_init_info(bench, cache_size, cache_metric, cache_strategy, file, dir);
   
@@ -3231,7 +3280,7 @@ elm_main(int argc, char **argv)
   if (file)
     eina_inarray_push(files, file_group_new(file));
   
-  eio_file_direct_ls(dir, &_ls_filter_cb, &_ls_main_cb,&_ls_done_cb, &_ls_error_cb,NULL);
+  eio_dir_direct_ls(dir, &_ls_filter_cb, &_ls_main_cb,&_ls_done_cb, &_ls_error_cb,NULL);
   
   /*test_filter_config(load);
    s ize = *(*Dim*)filter_core_by_type(sink, MT_IMGSIZE);
@@ -3249,7 +3298,8 @@ elm_main(int argc, char **argv)
   evas_object_show(win);
   elm_scroller_region_show(scroller, 0, 0, 1, 1);
   
-  ecore_event_handler_add(ECORE_EXE_EVENT_DEL, &_rsync_term, NULL);
+  //FIXME
+  //ecore_event_handler_add(ECORE_EXE_EVENT_DEL, &_rsync_term, NULL);
   
   if (winsize)
     evas_object_resize(win, winsize, winsize);

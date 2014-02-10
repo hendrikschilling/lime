@@ -1110,10 +1110,11 @@ int lime_config_test(Filter *f_sink)
       con_orig = NULL;
   }
   
+  
+  ea_push(insert_f, filter_core_interleave.filter_new_f);
+  ea_push(insert_f, filter_core_loadjpeg.filter_new_f);
   ea_push(insert_f, filter_core_convert.filter_new_f);
   ea_push(insert_f, filter_core_loadtiff.filter_new_f);
-  ea_push(insert_f, filter_core_loadjpeg.filter_new_f);
-  ea_push(insert_f, filter_core_interleave.filter_new_f);
   
   err_pos_start = test_filter_config_real(f, 0);
   
