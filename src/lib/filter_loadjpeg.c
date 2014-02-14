@@ -43,6 +43,7 @@ typedef struct {
   ujImage uimg;
 #endif
   char *filename;
+  pthread_mutex_t *lock;
 } _Data;
 
 typedef struct {
@@ -498,7 +499,7 @@ void *_data_new(Filter *f, void *data)
   *newdata = *(_Data*)data;
 
   //FIXME reuse (create on input_fixed?)
-  newdata->index = calloc(sizeof(int**), 1);
+  //newdata->index = calloc(sizeof(int**), 1);
   
   return newdata;
 }
@@ -540,7 +541,6 @@ void _loadjpeg_worker_ijg(Filter *f, Eina_Array *in, Eina_Array *out, Rect *area
   uint8_t *r, *g, *b;
   uint8_t *rp, *gp, *bp;
   int i, j, l;
-  int xstep, ystep;
   JSAMPARRAY buffer;		/* Output row buffer */
   int row_stride;		/* physical row width in output buffer */
   FILE *file;
@@ -590,9 +590,15 @@ void _loadjpeg_worker_ijg(Filter *f, Eina_Array *in, Eina_Array *out, Rect *area
     abort();
   
   if (!(*data->index)) {
-    jpeg_read_infos(file, data);
-    fseek(file, 0, SEEK_SET);
+    pthread_mutex_lock(data->lock);
+    if (!(*data->index)) {
+      jpeg_read_infos(file, data);
+      fseek(file, 0, SEEK_SET);
+    }
+    pthread_mutex_unlock(data->lock);
   }
+  
+  assert(*data->index);
   
   cinfo.err = jpeg_std_error(&jerr.pub);
   //jerr.pub.error_exit = my_error_exit;
@@ -800,7 +806,6 @@ int min(a, b)
 int _loadjpeg_input_fixed(Filter *f)
 {
   int i;
-  int size;
   _Data *data = ea_data(f->data, 0);
   _Data *tdata;
   struct jpeg_decompress_struct cinfo;
@@ -811,14 +816,15 @@ int _loadjpeg_input_fixed(Filter *f)
   
   if (!file)
     return -1;
-    
+  
+  if (*data->index) {
+    free(*data->index);
+    (*data->index) = NULL;
+  }   
+  
   for(i=0;i<ea_count(f->data);i++) {
     tdata = ea_data(f->data, i);
     if (!tdata->filename || strcmp(tdata->filename, data->input->data)) {
-      if (*tdata->index) {
-        free(*tdata->index);
-        *tdata->index = NULL;
-      } 
       tdata->filename = data->input->data;
     }
   }
@@ -851,7 +857,7 @@ int _loadjpeg_input_fixed(Filter *f)
   if (data->rst_int 
     && JPEG_TILE_WIDTH % (data->rst_int * data->mcu_w) == 0
     && data->rot != 6 && data->rot != 8)
-    data->seekable = 4;
+    data->seekable = 3;
   
   if (data->rot <= 4) {
     ((Dim*)data->dim)->width = cinfo.output_width;
@@ -870,34 +876,10 @@ int _loadjpeg_input_fixed(Filter *f)
     cinfo.scale_num = 1;
     cinfo.scale_denom = 1u << i;
     jpeg_calc_output_dimensions(&cinfo);
-    //if image is not much larger than tile size we use image size to avoid huge overhead
-    //max overhead in x dimension is now <20%
-    //FIXME additionally choose smaler sizes depnding on tread coun!
-    /*size = JPEG_TILE_WIDTH / 2;
-    if (i == 3)
-      f->tw_s[i] = 8;*/
-    /*while ((size % (data->rst_int*data->mcu_w/cinfo.scale_denom)) && ((cinfo.output_width % f->tw_s[i]) != 0)) {
-      f->tw_s[i] = size;
-      size/= 2;
-    }*/
-    
-    //overhead <20% (for full image)
-    /*if (JPEG_TILE_HEIGHT >=  cinfo.output_height)
-      f->th_s[i] = cinfo.output_height;
-    else*/
     
     f->tw_s[i] = min(JPEG_TILE_WIDTH, cinfo.output_width);
     f->th_s[i] = min(JPEG_TILE_HEIGHT, cinfo.output_height);
-    
-    if (i == 3) {
-      f->tw_s[i] = cinfo.output_width/2;
-      f->th_s[i] = cinfo.output_height/8;
-    }
-    
-    //f->th_s[i] = 216;
-    
-    printf("tile sizes at scale %d (%dx%d) : %dx%d\n", i, cinfo.output_width, cinfo.output_height, f->tw_s[i], f->th_s[i]);
-  }
+ }
   for(i=data->seekable;i<4;i++) {
     cinfo.scale_num = 1;
     cinfo.scale_denom = 1u << i;
@@ -937,6 +919,8 @@ Filter *filter_loadjpeg_new(void)
   Meta *in, *out, *channel, *bitdepth, *color, *dim;
   _Data *data = calloc(sizeof(_Data), 1);
   data->index = calloc(sizeof(int**), 1);
+  data->lock = calloc(sizeof(pthread_mutex_t),1);
+  pthread_mutex_init(data->lock, NULL);
   data->dim = calloc(sizeof(Dim), 1);
   
   filter->del = &_del;
