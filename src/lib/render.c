@@ -579,7 +579,25 @@ Render_State *render_state_new(Rect *area, Filter *f)
 //only internal threading, render full filters (e.g. savetiff, compare)
 void lime_render(Filter *f)
 {
-  lime_render_area(NULL, f, 0);
+  Dim *size_ptr;
+  Rect area;
+  
+  lime_config_test(f);
+  
+  size_ptr = filter_core_by_type(f, MT_IMGSIZE);
+  
+  if (size_ptr) {
+    area.corner.x = 0;
+    area.corner.y = 0;
+    area.corner.scale = 0;
+    area.width = size_ptr->width;
+    area.height = size_ptr->height;
+    
+    lime_render_area(&area, f, 0);
+  }
+  else
+    lime_render_area(NULL, f, 0);
+  
 }
 
 //render area with external threading

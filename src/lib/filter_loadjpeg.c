@@ -499,7 +499,7 @@ void *_data_new(Filter *f, void *data)
   *newdata = *(_Data*)data;
 
   //FIXME reuse (create on input_fixed?)
-  //newdata->index = calloc(sizeof(int**), 1);
+  newdata->index = calloc(sizeof(int**), 1);
   
   return newdata;
 }
@@ -616,34 +616,16 @@ void _loadjpeg_worker_ijg(Filter *f, Eina_Array *in, Eina_Array *out, Rect *area
 
   cinfo.scale_num = 1;
   cinfo.scale_denom = 1u << area->corner.scale;
-  //cinfo.out_color_space = cinfo.jpeg_color_space;
   
-  /*cinfo.dct_method = JDCT_IFAST;
-  cinfo.do_fancy_upsampling = FALSE;*/
+  cinfo.dct_method = JDCT_IFAST;
+  cinfo.do_fancy_upsampling = FALSE;
   jpeg_start_decompress(&cinfo);
   
   assert(!cinfo.coef_bits);
-  
-  /*printf("outbuf: %d\n", cinfo.rec_outbuf_height);
-  for(i=0;i<3;i++) {
-    printf("comp %d hv: %dx%d\n%d %dx%d %d\n", i, 
-           cinfo.comp_info[i].h_samp_factor,
-           cinfo.comp_info[i].v_samp_factor,
-           cinfo.comp_info[i].component_index,
-           cinfo.comp_info[i].width_in_blocks,
-           cinfo.comp_info[i].height_in_blocks,
-           cinfo.comp_info[i].MCU_sample_width);
-  }*/
-  
-  assert(cinfo.output_width == data->serve_width/mul);
-   
-  //printf("restart every %d mcus, mcus per row: %d \n", cinfo.restart_interval, cinfo.MCUs_per_row);
     
   row_stride = cinfo.output_width * cinfo.output_components;
   buffer = (*cinfo.mem->alloc_sarray)
   ((j_common_ptr) &cinfo, JPOOL_IMAGE, row_stride, data->mcu_h/mul);
-  
-  //printf("row stride: %d\n", row_stride);
   
   
   rp = r;
@@ -651,19 +633,7 @@ void _loadjpeg_worker_ijg(Filter *f, Eina_Array *in, Eina_Array *out, Rect *area
   bp = b;
   l = 0;
   while (l<data->serve_height/mul) {
-    //if (l*mul % 8)
-    /*{
-      data->serve_ix = data->serve_minx;
-      data->serve_iy = data->serve_miny + l*mul/data->mcu_h;
-    }*/
-    //printf("read %dx%d - served %dx%d   ", area->corner.x*mul, mul*(area->corner.y+l), data->serve_ix*data->rst_int*data->mcu_w, data->serve_iy*data->mcu_h-mul*(area->corner.y+l));
     lines_read = jpeg_read_scanlines(&cinfo, buffer, data->mcu_h/mul);
-    //printf("read %dx%d - serve %dx%d\n", area->corner.x*mul, mul*(area->corner.y+l), data->serve_ix*data->rst_int*data->mcu_w, data->serve_iy*data->mcu_h);
-    //printf("read %dx%d - served %dx%d\n", area->corner.x*mul, mul*(area->corner.y+l), data->serve_ix*data->rst_int*data->mcu_w, data->serve_iy*data->mcu_h-mul*(area->corner.y+l));
-    /*if (l*mul % 8 == 0) {
-      data->serve_ix = data->serve_minx;
-      data->serve_iy = data->serve_miny + l*mul/data->mcu_h+1;
-    }*/
     l += lines_read;
     for(j=0;j<lines_read;j++,rp+=area->width,gp+=area->width,bp+=area->width)
       for(i=0;i<cinfo.output_width;i++) {
@@ -671,9 +641,6 @@ void _loadjpeg_worker_ijg(Filter *f, Eina_Array *in, Eina_Array *out, Rect *area
         gp[i] = buffer[j][i*3+1];
         bp[i] = buffer[j][i*3+2];
       }
-    /*if (lines_read != data->mcu_h) {
-      printf("lines: %d\n", lines_read);
-    }*/
   }
   
   jpeg_abort_decompress(&cinfo);

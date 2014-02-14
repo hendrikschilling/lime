@@ -39,18 +39,26 @@ main(int argc, char **argv)
   
   lime_cache_set(cache_size, cache_strategy | cache_metric);
   
-  if (!file) { 
-    printf("ERROR: need file to execute filter chain!\n");
-    return EXIT_FAILURE;
+  if (!strcmp(((Filter*)eina_list_data_get(filters))->fc->shortname, "load")) {
+    load = eina_list_data_get(filters);
+    if (file)
+      lime_setting_string_set(load, "filename", file);
   }
-  load = lime_filter_new("load");
-  lime_setting_string_set(load, "filename", file);
-  filters = eina_list_prepend(filters, load);
+  else {
+    if (!file) { 
+      printf("ERROR: need file to execute filter chain!\n");
+      return EXIT_FAILURE;
+    }
+    load = lime_filter_new("load");
+    lime_setting_string_set(load, "filename", file);
+    filters = eina_list_prepend(filters, load);
+  }
   
+
   last = NULL;
   EINA_LIST_FOREACH(filters, list_iter, f) {
     if (last)
-      filter_connect(last, 0, f, 0);
+      lime_filter_connect(last, f);
     
     last = f;
   }

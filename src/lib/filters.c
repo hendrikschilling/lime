@@ -2,6 +2,23 @@
 
 Eina_Hash *lime_filters;
 
+#include "filter_convert.h"
+#include "filter_gauss.h"
+#include "filter_contrast.h"
+#include "filter_downscale.h"
+#include "filter_memsink.h"
+#include "filter_loadtiff.h"
+#include "filter_load.h"
+#include "filter_savetiff.h"
+#include "filter_comparator.h"
+#include "filter_sharpen.h"
+#include "filter_denoise.h"
+#include "filter_pretend.h"
+#include "filter_crop.h"
+#include "filter_simplerotate.h"
+#include "filter_interleave.h"
+#include "filter_savejpeg.h"
+
 void lime_filters_init(void)
 {
   //TODO dynamic loading from filters as dynamic library! on-demand? (by short-name?)
@@ -22,6 +39,7 @@ void lime_filters_init(void)
   eina_hash_add(lime_filters, filter_core_pretend.shortname, &filter_core_pretend);
   eina_hash_add(lime_filters, filter_core_crop.shortname, &filter_core_crop);
   eina_hash_add(lime_filters, filter_core_simplerotate.shortname, &filter_core_simplerotate);
+  eina_hash_add(lime_filters, filter_core_savejpeg.shortname, &filter_core_savejpeg);
 }
 
 Filter *lime_filter_new(const char *shortname)

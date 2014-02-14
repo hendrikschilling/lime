@@ -9,6 +9,23 @@
 #include "cli.h"
 #include "Lime.h"
 
+#include "filter_convert.h"
+#include "filter_gauss.h"
+#include "filter_contrast.h"
+#include "filter_downscale.h"
+#include "filter_memsink.h"
+#include "filter_loadtiff.h"
+#include "filter_load.h"
+#include "filter_savetiff.h"
+#include "filter_comparator.h"
+#include "filter_sharpen.h"
+#include "filter_denoise.h"
+#include "filter_pretend.h"
+#include "filter_crop.h"
+#include "filter_simplerotate.h"
+#include "filter_interleave.h"
+#include "filter_savejpeg.h"
+
 struct timespec bench_last_mark;
 struct timespec t_bench_start;
 double bench_times[3];

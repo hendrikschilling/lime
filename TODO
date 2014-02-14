@@ -1,3 +1,10 @@
+fast realease:
+- check all filter work and load/save/process correctly, remove non-working
+- check export works for all cases
+- add dir/file open button
+- clean export gui
+- clean printf a lot!
+
 short term:
 - valgrind: memleaks
 - valgrind: illegal read/writes
@@ -10,9 +17,7 @@ short term:
 - packages for ubunt? and mac?
 - license
 - limeview: mat_cache remove only invisible stuff when too full
-- cli.c fix unknown filter with parameters message
-- limeview: glitches on window resize/startup
-- filter introspection (list filters, setting etc.)
+- limeview: glitches on step_image with many tags in tags list
 
 mid term:
 - simplify specification tree definition
@@ -26,7 +31,7 @@ mid term:
 long term:
 - composition
 - clean autoconfiguration
-  - do filters need to know their connections? handel externally!
+  - do filters need to know their connections? handle externally!
 - pass trough input tiles with same area
 - combined iterating and buffering filter mode
 - multiple regions/scales for buffering interface
@@ -50,9 +55,4 @@ long term:
 - threading
   waiting for tiles rendered on other threads causes problems for jpeg loader, it would be optimal to render multiple scale in parallel!
   hint on used tiles
-  "jpeglib.h" "jpeg_decompress_struct" "region_x"
-    
-    
-    
-limeview filter chain saving and processing!
 

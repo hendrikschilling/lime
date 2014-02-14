@@ -46,6 +46,7 @@ typedef enum {
   CS_HSV_H,
   CS_HSV_S,
   CS_HSV_V,
+  CS_INT_RGB,
   CS_INT_ARGB
 } Colorspace;
 

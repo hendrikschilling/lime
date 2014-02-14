@@ -288,6 +288,9 @@ Con *filter_connect(Filter *source, int out, Filter *sink, int in)
   assert(in == 0);
   assert(out == 0);
   
+  assert(source->in);
+  assert(sink->out);
+  
   lime_config_reset();
   
   con->source = eina_array_data_get(source->out, out);

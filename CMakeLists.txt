@@ -24,7 +24,7 @@ FIND_PACKAGE(JPEG REQUIRED)
 
 find_package (Threads)
 
-set(CMAKE_C_FLAGS "-Wall -g -O3")
+set(CMAKE_C_FLAGS "-Wall -g -O0")
 
 #FIND_PACKAGE( Eina REQUIRED )
 

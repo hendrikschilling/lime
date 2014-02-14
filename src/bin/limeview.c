@@ -3,12 +3,30 @@
 #include <Ecore.h>
 #include <Eio.h>
 #include <fcntl.h>
+#include <libgen.h>
 
 #include <exempi/xmp.h>
 #include <exempi/xmpconsts.h>
 
 #include "Lime.h"
 #include "cli.h"
+
+#include "filter_convert.h"
+#include "filter_gauss.h"
+#include "filter_contrast.h"
+#include "filter_downscale.h"
+#include "filter_memsink.h"
+#include "filter_loadtiff.h"
+#include "filter_load.h"
+#include "filter_savetiff.h"
+#include "filter_comparator.h"
+#include "filter_sharpen.h"
+#include "filter_denoise.h"
+#include "filter_pretend.h"
+#include "filter_crop.h"
+#include "filter_simplerotate.h"
+#include "filter_interleave.h"
+#include "filter_savejpeg.h"
 
 #define TILE_SIZE DEFAULT_TILE_SIZE
 #define MAX_XMP_FILE 1024*1024
@@ -27,8 +45,6 @@ Elm_Genlist_Item_Class *tags_filter_itc;
 typedef struct {
   const char *extensions;
   char *path;
-  const char *server;
-  const char *dir;
   Eina_Array *list;
   Evas_Object *eo_progress;
   int count;
@@ -96,8 +112,6 @@ Eina_Array *finished_threads = NULL;
 Ecore_Timer *preview_timer = NULL;
 void fc_new_from_filters(Eina_List *filters);
 
-
-int export_count;
 int file_step = 1;
 int file_idx = 0;
 int group_idx;
@@ -1815,35 +1829,33 @@ on_exe_images_cp(void *data, Evas_Object *obj, void *event_info)
 }*/
 
 typedef struct {
-  char *filename;
+  const char *filename;
+  const char *filterchain;
   Export_Data *export;
 } Export_Job;
 
-void start_single_export(Export_Data *export, char *filename)
+void start_single_export(Export_Data *export, Export_Job *job)
 {
   Eina_Array *dirs;
   char dst[2048];
-  Export_Job *job;
+  char *filename;
   
-  if (!filename) {
-    if (!ea_count(export->list)) {
+  
+  if (!job) {
+    if (!export->list || !ea_count(export->list)) {
       export->list = NULL;
       return;
     }
-    filename = eina_array_pop(export->list);
+    job = eina_array_pop(export->list);
   }
   
-  job = malloc(sizeof(Export_Job));
-  job->export = export;
-  job->filename = filename;
+  filename = ecore_file_file_get(job->filename);
   
-  dirs = eina_file_split(dir);
-  if (export->server)
-    sprintf(dst, "rsync -rt --progress \"./%s\" %s:\"\'%s/%s/%s\'\"", filename, export->server,export->path, export->dir, filename);
+  if (job->filterchain)
+    sprintf(dst, "limedo \'%s,savejpeg:filename=%s/%s\' %s", job->filterchain, job->export->path, filename, job->filename);
   else
-    sprintf(dst, "rsync -rt --progress \"./%s\" \'%s/%s/%s\'", filename, export->path, export->dir, filename);
-  eina_array_free(dirs);
-  //FIXME free dirs string(s?)?
+    sprintf(dst, "limedo \'savejpeg:filename=%s/%s\' %s", job->export->path, filename, job->filename);
+
   printf("start export of: %s\n", dst);
   ecore_exe_run(dst, job);
 }
@@ -1855,19 +1867,17 @@ static Eina_Bool _rsync_term(void *data, int type, void *event)
   Ecore_Exe_Event_Del *del_event = event;
   Export_Job *job = ecore_exe_data_get(del_event->exe);
   
-  assert(job);
-  
-  if (job->filename) {
-    printf("file: %s return code: %d\n", job->filename, del_event->exit_code);
-
-    if (del_event->exit_code)
-      start_single_export(job->export, job->filename);
-    else
-      start_single_export(job->export, NULL);
+  if (!job) {
+    printf("FIXME what has terminated, how do we recognize???");
+    return ECORE_CALLBACK_PASS_ON;
   }
-  else 
-    for(i=0;i<RSYNC_INSTANCE_COUNT;i++)
-      start_single_export(job->export, NULL);
+  
+  printf("file: %s return code: %d\n", job->filename, del_event->exit_code);
+
+  if (del_event->exit_code)
+    start_single_export(job->export, job);
+  else
+    start_single_export(job->export, NULL);
   
   if (job->export->list) {
     elm_progressbar_value_set(job->export->eo_progress, 1.0 - (double)ea_count(job->export->list)/job->export->count);
@@ -1893,7 +1903,7 @@ on_exe_images_rsync(void *data, Evas_Object *obj, void *event_info)
   Eina_Array *dirs;
   Export_Data *export = calloc(sizeof(Export_Data), 1);
   Export_Job *job;
-
+  
   export->extensions = elm_entry_entry_get(export_extensions);
   if (export->extensions && !strlen(export->extensions)) {
     export->extensions = NULL;
@@ -1914,72 +1924,27 @@ on_exe_images_rsync(void *data, Evas_Object *obj, void *event_info)
     if (group_in_filters(group, tags_filter)) {
       for(j=0;j<eina_inarray_count(group->files);j++) {
 	filename = ((Tagged_File*)eina_inarray_nth(group->files, j))->filename;
-	if (filename && (!export->extensions || strstr(filename, export->extensions))) {
+	if (filename && (!export->extensions || (strstr(filename, export->extensions) && strlen(strstr(filename, export->extensions)) == strlen (export->extensions) ))) {
 	  if (!export->list)
 	    export->list = eina_array_new(32);
-	  eina_array_push(export->list, filename);
+	  job = malloc(sizeof(Export_Job));
+	  job->filename = filename;
+	  job->filterchain = group->last_fc;
+	  job->export = export;
+	  eina_array_push(export->list, job);
 	}
       }
-      filename = group->sidecar;
-	if (filename && (!export->extensions || strstr(filename, export->extensions))) {
-	  if (!export->list)
-	    export->list = eina_array_new(32);
-	  eina_array_push(export->list, filename);
-	}
     }
   }
+
+  if (export->path[strlen(export->path)-1] == '/')
+    export->path[strlen(export->path)-1] = '\0';
   
-  if (export->list) {
+  if (export->list)
     export->count = ea_count(export->list);
-    filename = eina_array_data_get(export->list, eina_array_count(export->list)-1);
-    if (!ea_count(export->list)) {
-      eina_array_free(export->list);
-      export->list = NULL;
-    }
-    dirs = eina_file_split(dir);
-    export->dir = strdup(eina_array_data_get(dirs, eina_array_count(dirs)-1));
-    //FIXME for export to server!
-    //ecore_exe_run(dst, NULL);
-	 eina_array_free(dirs);
-    
-    if (export->path[strlen(export->path)-1] == '/')
-      export->path[strlen(export->path)-1] = '\0';
-    
-    if (strstr(export->path, ":/")) {
-      export->server = strdup(export->path);
-      export->path = strstr(export->server, ":/");
-      export->path[0] = '\0';
-      export->path++;
-      
-      job = calloc(sizeof(Export_Job), 1);
-      job->export = export;
-      
-      //FIXME read server from path!
-      sprintf(dst, "ssh %s mkdir -p \"\'%s/%s\'\"", export->server, export->path, export->dir);
-      printf("mkdir: %s\n", dst);
-      
-      ecore_exe_run(dst, job);
-    }
-    else {
-      sprintf(dst, "%s/%s", export->path, export->dir);
-      printf("make dir: %s\n", dst);
-      ecore_file_mkdir(dst);
-      start_single_export(export, NULL);
-    }
-      
-    
-    
-    //FIXME doesn't wait for the mkdir to quit!!!
-    //sprintf(dst, "rsync -rt --progress \"./%s\" caren@technik-stinkt.de:\"\'/home/caren/fotos_upload/%s/%s\'\"", filename, eina_array_data_get(dirs, eina_array_count(dirs)-1), filename);
-    //eio_file_copy(filename, strdup(dst), NULL, export_done_cb, export_error_cb, NULL);
-    //free(eina_array_data_get(dirs, 0));
-    //eina_array_free(dirs);
-    //FIXME free dirs?
-    //printf("%s\n", dst);
-    //eina_array_pop(export_list);
-    //ecore_exe_run(dst, filename);
-    
-  }
+  
+  for(i=0;i<ecore_thread_max_get();i++)
+    start_single_export(export, NULL);
     
 }
 
@@ -2903,7 +2868,7 @@ static Evas_Object *_tag_filter_cont_get(void *data, Evas_Object *obj, const cha
 
 static Evas_Object *export_box_add(Evas_Object *parent)
 {
-  Evas_Object *btn;
+  Evas_Object *btn, *sel;
   
   export_box = elm_box_add(parent);
   evas_object_size_hint_weight_set(export_box, EVAS_HINT_EXPAND, EVAS_HINT_EXPAND);
@@ -2915,15 +2880,15 @@ static Evas_Object *export_box_add(Evas_Object *parent)
   evas_object_size_hint_align_set(sel, EVAS_HINT_FILL, 0);
   elm_hoversel_item_add(sel, "all files", NULL, ELM_ICON_NONE, &on_export_type_sel, NULL);
   elm_hoversel_item_add(sel, "filtered files", NULL, ELM_ICON_NONE, &on_export_type_sel, NULL);
-  elm_hoversel_item_add(sel, "image", NULL, ELM_ICON_NONE, &on_export_type_sel, NULL);
+  elm_hoversel_item_add(sel, "current image", NULL, ELM_ICON_NONE, &on_export_type_sel, NULL);
   elm_box_pack_end(main_box, sel);*/
   
   //file endings to process
   export_extensions = elm_entry_add(export_box);
-  elm_entry_scrollable_set(export_extensions, EINA_TRUE);
-  elm_entry_single_line_set(export_extensions, EINA_TRUE);
-  evas_object_size_hint_weight_set(export_extensions, EVAS_HINT_EXPAND, 0.0);
-  evas_object_size_hint_align_set(export_extensions, EVAS_HINT_FILL, 0.0);
+  elm_entry_scrollable_set(export_path, EINA_TRUE);
+  elm_entry_single_line_set(export_path, EINA_TRUE);
+  evas_object_size_hint_weight_set(export_extensions, EVAS_HINT_EXPAND, 0);
+  evas_object_size_hint_align_set(export_extensions, EVAS_HINT_FILL, 0);
   elm_box_pack_end(export_box, export_extensions);
   evas_object_show(export_extensions);
   
@@ -3299,7 +3264,7 @@ elm_main(int argc, char **argv)
   elm_scroller_region_show(scroller, 0, 0, 1, 1);
   
   //FIXME
-  //ecore_event_handler_add(ECORE_EXE_EVENT_DEL, &_rsync_term, NULL);
+  ecore_event_handler_add(ECORE_EXE_EVENT_DEL, &_rsync_term, NULL);
   
   if (winsize)
     evas_object_resize(win, winsize, winsize);
