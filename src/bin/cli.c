@@ -365,20 +365,7 @@ int parse_cli(int argc, char **argv, Eina_List **filters, Bench_Step **bench, in
     }
     optind++;
   }
-    
-    
-     
-  if (*file)
-    printf("filename: %s\n", *file);
-  else if (dir && *dir)
-    printf("dir: %s\n", *dir);
-  else
-    printf("no file and no dir specified!\n");
-      
-    
-  if (dir && !*dir)
-    *dir = clean_dirpath(getcwd(NULL, 0));
-  
+
   return 0;
 }
 

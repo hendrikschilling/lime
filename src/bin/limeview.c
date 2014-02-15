@@ -31,8 +31,6 @@
 #define TILE_SIZE DEFAULT_TILE_SIZE
 #define MAX_XMP_FILE 1024*1024
 
-#define RSYNC_INSTANCE_COUNT 1
-
 int high_quality_delay =  300;
 int max_reaction_delay =  1000;
 int fullscreen = 0;
@@ -97,12 +95,12 @@ Evas_Object *grid = NULL, *vbox_bottom, *bg;
 char *labelbuf;
 char *pos_lbl_buf;
 int posx, posy;
-Evas_Object *slider_blur, *slider_contr, *gridbox;
+Evas_Object *slider_blur, *slider_contr, *gridbox = NULL;
 int cache_size;
 Dim size;
 Mat_Cache *mat_cache;
 Mat_Cache *mat_cache_old;
-int forbid_fill = 1;
+int forbid_fill = 0;
 Eina_List *filter_last_selected = NULL;
 Eina_List *filter_chain = NULL;
 Filter *(*select_filter_func)(void);
@@ -201,10 +199,9 @@ void grid_setsize(void)
     elm_box_recalculate(gridbox);
   }
   else {
-    printf("FIXME image has no size!\n");
-    elm_grid_size_set(grid, 200, 200);
+    /*elm_grid_size_set(grid, 200, 200);
     elm_grid_pack_set(clipper, 0, 0, 200, 200);
-    elm_box_recalculate(gridbox);
+    elm_box_recalculate(gridbox);*/
     forbid_fill--;
     return;
   }
@@ -776,6 +773,15 @@ void mat_cache_obj_stack(Mat_Cache *mat_cache, Evas_Object *obj, int scale)
   mat_cache->high_of_layer[scale] = obj;
 }
 
+static Eina_Bool
+_ls_filter_cb(void *data, Eio_File *handler, Eina_File_Direct_Info *info)
+{  
+  if (info->type == EINA_FILE_REG || info->type == EINA_FILE_LNK || info->type == EINA_FILE_UNKNOWN || info->type == EINA_FILE_DIR)
+    return EINA_TRUE;
+    
+  return EINA_FALSE;
+}
+
 float actual_scale_get()
 {
   int x,y,w,h,grid_w,grid_h;
@@ -1239,7 +1245,6 @@ static void fill_scroller(void)
   elm_scroller_region_get(scroller, &x, &y, &w, &h);
   
   if (!w || !h) {
-    printf("FIXME avoid fill_scroller: scroller does not yet have region!");
     return;
   }
 
@@ -1588,8 +1593,7 @@ void step_image_do(void *data, Evas_Object *obj)
     
     if (start_idx == file_idx){
       printf("no valid configuration found for any file!\n");
-      elm_exit_do(NULL, NULL);
-      return;
+      continue;
     }
   }
   
@@ -1757,77 +1761,6 @@ void _trans_grid_zoom_trans_cb(Elm_Transit_Effect *effect, Elm_Transit *transit,
   
 }
 
-
-
-/*static void
-export_error_cb(void *data, Eio_File *handler, int error)
-{
-  printf("error on copy export");
-}*/
-
-/*static void
-export_done_cb(void *data, Eio_File *handler)
-{
-  char *filename;
-  char dst[EINA_PATH_MAX];
-  
-  if (export_list)
-    elm_progressbar_value_set(export->eo_progress, 1.0 - (double)ea_count(export_list)/export_count);
-  else
-    elm_progressbar_value_set(export->eo_progress, 0.0);    
-  
-  if (export_list) {
-    filename = eina_array_pop(export_list);
-    if (!ea_count(export_list)) {
-      eina_array_free(export_list);
-      export_list = NULL;
-      //elm_object_disabled_set(
-    }
-    sprintf(dst, "/home/hendrik/weltreise/foto_blog/%s", filename);
-    eio_file_copy(filename, strdup(dst), NULL, export_done_cb, export_error_cb, NULL);
-  }
-}*/
-
-/*static void
-on_exe_images_cp(void *data, Evas_Object *obj, void *event_info)
-{
-  int i, j;
-  File_Group *group;
-  const char *filename;
-  char dst[64];
-  
-  elm_progressbar_value_set(export->eo_progress, 0.0);
-  
-  for(i=0;i<eina_inarray_count(files);i++) {
-    group = eina_inarray_nth(files, i);
-    if (group_in_filters(group, tags_filter)) {
-      for(j=0;j<eina_inarray_count(group->files);j++) {
-	filename = ((Tagged_File*)eina_inarray_nth(group->files, j))->filename;
-	if (filename && strstr(filename, ".JPG")) {
-	  if (!export_list)
-	    export_list = eina_array_new(32);
-	  eina_array_push(export_list, filename);
-	  //printf("in f: %s\n", filename);
-	  //sprintf(dst, "/media/blacksheep/weltreise/export/%s", filename);
-	  //ecore_file_cp(filename, dst);
-	}
-      }
-    }
-  }
-  
-  if (export_list) {
-    export_count = ea_count(export_list);
-    filename = eina_array_pop(export_list);
-    if (!ea_count(export_list)) {
-      eina_array_free(export_list);
-      export_list = NULL;
-    }
-    sprintf(dst, "/home/hendrik/weltreise/foto_blog/%s", filename);
-    eio_file_copy(filename, strdup(dst), NULL, export_done_cb, export_error_cb, NULL);
-  }
-    
-}*/
-
 typedef struct {
   const char *filename;
   const char *filterchain;
@@ -1868,7 +1801,6 @@ static Eina_Bool _rsync_term(void *data, int type, void *event)
   Export_Job *job = ecore_exe_data_get(del_event->exe);
   
   if (!job) {
-    printf("FIXME what has terminated, how do we recognize???");
     return ECORE_CALLBACK_PASS_ON;
   }
   
@@ -1987,7 +1919,6 @@ on_fit_image(void *data, Evas_Object *obj, void *event_info)
 static void
 on_fullscreen(void *data, Evas_Object *obj, void *event_info)
 {
-  
   if (!fullscreen) {
     elm_bg_color_set(bg, 0, 0, 0);
     elm_win_fullscreen_set(win, EINA_TRUE);
@@ -1995,6 +1926,8 @@ on_fullscreen(void *data, Evas_Object *obj, void *event_info)
     evas_object_hide(vbox_bottom);
   }
   else {
+    printf("FIXME: HELP! How do I reset elm_bg to default background?");
+    elm_bg_color_set(bg, 0, 0, 0);
     elm_win_fullscreen_set(win, EINA_FALSE);
     elm_box_pack_end(main_vbox, vbox_bottom);
     evas_object_show(vbox_bottom);
@@ -2099,6 +2032,101 @@ on_zoom_in(void *data, Evas_Object *obj, void *event_info)
 }
 
 
+static void
+_ls_done_cb(void *data, Eio_File *handler)
+{
+  Eina_List *l, *l_next;
+  const char *file;
+  Eina_Compare_Cb cmp_func = (Eina_Compare_Cb)strcmp;
+  
+  file_idx = 0;
+  group_idx = 0;
+  
+  //FIXME free and clean old stuff!
+  files = NULL;
+  files = eina_inarray_new(sizeof(File_Group), 32);
+  
+  files_unsorted = eina_list_sort(files_unsorted, 0, cmp_func);
+  EINA_LIST_FOREACH_SAFE(files_unsorted, l, l_next, file)
+    insert_file(file);
+  files_unsorted = NULL;
+
+  if (!eina_inarray_count(files)) {
+    printf("no files found!\n");
+    //workerfinish_schedule(&elm_exit_do, NULL, NULL);
+    return;
+  }
+	
+  elm_slider_min_max_set(file_slider, 0, eina_inarray_count(files)-1);
+  evas_object_smart_callback_add(file_slider, "changed", &on_jump_image, NULL);
+  elm_slider_value_set(file_slider, 0);
+  evas_object_size_hint_weight_set(file_slider, EVAS_HINT_EXPAND, 0);
+  evas_object_size_hint_align_set(file_slider, EVAS_HINT_FILL, 0);
+  elm_slider_unit_format_set(file_slider, "%.0f");
+  evas_object_show(file_slider);
+  
+  
+  if (!gridbox) {
+    gridbox = elm_box_add(win);
+    elm_object_content_set(scroller, gridbox);
+    evas_object_size_hint_weight_set(gridbox, EVAS_HINT_EXPAND, EVAS_HINT_EXPAND);
+    evas_object_size_hint_align_set(gridbox, EVAS_HINT_FILL, EVAS_HINT_FILL);
+    evas_object_show(gridbox);
+    
+    grid = elm_grid_add(win);
+    clipper = evas_object_rectangle_add(evas_object_evas_get(win));
+    elm_grid_pack(grid, clipper, 0, 0, size.width, size.height);
+    evas_object_size_hint_min_set(grid,  200, 200);
+    elm_box_recalculate(gridbox);
+    elm_box_pack_start(gridbox, grid);
+    evas_object_show(grid);
+  }
+  
+  elm_genlist_clear(tags_filter_list);
+  eina_hash_foreach(known_tags, tags_hash_filter_func, NULL);
+  
+  
+  //grid_setsize();
+  
+  bench_delay_start();
+  
+  evas_object_show(scroller);
+ 
+  grid_setsize(); 
+  step_image_do(NULL, NULL);
+  //forbid_fill--;
+  //fill_scroller_preview();
+  //fill_scroller();;
+}
+
+static void
+_ls_main_cb(void *data, Eio_File *handler, const Eina_File_Direct_Info *info)
+{
+  const char *file;
+
+  if (info->type != EINA_FILE_DIR) {
+    file = eina_stringshare_add(info->path);
+    files_unsorted = eina_list_append(files_unsorted, file);
+  }
+}
+
+static void
+_ls_error_cb(void *data, Eio_File *handler, int error)
+{
+  fprintf(stderr, "error: [%s]\n", strerror(error));
+  workerfinish_schedule(&elm_exit_do, NULL, NULL);
+}
+
+static void on_open(void *data, Evas_Object *obj, void *event_info)
+{
+  printf("open dir %s\n", (char*)event_info);
+  
+  dir = (char*)event_info;
+  elm_fileselector_button_path_set((Evas_Object*)data, dir);
+  eio_dir_direct_ls(dir, &_ls_filter_cb, &_ls_main_cb,&_ls_done_cb, &_ls_error_cb,NULL);
+}
+
+
 void zoom_out_do(void)
 {
   Elm_Transit *trans;
@@ -2141,25 +2169,18 @@ static void on_insert_after(void *data, Evas_Object *obj, void *event_info)
   workerfinish_schedule(&insert_after_do, NULL, NULL);
 }
 
-static Eina_Bool
-_ls_filter_cb(void *data, Eio_File *handler, Eina_File_Direct_Info *info)
-{  
-  if (info->type == EINA_FILE_REG || info->type == EINA_FILE_LNK || info->type == EINA_FILE_UNKNOWN || info->type == EINA_FILE_DIR)
-    return EINA_TRUE;
-    
-  return EINA_FALSE;
-}
-
-
 Tagged_File tag_file_new(File_Group *group, const char *name)
 {
   Tagged_File file = {NULL, NULL, NULL};
   
   if (eina_str_has_extension(name, ".xmp")) {
-    file.sidecar = name;
     //FIXME only one sidecar per group for now
-    assert(!group->sidecar);
-    group->sidecar = file.sidecar;
+    if (group->sidecar)
+      printf("FIXME multiple sidecar: %s\n", name);
+    else
+      group->sidecar = file.sidecar;
+    assert(!file.sidecar);
+    file.sidecar = name;
     xmp_gettags(name, group);
   }
   else 
@@ -2235,84 +2256,6 @@ int cmp_tagged_files(Tagged_File *a, Tagged_File *b)
     cmp = strcmp(a->filename, b->filename);
   
   return cmp;
-}
-
-static void
-_ls_done_cb(void *data, Eio_File *handler)
-{
-  Eina_List *l, *l_next;
-  const char *file;
-  Eina_Compare_Cb cmp_func = (Eina_Compare_Cb)strcmp;
-  
-  files_unsorted = eina_list_sort(files_unsorted, 0, cmp_func);
-  EINA_LIST_FOREACH_SAFE(files_unsorted, l, l_next, file)
-    insert_file(file);
-
-  if (!eina_inarray_count(files)) {
-    printf("no files found!\n");
-    workerfinish_schedule(&elm_exit_do, NULL, NULL);
-    return;
-  }
-	
-  elm_slider_min_max_set(file_slider, 0, eina_inarray_count(files)-1);
-  evas_object_smart_callback_add(file_slider, "changed", &on_jump_image, NULL);
-  elm_slider_value_set(file_slider, 0);
-  evas_object_size_hint_weight_set(file_slider, EVAS_HINT_EXPAND, 0);
-  evas_object_size_hint_align_set(file_slider, EVAS_HINT_FILL, 0);
-  elm_slider_unit_format_set(file_slider, "%.0f");
-  evas_object_show(file_slider);
-  
-  
-  gridbox = elm_box_add(win);
-  elm_object_content_set(scroller, gridbox);
-  evas_object_size_hint_weight_set(gridbox, EVAS_HINT_EXPAND, EVAS_HINT_EXPAND);
-  evas_object_size_hint_align_set(gridbox, EVAS_HINT_FILL, EVAS_HINT_FILL);
-  evas_object_show(gridbox);
-  
-  grid = elm_grid_add(win);
-  clipper = evas_object_rectangle_add(evas_object_evas_get(win));
-  elm_grid_pack(grid, clipper, 0, 0, size.width, size.height);
-  evas_object_size_hint_min_set(grid,  200, 200);
-  elm_box_recalculate(gridbox);
-  elm_box_pack_start(gridbox, grid);
-  evas_object_show(grid);
-  
-  elm_genlist_clear(tags_filter_list);
-  eina_hash_foreach(known_tags, tags_hash_filter_func, NULL);
-  
-  
-  //grid_setsize();
-  
-  bench_delay_start();
-  
-  evas_object_show(scroller);
- 
-  grid_setsize(); 
-  step_image_do(NULL, NULL);
-  forbid_fill--;
-  //fill_scroller_preview();
-  //fill_scroller();;
-}
-
-static void
-_ls_main_cb(void *data, Eio_File *handler, const Eina_File_Direct_Info *info)
-{ 
-
-  const char *file = eina_stringshare_add(info->path);
-
-  if (info->type != EINA_FILE_DIR)
-    files_unsorted = eina_list_append(files_unsorted, file);
-  
-  if (/*(!eina_inarray_count(files) || strcmp(eina_inarray_nth(files, 0), file)) &&*/ info->type != EINA_FILE_DIR) { 
-    //files_unsorted = eina_list_append(files_unsorted, tagged_file_new_from_path(info->path));
-  }
-}
-
-static void
-_ls_error_cb(void *data, Eio_File *handler, int error)
-{
-  fprintf(stderr, "error: [%s]\n", strerror(error));
-  workerfinish_schedule(&elm_exit_do, NULL, NULL);
 }
 
 static void on_tab_select(void *data, Evas_Object *obj, void *event_info)
@@ -2415,6 +2358,22 @@ Evas_Object *elm_button_add_pack(Evas_Object *p, const char *text, void (*cb)(vo
   elm_box_pack_end(p, btn);
   evas_object_show(btn);
   evas_object_smart_callback_add(btn, "clicked", cb, NULL);
+  
+  return btn;
+}
+
+Evas_Object *elm_fsb_add_pack(Evas_Object *p, const char *text, void (*cb)(void *data, Evas_Object *obj, void *event_info), char *path)
+{
+  Evas_Object *btn = elm_fileselector_button_add(p);
+  elm_fileselector_button_folder_only_set(btn, EINA_TRUE);
+  evas_object_size_hint_weight_set(btn, EVAS_HINT_EXPAND, EVAS_HINT_EXPAND);
+  evas_object_size_hint_align_set(btn, EVAS_HINT_FILL, EVAS_HINT_FILL);
+  if (path)
+    elm_fileselector_button_path_set(btn, path);
+  elm_object_text_set(btn, text);
+  elm_box_pack_end(p, btn);
+  evas_object_show(btn);
+  evas_object_smart_callback_add(btn, "file,chosen", cb, btn);
   
   return btn;
 }
@@ -3040,6 +2999,7 @@ elm_main(int argc, char **argv)
   elm_box_pack_end(vbox_bottom, hbox);
   evas_object_show(hbox);
   
+  elm_fsb_add_pack(hbox, "open", &on_open, dir);
   elm_button_add_pack(hbox, "exit", &on_done);
   elm_button_add_pack(hbox, "+", &on_zoom_in);
   elm_button_add_pack(hbox, "-", &on_zoom_out);
@@ -3240,12 +3200,11 @@ elm_main(int argc, char **argv)
   
   fc_new_from_filters(filters);
   
-  files = eina_inarray_new(sizeof(File_Group), 32);
-  
   if (file)
     eina_inarray_push(files, file_group_new(file));
   
-  eio_dir_direct_ls(dir, &_ls_filter_cb, &_ls_main_cb,&_ls_done_cb, &_ls_error_cb,NULL);
+  if (dir)
+    eio_dir_direct_ls(dir, &_ls_filter_cb, &_ls_main_cb,&_ls_done_cb, &_ls_error_cb,NULL);
   
   /*test_filter_config(load);
    s ize = *(*Dim*)filter_core_by_type(sink, MT_IMGSIZE);
