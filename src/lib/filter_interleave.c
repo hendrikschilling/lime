@@ -64,6 +64,7 @@ Filter *filter_interleave_new(void)
   
   bitdepth = meta_new_data(MT_BITDEPTH, filter, malloc(sizeof(int)));
   *(int*)(bitdepth->data) = BD_U8;
+  bitdepth->replace = bitdepth;
   
   out = meta_new(MT_BUNDLE, filter);
   eina_array_push(filter->out, out);
