@@ -10,6 +10,7 @@
 #include "jinclude.h"
 #include "jpeglib.h"
 #include "jerror.h"
+#include <libexif/exif-loader.h>
 
 
 /* Expanded data source object for stdio input */
@@ -45,6 +46,8 @@ typedef struct {
   char *filename;
   pthread_mutex_t *lock;
   Meta *fliprot;
+  int thumb_len;
+  uint8_t *thumb_data;
 } _Data;
 
 typedef struct {
@@ -94,6 +97,46 @@ typedef my_source_mgr * my_src_ptr;
       remain-= N; \
     } \
   }
+  
+int get_exif_preview(const char *file, uint8_t **preview)
+{
+  int len = 0;
+  ExifLoader *l;
+  
+  /* Create an ExifLoader object to manage the EXIF loading process */
+  l = exif_loader_new();
+  if (l) {
+    ExifData *ed;
+    
+    /* Load the EXIF data from the image file */
+    exif_loader_write_file(l, file);
+    
+    /* Get a pointer to the EXIF data */
+    ed = exif_loader_get_data(l);
+    
+    /* The loader is no longer needed--free it */
+    exif_loader_unref(l);
+    l = NULL;
+    if (ed) {
+      /* Make sure the image had a thumbnail before trying to write it */
+      if (ed->data && ed->size) {
+	printf("found thumb image of size %d\n", ed->size);
+	len = ed->size;
+	if (!preview)
+	  preview = malloc(sizeof(uint8_t*));
+	else if (*preview)
+	  free(*preview);
+	*preview = malloc(len);
+	/* Write the thumbnail image to the file */
+	memcpy(*preview, ed->data, len);
+      }
+      /* Free the EXIF data */
+      exif_data_unref(ed);
+    }
+  }
+  
+  return len;
+}
   
 int jpeg_read_infos(FILE *f, _Data *data)
 {
@@ -732,12 +775,101 @@ void _loadjpeg_worker_ijg_original(Filter *f, Eina_Array *in, Eina_Array *out, R
   fclose(file);
 }
 
+void simple_scale(int src_w, int src_h, int dst_w, int dst_h, uint8_t *src, uint8_t *dst)
+{
+  int i, j;
+  
+  for(j=0;j<dst_h;j++)
+    for(i=0;i<dst_w;i++,dst++) {
+      *dst = src[j*src_h/dst_h*src_w+i*src_w/dst_w];
+    }
+}
+
+void _loadjpeg_worker_ijg_thumb(Filter *f, Eina_Array *in, Eina_Array *out, Rect *area, int thread_id)
+{
+  _Data *data = ea_data(f->data, thread_id);
+  
+  uint8_t *r, *g, *b;
+  uint8_t *rp, *gp, *bp;
+  int i, j;
+  int xstep, ystep;
+  JSAMPARRAY buffer;    /* Output row buffer */
+  int row_stride;   /* physical row width in output buffer */
+  int lines_read;
+  char *rt, *gt, *bt;
+  
+  struct jpeg_decompress_struct cinfo;
+  struct my_error_mgr jerr;
+  
+  assert(out && ea_count(out) == 3);
+  
+  if (area->corner.x || area->corner.y) {
+    printf("FIXME: invalid tile requested in loadjpg: %dx%d\n", area->corner.x, area->corner.y);
+    return;
+  }
+  
+  r = ((Tiledata*)ea_data(out, 0))->data;
+  g = ((Tiledata*)ea_data(out, 1))->data;
+  b = ((Tiledata*)ea_data(out, 2))->data;
+
+  cinfo.err = jpeg_std_error(&jerr.pub);
+  
+  if (setjmp(jerr.setjmp_buffer)) {
+    jpeg_destroy_decompress(&cinfo);
+    abort();
+  }
+  jpeg_create_decompress(&cinfo);
+
+  jpeg_mem_src(&cinfo, data->thumb_data, data->thumb_len);
+
+  (void)jpeg_read_header(&cinfo, TRUE);
+  
+  cinfo.dct_method = JDCT_IFAST;
+  cinfo.do_fancy_upsampling = FALSE;
+  jpeg_start_decompress(&cinfo);
+     
+  row_stride = cinfo.output_width * cinfo.output_components;
+  buffer = (*cinfo.mem->alloc_sarray)
+  ((j_common_ptr) &cinfo, JPOOL_IMAGE, row_stride, 16);
+  
+  rt = malloc(cinfo.output_width*cinfo.output_height);
+  gt = malloc(cinfo.output_width*cinfo.output_height);
+  bt = malloc(cinfo.output_width*cinfo.output_height);
+  
+  rp = rt;
+  gp = gt;
+  bp = bt;
+  
+  while (cinfo.output_scanline < cinfo.output_height) {
+    lines_read = jpeg_read_scanlines(&cinfo, buffer, 16);
+    for(j=0;j<lines_read;j++)
+      for(i=0;i<cinfo.output_width;i++,rp++,gp++,bp++) {
+        rp[0] = buffer[j][i*3];
+        gp[0] = buffer[j][i*3+1];
+        bp[0] = buffer[j][i*3+2];
+      }
+  }
+  
+  simple_scale(cinfo.output_width, cinfo.output_height, data->w/16, data->h/16, rt, r);
+  simple_scale(cinfo.output_width, cinfo.output_height, data->w/16, data->h/16, gt, g);
+  simple_scale(cinfo.output_width, cinfo.output_height, data->w/16, data->h/16, bt, b);
+  
+  free(rt);
+  free(gt);
+  free(bt);
+  
+  jpeg_finish_decompress(&cinfo);
+  jpeg_destroy_decompress(&cinfo);
+}
+
 void _loadjpeg_worker(Filter *f, Eina_Array *in, Eina_Array *out, Rect *area, int thread_id)
 {
   _Data *data = ea_data(f->data, thread_id);
   
   if (area->corner.scale < data->seekable)
     _loadjpeg_worker_ijg(f, in, out, area, thread_id);
+  else if (area->corner.scale == 4)
+    _loadjpeg_worker_ijg_thumb(f, in, out, area, thread_id);
   else
     _loadjpeg_worker_ijg_original(f, in, out, area, thread_id);
 
@@ -798,19 +930,24 @@ int _loadjpeg_input_fixed(Filter *f)
   data->h = cinfo.output_height;
   data->comp_count = cinfo.num_components;
   
+  data->thumb_len = get_exif_preview(data->filename, &data->thumb_data);
+  
   printf("seekable tile size: %dx%d\n", data->rst_int*data->mcu_w, data->mcu_h);
 
   if (data->rst_int 
     && JPEG_TILE_WIDTH % (data->rst_int * data->mcu_w) == 0)
     data->seekable = 3;
   
-  ((Dim*)data->dim)->scaledown_max = 3;
-  
+  //FIXME check wether thumbnail image is larger than image/16!
+  if (data->thumb_len)
+    ((Dim*)data->dim)->scaledown_max = 4;
+  else
+    ((Dim*)data->dim)->scaledown_max = 3;
   ((Dim*)data->dim)->width = cinfo.output_width;
   ((Dim*)data->dim)->height = cinfo.output_height;
 
-  f->tw_s = malloc(sizeof(int)*4);
-  f->th_s = malloc(sizeof(int)*4);
+  f->tw_s = malloc(sizeof(int)*5);
+  f->th_s = malloc(sizeof(int)*5);
   
   for(i=0;i<data->seekable;i++) {
     cinfo.scale_num = 1;
@@ -818,7 +955,7 @@ int _loadjpeg_input_fixed(Filter *f)
     jpeg_calc_output_dimensions(&cinfo);
     f->tw_s[i] = min(JPEG_TILE_WIDTH, cinfo.output_width);
     f->th_s[i] = min(JPEG_TILE_HEIGHT, cinfo.output_height);
- }
+  }
   for(i=data->seekable;i<4;i++) {
     cinfo.scale_num = 1;
     cinfo.scale_denom = 1u << i;
@@ -826,6 +963,8 @@ int _loadjpeg_input_fixed(Filter *f)
     f->tw_s[i] = cinfo.output_width;
     f->th_s[i] = cinfo.output_height;
   }
+  f->tw_s[4] = data->w/16;
+  f->th_s[4] = data->w/16;
   
   jpeg_destroy_decompress(&cinfo);
   
