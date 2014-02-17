@@ -88,7 +88,7 @@ typedef struct {
 
 int max_workers;
 Filter *sink, *contr, *blur, *load;
-Evas_Object *clipper, *win, *scroller, *file_slider, *filter_list, *select_filter, *pos_label;
+Evas_Object *clipper, *win, *scroller, *file_slider, *filter_list, *select_filter, *pos_label, *fsb, *load_progress, *load_label, *load_notify;
 Evas_Object *tab_group, *tab_filter, *tab_settings, *tab_tags, *tab_current, *tab_box, *tab_export, *tab_tags, *tags_list, *tags_filter_list, *seg_rating;
 Evas_Object *group_list, *export_box, *export_extensions, *export_path, *main_vbox;
 Evas_Object *grid = NULL, *vbox_bottom, *bg;
@@ -115,6 +115,7 @@ int file_idx = 0;
 int group_idx;
 int bench_idx = 0;
 int preview_tiles = 0;
+int file_count;
 
 int *thread_ids;
 
@@ -2042,6 +2043,8 @@ _ls_done_cb(void *data, Eio_File *handler)
   file_idx = 0;
   group_idx = 0;
   
+  evas_object_del(load_notify);
+  
   //FIXME free and clean old stuff!
   files = NULL;
   files = eina_inarray_new(sizeof(File_Group), 32);
@@ -2103,10 +2106,15 @@ static void
 _ls_main_cb(void *data, Eio_File *handler, const Eina_File_Direct_Info *info)
 {
   const char *file;
+  char buf[64];
 
   if (info->type != EINA_FILE_DIR) {
+    file_count++;
     file = eina_stringshare_add(info->path);
     files_unsorted = eina_list_append(files_unsorted, file);
+    
+    sprintf(buf, "found %d files", file_count);
+    elm_object_text_set(load_label, strdup(buf));
   }
 }
 
@@ -2117,13 +2125,27 @@ _ls_error_cb(void *data, Eio_File *handler, int error)
   workerfinish_schedule(&elm_exit_do, NULL, NULL);
 }
 
+void on_open_dir(char *path)
+{ 
+  dir = path;
+  if (dir) {
+    file_count = 0;
+    printf("open dir %s\n", path);
+    elm_fileselector_button_path_set(fsb, dir);
+    eio_dir_direct_ls(dir, &_ls_filter_cb, &_ls_main_cb,&_ls_done_cb, &_ls_error_cb,NULL);
+    
+    load_notify = elm_notify_add(win);
+    load_label = elm_label_add(load_notify);
+    elm_object_text_set(load_label, "found 0 files");
+    elm_object_content_set(load_notify, load_label);
+    evas_object_show(load_label);
+    evas_object_show(load_notify);
+  }
+}
+
 static void on_open(void *data, Evas_Object *obj, void *event_info)
 {
-  printf("open dir %s\n", (char*)event_info);
-  
-  dir = (char*)event_info;
-  elm_fileselector_button_path_set((Evas_Object*)data, dir);
-  eio_dir_direct_ls(dir, &_ls_filter_cb, &_ls_main_cb,&_ls_done_cb, &_ls_error_cb,NULL);
+  on_open_dir((char*)event_info);
 }
 
 
@@ -2373,7 +2395,7 @@ Evas_Object *elm_fsb_add_pack(Evas_Object *p, const char *text, void (*cb)(void 
   elm_object_text_set(btn, text);
   elm_box_pack_end(p, btn);
   evas_object_show(btn);
-  evas_object_smart_callback_add(btn, "file,chosen", cb, btn);
+  evas_object_smart_callback_add(btn, "file,chosen", cb, NULL);
   
   return btn;
 }
@@ -2999,7 +3021,7 @@ elm_main(int argc, char **argv)
   elm_box_pack_end(vbox_bottom, hbox);
   evas_object_show(hbox);
   
-  elm_fsb_add_pack(hbox, "open", &on_open, dir);
+  fsb = elm_fsb_add_pack(hbox, "open", &on_open, dir);
   elm_button_add_pack(hbox, "exit", &on_done);
   elm_button_add_pack(hbox, "+", &on_zoom_in);
   elm_button_add_pack(hbox, "-", &on_zoom_out);
@@ -3203,8 +3225,7 @@ elm_main(int argc, char **argv)
   if (file)
     eina_inarray_push(files, file_group_new(file));
   
-  if (dir)
-    eio_dir_direct_ls(dir, &_ls_filter_cb, &_ls_main_cb,&_ls_done_cb, &_ls_error_cb,NULL);
+  on_open_dir(dir);
   
   /*test_filter_config(load);
    s ize = *(*Dim*)filter_core_by_type(sink, MT_IMGSIZE);
