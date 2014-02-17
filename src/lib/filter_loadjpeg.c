@@ -120,7 +120,7 @@ int get_exif_preview(const char *file, uint8_t **preview)
     if (ed) {
       /* Make sure the image had a thumbnail before trying to write it */
       if (ed->data && ed->size) {
-	printf("found thumb image of size %d\n", ed->size);
+	//printf("found thumb image of size %d\n", ed->size);
 	len = ed->size;
 	if (!preview)
 	  preview = malloc(sizeof(uint8_t*));
@@ -932,7 +932,7 @@ int _loadjpeg_input_fixed(Filter *f)
   
   data->thumb_len = get_exif_preview(data->filename, &data->thumb_data);
   
-  printf("seekable tile size: %dx%d\n", data->rst_int*data->mcu_w, data->mcu_h);
+  //printf("seekable tile size: %dx%d\n", data->rst_int*data->mcu_w, data->mcu_h);
 
   if (data->rst_int 
     && JPEG_TILE_WIDTH % (data->rst_int * data->mcu_w) == 0)

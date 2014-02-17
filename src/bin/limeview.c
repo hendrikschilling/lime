@@ -1,4 +1,4 @@
-#include <Elementary.h>
+#include <elementary-1/Elementary.h>
 //#include <elm_win_legacy.h>
 #include <Ecore.h>
 #include <Eio.h>
@@ -28,13 +28,19 @@
 #include "filter_interleave.h"
 #include "filter_savejpeg.h"
 
+#include <valgrind/valgrind.h>
+
 #define TILE_SIZE DEFAULT_TILE_SIZE
 #define MAX_XMP_FILE 1024*1024
+#define HACK_ITERS_FOR_REAL_IDLE 1
 
 int high_quality_delay =  300;
 int max_reaction_delay =  1000;
 int fullscreen = 0;
 int max_fast_scaledown = 5;
+int first_preview = 0;
+Ecore_Idle_Enterer *workerfinish_idle = NULL;
+int hacky_idle_iters = 0;
 
 Eina_Hash *known_tags;
 Elm_Genlist_Item_Class *tags_list_itc;
@@ -99,7 +105,7 @@ Evas_Object *slider_blur, *slider_contr, *gridbox = NULL;
 int cache_size;
 Dim size;
 Mat_Cache *mat_cache;
-Mat_Cache *mat_cache_old;
+Mat_Cache *mat_cache_old = NULL;
 int forbid_fill = 0;
 Eina_List *filter_last_selected = NULL;
 Eina_List *filter_chain = NULL;
@@ -132,7 +138,7 @@ static void on_scroller_move(void *data, Evas_Object *obj, void *event_info);
 static void fill_scroller(void);
 void workerfinish_schedule(void (*func)(void *data, Evas_Object *obj), void *data, Evas_Object *obj);
 void filter_settings_create_gui(Eina_List *chain_node, Evas_Object *box);
-void fill_scroller_preview(void);
+void fill_scroller_preview();
 void save_sidecar(File_Group *group);
 
 
@@ -827,16 +833,52 @@ void elm_exit_do(void *data, Evas_Object *obj)
   elm_exit();
 }
 
+Eina_Bool workerfinish_idle_run(void *data)
+{
+  void (*pend_tmp_func)(void *data, Evas_Object *obj);
+  Evas_Object *pend_tmp_obj;
+  void *pend_tmp_data;
+  
+  printf("execute idle\n");
+  
+  workerfinish_idle = NULL;
+  
+  assert(!worker);
+  
+  if (hacky_idle_iters) {
+    hacky_idle_iters--;
+    return ECORE_CALLBACK_RENEW;
+  }
+  
+  pend_tmp_func = pending_action;
+  pend_tmp_data = pending_data;
+  pend_tmp_obj = pending_obj;
+  pending_action = NULL;
+  pending_data = NULL;
+  pending_obj = NULL;
+  pend_tmp_func(pend_tmp_data, pend_tmp_obj);
+  
+  return ECORE_CALLBACK_CANCEL;
+}
+
 void workerfinish_schedule(void (*func)(void *data, Evas_Object *obj), void *data, Evas_Object *obj)
 {
+  pending_action = func;
+  pending_data = data;
+  pending_obj = obj;
+    
   if (!worker) {
-    func(data, obj);
+    assert(!mat_cache_old);
+    
+    if (workerfinish_idle) {
+      printf("delete scheduled function\n");
+      ecore_idle_enterer_del(workerfinish_idle);
+    }
+    workerfinish_idle = ecore_idle_enterer_add(workerfinish_idle_run, NULL);
+    printf("scheduling function\n");
   }
-  else {
-    pending_action = func;
-    pending_data = data;
-    pending_obj = obj;
-  }
+  else
+    printf("not scheduling function");
 }
 
 static void
@@ -887,7 +929,7 @@ int bench_do(void)
     fit = 1;
     scale_goal = bench[bench_idx].scale;
   }
-  //grid_setsize();
+  grid_setsize();
   
   elm_scroller_region_show(scroller, bench[bench_idx].x, bench[bench_idx].y, 1, 1);
   
@@ -916,14 +958,24 @@ Eina_Bool _display_preview(void *data)
 {
   int i;
   
+  printf("display preview %p\n", mat_cache_old);
+  
+  if (!mat_cache_old)
+    return ECORE_CALLBACK_CANCEL;
+  
+  if (preview_timer) {
+    ecore_timer_del(preview_timer);
+    preview_timer = NULL;
+  }
+  
   grid_setsize();  
-  fill_scroller_preview();
-  fill_scroller();
+  //fill_scroller_preview();
+  //fill_scroller();
   
   evas_object_show(clipper);
   mat_cache_del(mat_cache_old);
   mat_cache_old = NULL;
-  grid_setsize();
+  //grid_setsize();
   for(i=0;i<ea_count(finished_threads);i++) {
     _insert_image(ea_data(finished_threads, i));
     free(ea_data(finished_threads, i));
@@ -959,96 +1011,59 @@ _finished_tile(void *data, Ecore_Thread *th)
   
   worker--;
   
-  if (delay < max_reaction_delay && !pending_action)
+  if (!first_preview && delay < max_reaction_delay && !pending_action)
     fill_scroller_preview();
   
-  if (!pending_action)
+  if (!first_preview && !pending_action)
     fill_scroller();
   
   if (mat_cache_old) {
-    if (preview_tiles || (!pending_action && delay < high_quality_delay && worker)) {
-      printf("delay for now: %f (%d)\n", delay, tdata->scale);
+    if (preview_tiles || (!pending_action && delay < high_quality_delay && (worker || first_preview))) {
+      //printf("delay for now: %f (%d)\n", delay, tdata->scale);
       eina_array_push(finished_threads, data);
       
       if (!preview_timer && !preview_tiles) {
           preview_timer = ecore_timer_add((high_quality_delay - delay)*0.001, &_display_preview, NULL);
       }
 
+      first_preview = 0;
       return;
     }
-    
-    if (preview_timer) {
-      printf("no force!\n");
-      ecore_timer_del(preview_timer);
-      preview_timer = NULL;
+    else {
+      
+      //printf("finaly delay: %f\n", bench_delay_get());
+      
+      if (!first_preview && !pending_action) {
+        grid_setsize();
+        fill_scroller_preview();
+        fill_scroller();
+      }
+      
+      _display_preview(NULL);
+      
+      /*evas_object_show(clipper);
+      mat_cache_del(mat_cache_old);
+      mat_cache_old = NULL;
+      grid_setsize();
+      for(i=0;i<ea_count(finished_threads);i++) {
+        _insert_image(ea_data(finished_threads, i));
+        free(ea_data(finished_threads, i));
+      }
+      eina_array_free(finished_threads);
+      finished_threads = NULL;*/
     }
-    
-    printf("finaly delay: %f\n", bench_delay_get());
-    
-    grid_setsize();  
-    fill_scroller_preview();
-    fill_scroller();
-    
-    evas_object_show(clipper);
-    mat_cache_del(mat_cache_old);
-    mat_cache_old = NULL;
-    grid_setsize();
-    for(i=0;i<ea_count(finished_threads);i++) {
-      _insert_image(ea_data(finished_threads, i));
-      free(ea_data(finished_threads, i));
-    }
-    eina_array_free(finished_threads);
-    finished_threads = NULL;
   }
-
+  
   _insert_image(tdata);
-
+  
+  first_preview = 0;
   
   if (!worker && pending_action) {
-    pend_tmp_func = pending_action;
-    pend_tmp_data = pending_data;
-    pend_tmp_obj = pending_obj;
-    pending_action = NULL;
-    pending_data = NULL;
-    pending_obj = NULL;
-    pend_tmp_func(pend_tmp_data, pend_tmp_obj);
+    if (mat_cache_old)
+      _display_preview(NULL);
+    //this will schedule an idle enterer to only process func after we are finished with rendering
+    workerfinish_schedule(pending_action, pending_data, pending_obj);
   }
-    
-  /*if (bench || verbose) {
-    if (tdata->scaled_preview)
-      bench_delay_stop(BENCHMARK_DELAY_SCALED);
-    else
-      bench_delay_stop(BENCHMARK_DELAY_FULL);
-  }
-  
-  _insert_image(tdata);
-  
-  worker--;
-  
-  free(tdata);
-  
-  if (pending_action) {
-    if (worker) return;
-    
-    pend_tmp_func = pending_action;
-    pend_tmp_data = pending_data;
-    pend_tmp_obj = pending_obj;
-    pending_action = NULL;
-    pending_data = NULL;
-    pending_obj = NULL;
-    pend_tmp_func(pend_tmp_data, pend_tmp_obj);
-  }
-  else if (tdata->t_id != max_workers && tdata->t_id != -1) {
-    fill_scroller();
-    
-    if (bench)
-      while (!worker) {
-	if (bench_do())
-	  return;
-	fill_scroller();
-      }
-  }*/
-
 }
 
 int lock_free_thread_id(void)
@@ -1085,8 +1100,20 @@ int fill_area(int xm, int ym, int wm, int hm, int minscale, int preview)
   if (forbid_fill)
     return 0;
   
+  if (first_preview && worker)
+    return 0;
+  
   if (worker >= max_workers)
     return 0;
+  
+  if (pending_action)
+    return 0;
+  
+  if (!grid)
+    return 0;
+  
+  printf("fill area %d %d %d\n", minscale, preview, worker);
+  VALGRIND_PRINTF_BACKTRACE("fill");
   
   elm_scroller_region_get(scroller, &x, &y, &w, &h);
   
@@ -1122,6 +1149,8 @@ int fill_area(int xm, int ym, int wm, int hm, int minscale, int preview)
   
   if (scale_start > size.scaledown_max)
     scale_start = size.scaledown_max;
+  
+  printf("fill area start scale %d %d %d %d %d\n", scale_start, xm, ym, x ,y);
 
   for(scale=scale_start;scale>=minscale;scale--) {
     //additional scaledown for preview
@@ -1131,8 +1160,11 @@ int fill_area(int xm, int ym, int wm, int hm, int minscale, int preview)
 
         cell = mat_cache_get(mat_cache, scale, i, j);
 	
-	if (i*TILE_SIZE*scalediv >= size.width || j*TILE_SIZE*scalediv >= size.height)
+	if (i*TILE_SIZE*scalediv >= size.width || j*TILE_SIZE*scalediv >= size.height) {
+	  assert(j<=100 && i >= 0);
+	    printf("skip %dx%d %dx%d\n", i, j, size.width, size.height);
 	  continue;
+	  }
 		
 	if (!cell) {
 	  img = evas_object_image_filled_add(evas_object_evas_get(win));
@@ -1204,10 +1236,14 @@ int fill_area(int xm, int ym, int wm, int hm, int minscale, int preview)
 	  
 	  ecore_thread_run(_process_tile, _finished_tile, NULL, tdata);
 	  started++;
+    
+    printf("start! %d %d %d\n", worker, started, first_preview);
 
-	  if (worker >= max_workers)
+	  if (worker >= max_workers || (first_preview && started))
 	    return started;
 	}
+	else
+    printf("found tile!\n");
       }
   }
   
@@ -1231,7 +1267,7 @@ void fc_del(void)
   filter_chain = NULL;
 }
 
-void fill_scroller_preview(void)
+void fill_scroller_preview()
 {
   if (max_fast_scaledown)
     preview_tiles += fill_area(0,0,0,0, max_fast_scaledown, 1);
@@ -1242,6 +1278,9 @@ static void fill_scroller(void)
   int x, y, w, h, grid_w, grid_h;
   float scale;
   
+  if (!grid)
+    return;
+
   evas_object_size_hint_min_get(grid, &grid_w, &grid_h);
   elm_scroller_region_get(scroller, &x, &y, &w, &h);
   
@@ -1363,8 +1402,12 @@ void tags_select_do(void *data, Evas_Object *obj)
 
 void delgrid(void)
 {  
-  if (mat_cache_old)
+  if (mat_cache_old) {
+    //we have not yet shown the current image (which would delete mat_cache_old)
+    VALGRIND_PRINTF_BACKTRACE("mat cache");
+    abort();
     return;
+  }
   
   //mat_cache_flush(mat_cache);
   mat_cache_old = mat_cache;
@@ -1411,6 +1454,8 @@ static void on_jump_image(void *data, Evas_Object *obj, void *event_info)
   if (file_idx == (int)elm_slider_value_get(file_slider))
     return;
   
+  if (mat_cache_old && !worker)
+    _display_preview(NULL);
   workerfinish_schedule(&step_image_do, NULL, NULL);
 }
 
@@ -1600,10 +1645,15 @@ void step_image_do(void *data, Evas_Object *obj)
   
   printf("configuration delay: %f\n", bench_delay_get());
   //we start as early as possible with rendering!
+  VALGRIND_PRINTF_BACKTRACE("hä?");
   forbid_fill--;
   size_recalc();
+  first_preview = 1;
   fill_scroller_preview();
+  printf("config: %d %d\n", first_preview, worker);
   fill_scroller();
+  
+  printf("config: %d %d\n", first_preview, worker);
   
   printf("configuration delay a: %f\n", bench_delay_get());
     
@@ -1735,7 +1785,7 @@ void _trans_grid_zoom_contex_del(void *data, Elm_Transit *transit)
   if (forbid_fill)
     return;
   
-  //grid_setsize();
+  grid_setsize();
   fill_scroller();
 }
 
@@ -1970,13 +2020,21 @@ on_next_image(void *data, Evas_Object *obj, void *event_info)
 {
   file_step = 1;
   
-  bench_delay_start();
-  
-  //if (grid && )
-  
-  elm_slider_value_set(file_slider, wrap_files_idx(elm_slider_value_get(file_slider)+1)+0.1);
-  
-  workerfinish_schedule(&step_image_do, NULL, NULL);
+  //already waiting for an action?
+  if (!pending_action) {
+    hacky_idle_iters = HACK_ITERS_FOR_REAL_IDLE;
+    bench_delay_start();
+    printf("schedule next image at %f!\n", bench_delay_get());
+
+    elm_slider_value_set(file_slider, wrap_files_idx(elm_slider_value_get(file_slider)+1)+0.1);
+
+    //FIXME delay worker until we have shown the preview?
+    if (mat_cache_old && !worker) {
+      _display_preview(NULL);
+      printf("had old mat cache\n");
+    }
+    workerfinish_schedule(&step_image_do, NULL, NULL);
+  }
 }
 
 static void
@@ -1990,9 +2048,18 @@ on_prev_image(void *data, Evas_Object *obj, void *event_info)
 {
   file_step = -1;
   
-  elm_slider_value_set(file_slider, wrap_files_idx(elm_slider_value_get(file_slider)-0.9));
-  
-  workerfinish_schedule(&step_image_do, NULL, NULL);
+  //already waiting for an action?
+  if (!pending_action) {
+    hacky_idle_iters = HACK_ITERS_FOR_REAL_IDLE;
+    printf("schedule next image at %f!\n", bench_delay_get());
+    
+    bench_delay_start();
+    elm_slider_value_set(file_slider, wrap_files_idx(elm_slider_value_get(file_slider)-0.9));
+    
+    if (mat_cache_old && !worker)
+      _display_preview(NULL);
+    workerfinish_schedule(&step_image_do, NULL, NULL);
+  }
 }
 
 void zoom_in_do(void)
@@ -2061,7 +2128,7 @@ _ls_done_cb(void *data, Eio_File *handler)
   }
 	
   elm_slider_min_max_set(file_slider, 0, eina_inarray_count(files)-1);
-  evas_object_smart_callback_add(file_slider, "changed", &on_jump_image, NULL);
+  //evas_object_smart_callback_add(file_slider, "changed", &on_jump_image, NULL);
   elm_slider_value_set(file_slider, 0);
   evas_object_size_hint_weight_set(file_slider, EVAS_HINT_EXPAND, 0);
   evas_object_size_hint_align_set(file_slider, EVAS_HINT_FILL, 0);
@@ -2095,11 +2162,8 @@ _ls_done_cb(void *data, Eio_File *handler)
   
   evas_object_show(scroller);
  
-  grid_setsize(); 
+  //grid_setsize(); 
   step_image_do(NULL, NULL);
-  //forbid_fill--;
-  //fill_scroller_preview();
-  //fill_scroller();;
 }
 
 static void
@@ -2949,7 +3013,7 @@ elm_main(int argc, char **argv)
   lime_init();
   
   mat_cache = mat_cache_new();
-  delgrid();
+  //delgrid();
   
   thread_ids = calloc(sizeof(int)*(max_workers+1), 1);
   

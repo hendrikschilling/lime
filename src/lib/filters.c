@@ -87,13 +87,10 @@ Eina_List *lime_filter_chain_deserialize(char *str)
     next = strchr(cur, ':');
     if (next)
       *next = '\0';
-    
-    printf("add %s\n", cur);
-    
     f = lime_filter_new(cur);
     
     if (!f) {
-      printf("no filter for %s\n", cur);
+      //printf("no filter for %s\n", cur);
       return NULL;
     }
     
@@ -102,9 +99,6 @@ Eina_List *lime_filter_chain_deserialize(char *str)
       cur = next+1;
     else
       cur = NULL;
-    
-    printf("cur %s\n", cur);
-    
     
     //f = fc->filter_new_f();
     
@@ -117,23 +111,15 @@ Eina_List *lime_filter_chain_deserialize(char *str)
     
     //settings
     if (cur) {
-      
-    printf("cur1 %s\n", cur);
       next = strchr(cur, '=');
       if (strchr(cur, ',') && next > strchr(cur, ','))
         break;
       while (next) {
         *next = '\0';
-        printf("set %s\n", cur);
         
           setting = cur;
-          
-    printf("cur2 %s\n", cur);
           assert(next+1 < last);
           cur = next+1;
-          
-          
-    printf("cur2,5 %s\n", cur);
   
         if (!ea_count(f->settings))
           return NULL;
@@ -141,7 +127,6 @@ Eina_List *lime_filter_chain_deserialize(char *str)
         for(i=0;i<ea_count(f->settings);i++) {
           m = ea_data(f->settings, i);
           if (!strncmp(setting, m->name, strlen(setting))) {
-            printf("matched setting %s for string %s\n", m->name, setting);
             setting = m->name;
             break;
           }
@@ -150,17 +135,15 @@ Eina_List *lime_filter_chain_deserialize(char *str)
         switch (lime_setting_type_get(f, setting)) {
           case MT_INT :
             lime_setting_int_set(f, setting, atoi(cur));
-            printf("deserialize: set %s to %d\n", setting, atoi(cur));
             break;
           case MT_STRING : 
-            printf("FIXME escaping in deserialization (\',\',\':\',\' \')!!!");
+            //printf("FIXME escaping in deserialization (\',\',\':\',\' \')!!!");
             tmp = strdup(cur);
             if (strchr(tmp, ':'))
               *strchr(tmp, ':') = '\0';
             if (strchr(tmp, ','))
               *strchr(tmp, ',') = '\0';
             lime_setting_string_set(f, setting, tmp);
-            printf("deserialize: set %s to %s\n", setting, tmp);
             free(tmp);
             break;
           default :
@@ -174,9 +157,6 @@ Eina_List *lime_filter_chain_deserialize(char *str)
           }
           else
             next = NULL;
-          
-          
-    printf("cur4 %s\n", cur);
         
         
       }
@@ -190,8 +170,6 @@ Eina_List *lime_filter_chain_deserialize(char *str)
       if (cur >= last)
         cur = NULL;
     }
-    
-    printf("cure %s\n", cur);
   }
   
   free(str);
