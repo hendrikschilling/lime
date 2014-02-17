@@ -77,6 +77,10 @@ Meta_Spec meta_def_list[MT_MAX] =
   {"MT_IMGSIZE",
     &meta_print_imgdim,
     NULL,
+    {}},
+  {"MT_INT",
+    &meta_print_int,
+    &Cmp_Int,
     {}}
 };
 

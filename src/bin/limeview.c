@@ -1576,7 +1576,7 @@ void step_image_do(void *data, Evas_Object *obj)
 	lime_setting_string_set(load, "filename", filename);
   
 	failed = lime_config_test(sink);
-  printf("configuration delay test: %f\n", bench_delay_get());
+	printf("configuration delay test: %f\n", bench_delay_get());
 	if (failed) {
 	  printf("failed to open %s\n", filename);
 	  group_idx++;

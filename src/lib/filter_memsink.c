@@ -50,7 +50,7 @@ static void _memsink_worker(Filter *f, Eina_Array *in, Eina_Array *out, Rect *ar
 Filter *filter_memsink_new(void)
 {
   Filter *filter = filter_new(&filter_core_memsink);
-  Meta *in, *channel, *bitdepth, *color, *size, *setting, *bound;
+  Meta *in, *channel, *bitdepth, *color, *size, *setting, *bound, *fliprot;
   _Memsink_Data *data = calloc(sizeof(_Memsink_Data), 1);
   data->use_alpha = malloc(sizeof(int));
   *data->use_alpha = 0;
@@ -69,6 +69,10 @@ Filter *filter_memsink_new(void)
   
   in = meta_new(MT_BUNDLE, filter);
   eina_array_push(filter->in, in);
+  
+  fliprot = meta_new_data(MT_FLIPROT, filter, malloc(sizeof(int)));
+  *(int*)fliprot->data = 1;
+  meta_attach(in, fliprot);
   
   channel = meta_new_channel(filter, 1);
   color = meta_new_data(MT_COLOR, filter, malloc(sizeof(int)));

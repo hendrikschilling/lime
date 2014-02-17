@@ -60,6 +60,7 @@ typedef enum {
  MT_STRING,
  MT_INT,
  MT_IMGSIZE,
+ MT_FLIPROT,
  MT_MAX
 } Meta_Type;
 

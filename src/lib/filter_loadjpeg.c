@@ -44,6 +44,7 @@ typedef struct {
 #endif
   char *filename;
   pthread_mutex_t *lock;
+  Meta *fliprot;
 } _Data;
 
 typedef struct {
@@ -475,9 +476,8 @@ jpeg_hacked_stdio_src (j_decompress_ptr cinfo, FILE * infile, _Data *data)
 
 
 struct my_error_mgr {
-  struct jpeg_error_mgr pub;	/* "public" fields */
-
-  jmp_buf setjmp_buffer;	/* for return to caller */
+  struct jpeg_error_mgr pub;
+  jmp_buf setjmp_buffer;
 };
 
 typedef struct my_error_mgr *my_error_ptr;
@@ -541,8 +541,8 @@ void _loadjpeg_worker_ijg(Filter *f, Eina_Array *in, Eina_Array *out, Rect *area
   uint8_t *r, *g, *b;
   uint8_t *rp, *gp, *bp;
   int i, j, l;
-  JSAMPARRAY buffer;		/* Output row buffer */
-  int row_stride;		/* physical row width in output buffer */
+  JSAMPARRAY buffer;
+  int row_stride;
   FILE *file;
   int lines_read;
   
@@ -601,7 +601,6 @@ void _loadjpeg_worker_ijg(Filter *f, Eina_Array *in, Eina_Array *out, Rect *area
   assert(*data->index);
   
   cinfo.err = jpeg_std_error(&jerr.pub);
-  //jerr.pub.error_exit = my_error_exit;
   
   if (setjmp(jerr.setjmp_buffer)) {
     jpeg_destroy_decompress(&cinfo);
@@ -685,7 +684,6 @@ void _loadjpeg_worker_ijg_original(Filter *f, Eina_Array *in, Eina_Array *out, R
     abort();
   
   cinfo.err = jpeg_std_error(&jerr.pub);
-  //jerr.pub.error_exit = my_error_exit;
   
   if (setjmp(jerr.setjmp_buffer)) {
     jpeg_destroy_decompress(&cinfo);
@@ -712,30 +710,11 @@ void _loadjpeg_worker_ijg_original(Filter *f, Eina_Array *in, Eina_Array *out, R
   buffer = (*cinfo.mem->alloc_sarray)
   ((j_common_ptr) &cinfo, JPOOL_IMAGE, row_stride, 16);
   
-  switch (data->rot) {
-    case 6 : 
-      rp = r + cinfo.output_height - 1;
-      gp = g + cinfo.output_height - 1;
-      bp = b + cinfo.output_height - 1;
-      xstep = cinfo.output_height;
-      ystep = -cinfo.output_height*cinfo.output_width - 1;
-      break;
-    case 8 : 
-      rp = r + cinfo.output_height*(cinfo.output_width - 1);
-      gp = g + cinfo.output_height*(cinfo.output_width - 1);
-      bp = b + cinfo.output_height*(cinfo.output_width - 1);
-      xstep = -cinfo.output_height;
-      ystep = cinfo.output_height*cinfo.output_width+1;
-      break;
-    case 1 :  
-    default : //FIXME more cases!
-      rp = r;
-      gp = g;
-      bp = b;
-      xstep = 1;
-      ystep = 0;
-      break;
-  }
+  rp = r;
+  gp = g;
+  bp = b;
+  xstep = 1;
+  ystep = 0;
 
   while (cinfo.output_scanline < cinfo.output_height) {
     lines_read = jpeg_read_scanlines(&cinfo, buffer, 16);
@@ -822,20 +801,14 @@ int _loadjpeg_input_fixed(Filter *f)
   printf("seekable tile size: %dx%d\n", data->rst_int*data->mcu_w, data->mcu_h);
 
   if (data->rst_int 
-    && JPEG_TILE_WIDTH % (data->rst_int * data->mcu_w) == 0
-    && data->rot != 6 && data->rot != 8)
+    && JPEG_TILE_WIDTH % (data->rst_int * data->mcu_w) == 0)
     data->seekable = 3;
   
-  if (data->rot <= 4) {
-    ((Dim*)data->dim)->width = cinfo.output_width;
-    ((Dim*)data->dim)->height = cinfo.output_height;
-  }
-  else {
-    ((Dim*)data->dim)->width = cinfo.output_height;
-    ((Dim*)data->dim)->height = cinfo.output_width;
-  }
   ((Dim*)data->dim)->scaledown_max = 3;
   
+  ((Dim*)data->dim)->width = cinfo.output_width;
+  ((Dim*)data->dim)->height = cinfo.output_height;
+
   f->tw_s = malloc(sizeof(int)*4);
   f->th_s = malloc(sizeof(int)*4);
   
@@ -843,7 +816,6 @@ int _loadjpeg_input_fixed(Filter *f)
     cinfo.scale_num = 1;
     cinfo.scale_denom = 1u << i;
     jpeg_calc_output_dimensions(&cinfo);
-    
     f->tw_s[i] = min(JPEG_TILE_WIDTH, cinfo.output_width);
     f->th_s[i] = min(JPEG_TILE_HEIGHT, cinfo.output_height);
  }
@@ -851,14 +823,8 @@ int _loadjpeg_input_fixed(Filter *f)
     cinfo.scale_num = 1;
     cinfo.scale_denom = 1u << i;
     jpeg_calc_output_dimensions(&cinfo);
-    if (data->rot <= 4) { 
-      f->tw_s[i] = cinfo.output_width;
-      f->th_s[i] = cinfo.output_height;
-    }
-    else {
-      f->tw_s[i] = cinfo.output_height;
-      f->th_s[i] = cinfo.output_width;
-    }
+    f->tw_s[i] = cinfo.output_width;
+    f->th_s[i] = cinfo.output_height;
   }
   
   jpeg_destroy_decompress(&cinfo);
@@ -883,7 +849,7 @@ static int _del(Filter *f)
 Filter *filter_loadjpeg_new(void)
 {
   Filter *filter = filter_new(&filter_core_loadjpeg);
-  Meta *in, *out, *channel, *bitdepth, *color, *dim;
+  Meta *in, *out, *channel, *bitdepth, *color, *dim, *fliprot;
   _Data *data = calloc(sizeof(_Data), 1);
   data->index = calloc(sizeof(int**), 1);
   data->lock = calloc(sizeof(pthread_mutex_t),1);
@@ -912,6 +878,11 @@ Filter *filter_loadjpeg_new(void)
   in->replace = out;
   eina_array_push(filter->in, in);
   data->input = in;
+  
+  fliprot = meta_new(MT_FLIPROT, filter);
+  meta_attach(out, fliprot);
+  data->fliprot = fliprot;
+  data->fliprot->data = &data->rot;
   
   channel = meta_new_channel(filter, 1);
   color = meta_new_data(MT_COLOR, filter, malloc(sizeof(int)));

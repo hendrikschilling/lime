@@ -4,6 +4,7 @@
 #include "filter_loadjpeg.h"
 #include "filter_loadtiff.h"
 #include "filter_interleave.h"
+#include "filter_fliprot.h"
 
 #define DEBUG_OUT_GRAPH 
 
@@ -1024,7 +1025,7 @@ int _cons_fix_err(Filter *start_f, Eina_Array *cons, Eina_Array *insert_f, int e
       filter_del(ea_data(new_fs, i));
     eina_array_flush(new_fs);
     
-    if (_filter_count_up(tried_f, &tried_len, insert_f, err_pos, 2))
+    if (_filter_count_up(tried_f, &tried_len, insert_f, err_pos, MAX_CONS_TRIES))
       failed = 1;
     _filter_insert_connect(tried_f, tried_len, insert_f, insert_cons, new_fs, source_f, sink_f);
     
@@ -1115,6 +1116,7 @@ int lime_config_test(Filter *f_sink)
   ea_push(insert_f, filter_core_loadjpeg.filter_new_f);
   ea_push(insert_f, filter_core_convert.filter_new_f);
   ea_push(insert_f, filter_core_loadtiff.filter_new_f);
+  ea_push(insert_f, filter_core_fliprot.filter_new_f);
   
   err_pos_start = test_filter_config_real(f, 0);
   
