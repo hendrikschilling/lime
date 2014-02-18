@@ -7,6 +7,10 @@
 
 #define MAX_SCALE_DIFF 20
 
+#define SEARCH_SIZE 32
+
+#define TILE_SIZE 64
+
 typedef struct {
   int x, y;
   int diff;
@@ -28,11 +32,11 @@ void *_denoise_data_new(Filter *f, void *data)
 {
   _Data *new = calloc(sizeof(_Data), 1);
   
-  new->matches = malloc(sizeof(_Match)*DEFAULT_TILE_SIZE*DEFAULT_TILE_SIZE*MAX_MATCH_COUNT);
-  new->changed = malloc(sizeof(uint8_t)*DEFAULT_TILE_SIZE*DEFAULT_TILE_SIZE);
-  new->counts = malloc(sizeof(int)*DEFAULT_TILE_SIZE*DEFAULT_TILE_SIZE);
-  new->worsts = malloc(sizeof(int)*DEFAULT_TILE_SIZE*DEFAULT_TILE_SIZE);
-  new->avgs = malloc(sizeof(uint8_t)*(DEFAULT_TILE_SIZE+512)*(DEFAULT_TILE_SIZE+512)*3);
+  new->matches = malloc(sizeof(_Match)*TILE_SIZE*TILE_SIZE*MAX_MATCH_COUNT);
+  new->changed = malloc(sizeof(uint8_t)*TILE_SIZE*TILE_SIZE);
+  new->counts = malloc(sizeof(int)*TILE_SIZE*TILE_SIZE);
+  new->worsts = malloc(sizeof(int)*TILE_SIZE*TILE_SIZE);
+  new->avgs = malloc(sizeof(uint8_t)*(TILE_SIZE+2*SEARCH_SIZE)*(TILE_SIZE+2*SEARCH_SIZE)*3);
   new->max_diff = ((_Data*)data)->max_diff;
   new->max_diff_c = ((_Data*)data)->max_diff_c;
   new->iters = ((_Data*)data)->iters;
@@ -44,10 +48,10 @@ static void _area_calc(Filter *f, Rect *in, Rect *out)
 { 
   if (!in->corner.scale) {
     out->corner.scale = in->corner.scale;
-    out->corner.x = in->corner.x-256;
-    out->corner.y = in->corner.y-256;
-    out->width = in->width+512;
-    out->height = in->height+512;
+    out->corner.x = in->corner.x-SEARCH_SIZE;
+    out->corner.y = in->corner.y-SEARCH_SIZE;
+    out->width = in->width+2*SEARCH_SIZE;
+    out->height = in->height+2*SEARCH_SIZE;
   }
   else
     *out = *in;
@@ -106,9 +110,9 @@ static void insert_match(_Data *data, _Match m, int x, int y)
   int *count;
   int *worst;
   
-  matches = &data->matches[(y*DEFAULT_TILE_SIZE+x)*MAX_MATCH_COUNT];
-  count = &data->counts[y*DEFAULT_TILE_SIZE+x];
-  worst = &data->worsts[y*DEFAULT_TILE_SIZE+x];
+  matches = &data->matches[(y*TILE_SIZE+x)*MAX_MATCH_COUNT];
+  count = &data->counts[y*TILE_SIZE+x];
+  worst = &data->worsts[y*TILE_SIZE+x];
   
   //if we dont yet have MAX_AVG_COUNT we take anything!
   /*if (*count < MAX_AVG_COUNT) {*/
@@ -126,7 +130,7 @@ static void insert_match(_Data *data, _Match m, int x, int y)
     if (*worst < m.diff)
       *worst = m.diff;
     
-    data->changed[y*DEFAULT_TILE_SIZE+x] = 1;
+    data->changed[y*TILE_SIZE+x] = 1;
  /* }
   else if (m.diff < *worst) {
     for(i=0;i<*count;i++)
@@ -160,8 +164,8 @@ static void calc_avg(_Data *data, Eina_Array *in)
     td = (Tiledata*)ea_data(in, ch);
     width = td->area->width;
     
-    for(j=2;j<(DEFAULT_TILE_SIZE+512)-1;j++)
-      for(i=2;i<(DEFAULT_TILE_SIZE+512)-1;i++) {
+    for(j=2;j<(TILE_SIZE+2*SEARCH_SIZE)-1;j++)
+      for(i=2;i<(TILE_SIZE+2*SEARCH_SIZE)-1;i++) {
 	buf = tileptr8(td, i+td->area->corner.x-1, j+td->area->corner.y-1);
 
 	sum = 0;
@@ -179,14 +183,14 @@ static void calc_avg(_Data *data, Eina_Array *in)
 
 static void sort_matches(_Data *data, int x, int y)
 { 
-  if (!data->changed[y*DEFAULT_TILE_SIZE + x])
+  if (!data->changed[y*TILE_SIZE + x])
     return;
   
-  qsort(&data->matches[(y*DEFAULT_TILE_SIZE + x)*MAX_MATCH_COUNT], data->counts[y*DEFAULT_TILE_SIZE + x], sizeof(_Match), cmp_mtach);
+  qsort(&data->matches[(y*TILE_SIZE + x)*MAX_MATCH_COUNT], data->counts[y*TILE_SIZE + x], sizeof(_Match), cmp_mtach);
   
-  if (data->counts[y*DEFAULT_TILE_SIZE + x] > MAX_AVG_COUNT) {  
-    data->worsts[y*DEFAULT_TILE_SIZE + x] = data->matches[(y*DEFAULT_TILE_SIZE + x)*MAX_MATCH_COUNT + MAX_AVG_COUNT - 1].diff;
-    data->counts[y*DEFAULT_TILE_SIZE + x] = MAX_AVG_COUNT;
+  if (data->counts[y*TILE_SIZE + x] > MAX_AVG_COUNT) {  
+    data->worsts[y*TILE_SIZE + x] = data->matches[(y*TILE_SIZE + x)*MAX_MATCH_COUNT + MAX_AVG_COUNT - 1].diff;
+    data->counts[y*TILE_SIZE + x] = MAX_AVG_COUNT;
   }
 }
 
@@ -226,25 +230,25 @@ static void match_rand_from_match(_Data *data, int x, int y, Eina_Array *in, Rec
   _Match m;
   _Match m2;
   Tiledata *td;
-  int max = data->counts[y*DEFAULT_TILE_SIZE + x];
+  int max = data->counts[y*TILE_SIZE + x];
   
   if (max > MAX_AVG_COUNT) max = MAX_AVG_COUNT;
   
-  m = data->matches[(y*DEFAULT_TILE_SIZE + x)*MAX_MATCH_COUNT+(rand() % max)];
+  m = data->matches[(y*TILE_SIZE + x)*MAX_MATCH_COUNT+(rand() % max)];
   
-  if (x + m.x < 0 || x + m.x >= DEFAULT_TILE_SIZE)
+  if (x + m.x < 0 || x + m.x >= TILE_SIZE)
     return;
-  if (y + m.y < 0 || y + m.y >= DEFAULT_TILE_SIZE)
+  if (y + m.y < 0 || y + m.y >= TILE_SIZE)
     return;
-  if (!data->counts[(y+m.y)*DEFAULT_TILE_SIZE + (x+m.x)])
+  if (!data->counts[(y+m.y)*TILE_SIZE + (x+m.x)])
     return;
-  /*if (!data->changed[y*DEFAULT_TILE_SIZE + x])
+  /*if (!data->changed[y*TILE_SIZE + x])
     return;*/
   
-  max = data->counts[(y+m.y)*DEFAULT_TILE_SIZE + (x+m.x)];
+  max = data->counts[(y+m.y)*TILE_SIZE + (x+m.x)];
   if (max > MAX_AVG_COUNT) max = MAX_AVG_COUNT;
   
-  m2 = data->matches[((y+m.y)*DEFAULT_TILE_SIZE + (x+m.x))*MAX_MATCH_COUNT + (rand() % max)];
+  m2 = data->matches[((y+m.y)*TILE_SIZE + (x+m.x))*MAX_MATCH_COUNT + (rand() % max)];
   m.x += m2.x;
   m.y += m2.y;
   m.diff = 0;
@@ -263,15 +267,15 @@ static void match_rand_from(_Data *data, int x, int y, int x_off, int y_off, Ein
   int ch;
   _Match m;
   Tiledata *td;
-  int max = data->counts[(y+y_off)*DEFAULT_TILE_SIZE + (x+x_off)];
+  int max = data->counts[(y+y_off)*TILE_SIZE + (x+x_off)];
   
   if (max > MAX_AVG_COUNT) max = MAX_AVG_COUNT;
   
-  m = data->matches[((y+y_off)*DEFAULT_TILE_SIZE + (x+x_off))*MAX_MATCH_COUNT + (rand() % max)];
+  m = data->matches[((y+y_off)*TILE_SIZE + (x+x_off))*MAX_MATCH_COUNT + (rand() % max)];
   m.diff = 0;
   m.origin = 2;
   
-  /*if (!data->changed[y*DEFAULT_TILE_SIZE + x])
+  /*if (!data->changed[y*TILE_SIZE + x])
     return;*/
   
   for(ch=0;ch<3;ch++) {
@@ -336,15 +340,15 @@ static void avg_matches(_Data *data, Eina_Array *in, Eina_Array *out, Rect *area
   int orig_sum;
   int rough;
   
-  for(j=0;j<DEFAULT_TILE_SIZE;j++)
-    for(i=0;i<DEFAULT_TILE_SIZE;i++) {
+  for(j=0;j<TILE_SIZE;j++)
+    for(i=0;i<TILE_SIZE;i++) {
       
       //TODO sort, limit to MAX_AVG_COUNT!
-      //printf("best: %d worst: %d\n", data->matches[(j*DEFAULT_TILE_SIZE + i)*MAX_MATCH_COUNT].diff,data->matches[(j*DEFAULT_TILE_SIZE + i)*MAX_MATCH_COUNT+data->counts[j*DEFAULT_TILE_SIZE + j]-1].diff);
+      //printf("best: %d worst: %d\n", data->matches[(j*TILE_SIZE + i)*MAX_MATCH_COUNT].diff,data->matches[(j*TILE_SIZE + i)*MAX_MATCH_COUNT+data->counts[j*TILE_SIZE + j]-1].diff);
 
-      qsort(&data->matches[(j*DEFAULT_TILE_SIZE + i)*MAX_MATCH_COUNT], data->counts[j*DEFAULT_TILE_SIZE + j], sizeof(_Match), cmp_mtach);
+      qsort(&data->matches[(j*TILE_SIZE + i)*MAX_MATCH_COUNT], data->counts[j*TILE_SIZE + j], sizeof(_Match), cmp_mtach);
       
-      max = data->counts[j*DEFAULT_TILE_SIZE + j];
+      max = data->counts[j*TILE_SIZE + j];
       if (MAX_AVG_COUNT < max) max = MAX_AVG_COUNT;
       
       for(ch=0;ch<3;ch++) {
@@ -357,7 +361,7 @@ static void avg_matches(_Data *data, Eina_Array *in, Eina_Array *out, Rect *area
 	rough = abs(sum);
 	
 	for(n=0;n<max;n++) {
-	  m = data->matches[(j*DEFAULT_TILE_SIZE + i)*MAX_MATCH_COUNT + n];
+	  m = data->matches[(j*TILE_SIZE + i)*MAX_MATCH_COUNT + n];
 	  
 	  if (ch) {
 	    if (m.diff*m.diff < max_diff_c*(rough+10)*10) {
@@ -396,7 +400,7 @@ static void _worker(Filter *f, Eina_Array *in, Eina_Array *out, Rect *area, int 
   _Data *data = ea_data(f->data, thread_id);
   int max_diff = *data->max_diff*9*255*3*0.001;
   int max_diff_c = *data->max_diff_c*9*255*3*0.001;
-  float dist_mult = log(256.0)/(*data->iters)/log(2);
+  float dist_mult = log(SEARCH_SIZE)/(*data->iters)/log(2);
   float dist;
   
   assert(in && ea_count(in) == 3);
@@ -407,22 +411,22 @@ static void _worker(Filter *f, Eina_Array *in, Eina_Array *out, Rect *area, int 
       in_td = (Tiledata*)ea_data(in, ch);
       out_td = (Tiledata*)ea_data(out, ch);
       
-      memcpy(out_td->data, in_td->data, DEFAULT_TILE_SIZE*DEFAULT_TILE_SIZE);
+      memcpy(out_td->data, in_td->data, TILE_SIZE*TILE_SIZE);
     }
    
     return;
   }
   
-  memset(data->counts, 0, sizeof(int)*DEFAULT_TILE_SIZE*DEFAULT_TILE_SIZE);
-  memset(data->worsts, 127, sizeof(int)*DEFAULT_TILE_SIZE*DEFAULT_TILE_SIZE);
+  memset(data->counts, 0, sizeof(int)*TILE_SIZE*TILE_SIZE);
+  memset(data->worsts, 127, sizeof(int)*TILE_SIZE*TILE_SIZE);
   
   calc_avg(data, in);
   
   for(n=0;n<*data->iters;n++) {
     dist = pow(2.0, (*data->iters - n )*dist_mult);
     
-    for(j=0;j<DEFAULT_TILE_SIZE;j++)
-      for(i=0;i<DEFAULT_TILE_SIZE;i++)
+    for(j=0;j<TILE_SIZE;j++)
+      for(i=0;i<TILE_SIZE;i++)
       {
 	match_rand(data, i, j, in, area, dist);
 	match_rand(data, i, j, in, area, dist);
@@ -437,29 +441,29 @@ static void _worker(Filter *f, Eina_Array *in, Eina_Array *out, Rect *area, int 
     
     n++;
     if (!(n<*data->iters)) {
-      for(j=DEFAULT_TILE_SIZE-1;j>=0;j--)
-	for(i=DEFAULT_TILE_SIZE-1;i>=0;i--)
+      for(j=TILE_SIZE-1;j>=0;j--)
+	for(i=TILE_SIZE-1;i>=0;i--)
 	sort_matches(data, i, j);
       break;
     }
     
     dist = pow(2.0, (*data->iters - n)*dist_mult);
     
-    for(j=DEFAULT_TILE_SIZE-1;j>=0;j--)
-      for(i=DEFAULT_TILE_SIZE-1;i>=0;i--)
+    for(j=TILE_SIZE-1;j>=0;j--)
+      for(i=TILE_SIZE-1;i>=0;i--)
       {
 	match_rand(data, i, j, in, area, dist);
 	match_rand(data, i, j, in, area, dist);
 	match_rand(data, i, j, in, area, dist);
-	if (j<DEFAULT_TILE_SIZE-1) match_rand_from(data, i, j, 0, 1, in, area);
-	if (i<DEFAULT_TILE_SIZE-1) match_rand_from(data, i, j, 1, 0, in, area);
-	if (i<DEFAULT_TILE_SIZE-1 && j<DEFAULT_TILE_SIZE-1) match_rand_from(data, i, j, 1, 1, in, area);
+	if (j<TILE_SIZE-1) match_rand_from(data, i, j, 0, 1, in, area);
+	if (i<TILE_SIZE-1) match_rand_from(data, i, j, 1, 0, in, area);
+	if (i<TILE_SIZE-1 && j<TILE_SIZE-1) match_rand_from(data, i, j, 1, 1, in, area);
 	for(k=0;k<n/2;k++)
 	  match_rand_from_match(data, i, j, in, area);
 	sort_matches(data, i, j);
     }
     
-    memset(data->changed, 0, DEFAULT_TILE_SIZE*DEFAULT_TILE_SIZE);
+    memset(data->changed, 0, TILE_SIZE*TILE_SIZE);
   }
     
   avg_matches(data, in, out, area, max_diff, max_diff_c);
@@ -473,17 +477,19 @@ static Filter *filter_denoise_new(void)
   Meta *in, *out, *channel, *color[3], *setting, *bound;
   Meta *ch_out[3];
   _Data *data = calloc(sizeof(_Data), 1);
-  data->matches = malloc(sizeof(_Match)*DEFAULT_TILE_SIZE*DEFAULT_TILE_SIZE*MAX_MATCH_COUNT);
-  data->changed = malloc(sizeof(uint8_t)*DEFAULT_TILE_SIZE*DEFAULT_TILE_SIZE);
-  data->counts = malloc(sizeof(int)*DEFAULT_TILE_SIZE*DEFAULT_TILE_SIZE);
-  data->worsts = malloc(sizeof(int)*DEFAULT_TILE_SIZE*DEFAULT_TILE_SIZE);
-  data->avgs = malloc(sizeof(uint8_t)*(DEFAULT_TILE_SIZE+512)*(DEFAULT_TILE_SIZE+512)*3);
+  data->matches = malloc(sizeof(_Match)*TILE_SIZE*TILE_SIZE*MAX_MATCH_COUNT);
+  data->changed = malloc(sizeof(uint8_t)*TILE_SIZE*TILE_SIZE);
+  data->counts = malloc(sizeof(int)*TILE_SIZE*TILE_SIZE);
+  data->worsts = malloc(sizeof(int)*TILE_SIZE*TILE_SIZE);
+  data->avgs = malloc(sizeof(uint8_t)*(TILE_SIZE+2*SEARCH_SIZE)*(TILE_SIZE+2*SEARCH_SIZE)*3);
   data->max_diff = malloc(sizeof(float));
   *data->max_diff = 20.0;
   data->max_diff_c = malloc(sizeof(float));
   *data->max_diff_c = 40.0;
   data->iters = malloc(sizeof(int));
   *data->iters = 2;
+  filter->tile_width = TILE_SIZE;
+  filter->tile_height = TILE_SIZE;
 
   filter->mode_buffer = filter_mode_buffer_new();
   filter->mode_buffer->threadsafe = 1;
