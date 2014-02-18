@@ -21,7 +21,7 @@ typedef struct {
   Meta *dim;
   int rot;
   int seekable;
-  int size_pos;
+  int *size_pos;
   int file_pos;
   int rst_int;
   int mcu_w, mcu_h;
@@ -150,8 +150,8 @@ int jpeg_read_infos(FILE *f, _Data *data)
   int next_restart;
   unsigned char buf[2*BUF_SIZE];
   unsigned char *pos = buf;
+  int *index;
   int ix, iy;
-  *data->index = calloc(sizeof(int)*data->iw*data->ih, 1);
   
   fseek(f, 0, SEEK_SET);
   ATLEAST_BUF(BUF_SIZE);
@@ -172,7 +172,7 @@ int jpeg_read_infos(FILE *f, _Data *data)
         ATLEAST_BUF(9)
        //FIXME get lengths and quit
         printf("get lengths! %d %d\n",file_pos, remain);
-        data->size_pos = file_pos - remain + 5;
+        *data->size_pos = file_pos - remain + 5;
         if (pos[4] != 8) {
           printf("jpg Syntax error!\n");
           return -1;
@@ -183,6 +183,7 @@ int jpeg_read_infos(FILE *f, _Data *data)
         break;
       case 0xDA:
         printf("here lies the actual image!\nbuilding index!\n");
+	index = calloc(sizeof(int)*data->iw*data->ih, 1);
         //2B Marker + 2B Length + 1B comp_count (FIXME compare/use) + 2B*comp_count+ marker length
         len = pos[2] * 256 + pos[3];
         assert(pos[4] == data->comp_count);
@@ -194,7 +195,7 @@ int jpeg_read_infos(FILE *f, _Data *data)
         ix = 0;
         iy = 0;
         i = 0;
-        (*data->index)[0] = file_pos - remain;
+        index[0] = file_pos - remain;
         last_interval = 0;
         curr_interval = 0;
         while(1) {
@@ -216,7 +217,7 @@ int jpeg_read_infos(FILE *f, _Data *data)
             }
             //printf("%4dx%4d ", ix*data->mcu_w, iy*data->mcu_h);
             //we point to after the restart marker
-            (*data->index)[iy*data->iw + ix] = file_pos - remain + i+2; 
+            index[iy*data->iw + ix] = file_pos - remain + i+2; 
             //printf("found %d\n", next_restart);
             next_restart = (next_restart+1) % 8;
             
@@ -245,13 +246,13 @@ int jpeg_read_infos(FILE *f, _Data *data)
             i = 0;
           }
         }
+        *data->index = index;
         return 0;
       case 0xC4:
       case 0xDB:
       case 0xDD:
       case 0xFE:
       case 0xE1: //FIXME get exif info!
-        printf("found %x at %d\n", pos[1], file_pos-remain+1);
         len = pos[2] * 256 + pos[3];
         SKIP_BUF(len+2);
         break;
@@ -263,7 +264,6 @@ int jpeg_read_infos(FILE *f, _Data *data)
           break;
         }
         else {
-        printf("found %x\n", pos[1]);
         len = (pos[2] << 8) | pos[3];
         SKIP_BUF(len+2);
         break;
@@ -354,15 +354,16 @@ fill_input_buffer (j_decompress_ptr cinfo)
       }
     }
   }
-  else if (src->data->file_pos < src->data->size_pos 
-      && src->data->file_pos + INPUT_BUF_SIZE >= src->data->size_pos) {
+  else if (src->data->file_pos < *src->data->size_pos 
+      && src->data->file_pos + INPUT_BUF_SIZE >= *src->data->size_pos) {
     if (src->data->file_pos + 2*INPUT_BUF_SIZE >= (*src->data->index)[0])
       nbytes = JFREAD(src->infile, src->buffer, (*src->data->index)[0]-src->data->file_pos);
     else
       nbytes = JFREAD(src->infile, src->buffer, 2*INPUT_BUF_SIZE);
     //FIXME
-    int i = src->data->size_pos - src->data->file_pos;
+    int i = *src->data->size_pos - src->data->file_pos;
     //printf("size on fill: %dx%d\n%x %x %x %x %x %x\n%d\n", src->buffer[i+2]*256+src->buffer[i+3],src->buffer[i]*256+src->buffer[i+1],src->buffer[i],src->buffer[i+1],src->buffer[i+2],src->buffer[i+3],src->buffer[i+4],src->buffer[i+5],src->data->size_pos);
+    printf("set size to %d\n", src->data->serve_width);
     src->buffer[i+2] = src->data->serve_width / 256; //pretend size to be 256!
     src->buffer[i+3] = src->data->serve_width % 256;
   }
@@ -542,7 +543,7 @@ void *_data_new(Filter *f, void *data)
   *newdata = *(_Data*)data;
 
   //FIXME reuse (create on input_fixed?)
-  newdata->index = calloc(sizeof(int**), 1);
+  //newdata->index = calloc(sizeof(int**), 1);
   
   return newdata;
 }
@@ -593,7 +594,7 @@ void _loadjpeg_worker_ijg(Filter *f, Eina_Array *in, Eina_Array *out, Rect *area
   struct my_error_mgr jerr;
   
   assert(out && ea_count(out) == 3);
- 
+  
   //maximum scaledown: 1/8
   assert(area->corner.scale <= 3);
   int mul = 1u << area->corner.scale;
@@ -632,6 +633,9 @@ void _loadjpeg_worker_ijg(Filter *f, Eina_Array *in, Eina_Array *out, Rect *area
   if (!file)
     abort();
   
+  
+  
+  
   if (!(*data->index)) {
     pthread_mutex_lock(data->lock);
     if (!(*data->index)) {
@@ -640,8 +644,6 @@ void _loadjpeg_worker_ijg(Filter *f, Eina_Array *in, Eina_Array *out, Rect *area
     }
     pthread_mutex_unlock(data->lock);
   }
-  
-  assert(*data->index);
   
   cinfo.err = jpeg_std_error(&jerr.pub);
   
@@ -655,7 +657,7 @@ void _loadjpeg_worker_ijg(Filter *f, Eina_Array *in, Eina_Array *out, Rect *area
   jpeg_hacked_stdio_src(&cinfo, file, data);
   
   (void) jpeg_read_header(&cinfo, TRUE);
-
+  
   cinfo.scale_num = 1;
   cinfo.scale_denom = 1u << area->corner.scale;
   
@@ -669,6 +671,9 @@ void _loadjpeg_worker_ijg(Filter *f, Eina_Array *in, Eina_Array *out, Rect *area
   buffer = (*cinfo.mem->alloc_sarray)
   ((j_common_ptr) &cinfo, JPOOL_IMAGE, row_stride, data->mcu_h/mul);
   
+  //FIXME???
+  assert(area->width >= cinfo.output_width);
+  assert(data->serve_height/mul <= area->height);
   
   rp = r;
   gp = g;
@@ -796,7 +801,7 @@ void _loadjpeg_worker_ijg_thumb(Filter *f, Eina_Array *in, Eina_Array *out, Rect
   JSAMPARRAY buffer;    /* Output row buffer */
   int row_stride;   /* physical row width in output buffer */
   int lines_read;
-  char *rt, *gt, *bt;
+  uint8_t *rt, *gt, *bt;
   
   struct jpeg_decompress_struct cinfo;
   struct my_error_mgr jerr;
@@ -849,7 +854,7 @@ void _loadjpeg_worker_ijg_thumb(Filter *f, Eina_Array *in, Eina_Array *out, Rect
         bp[0] = buffer[j][i*3+2];
       }
   }
-  
+
   simple_scale(cinfo.output_width, cinfo.output_height, data->w/16, data->h/16, rt, r);
   simple_scale(cinfo.output_width, cinfo.output_height, data->w/16, data->h/16, gt, g);
   simple_scale(cinfo.output_width, cinfo.output_height, data->w/16, data->h/16, bt, b);
@@ -871,8 +876,7 @@ void _loadjpeg_worker(Filter *f, Eina_Array *in, Eina_Array *out, Rect *area, in
   else if (area->corner.scale == 4)
     _loadjpeg_worker_ijg_thumb(f, in, out, area, thread_id);
   else
-    _loadjpeg_worker_ijg_original(f, in, out, area, thread_id);
-
+    _loadjpeg_worker_ijg_original(f, in, out, area, thread_id);  
 }
 
 int min(a, b) 
@@ -897,13 +901,14 @@ int _loadjpeg_input_fixed(Filter *f)
   
   if (*data->index) {
     free(*data->index);
-    (*data->index) = NULL;
-  }   
+    *data->index = NULL;
+  }
   
   for(i=0;i<ea_count(f->data);i++) {
     tdata = ea_data(f->data, i);
     if (!tdata->filename || strcmp(tdata->filename, data->input->data)) {
       tdata->filename = data->input->data;
+      assert(!*tdata->index);
     }
   }
   
@@ -964,7 +969,7 @@ int _loadjpeg_input_fixed(Filter *f)
     f->th_s[i] = cinfo.output_height;
   }
   f->tw_s[4] = data->w/16;
-  f->th_s[4] = data->w/16;
+  f->th_s[4] = data->h/16;
   
   jpeg_destroy_decompress(&cinfo);
   
@@ -991,8 +996,9 @@ Filter *filter_loadjpeg_new(void)
   Meta *in, *out, *channel, *bitdepth, *color, *dim, *fliprot;
   _Data *data = calloc(sizeof(_Data), 1);
   data->index = calloc(sizeof(int**), 1);
-  data->lock = calloc(sizeof(pthread_mutex_t),1);
-  pthread_mutex_init(data->lock, NULL);
+  data->size_pos = calloc(sizeof(int*), 1);
+  data->lock = calloc(sizeof(pthread_mutex_t), 1);
+  assert(pthread_mutex_init(data->lock, NULL) == 0);
   data->dim = calloc(sizeof(Dim), 1);
   
   filter->del = &_del;
