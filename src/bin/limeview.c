@@ -1,4 +1,4 @@
-#include <elementary-1/Elementary.h>
+#include <Elementary.h>
 //#include <elm_win_legacy.h>
 #include <Ecore.h>
 #include <Eio.h>
@@ -910,6 +910,7 @@ void workerfinish_schedule(void (*func)(void *data, Evas_Object *obj), void *dat
     }
     workerfinish_idle = ecore_idle_enterer_add(workerfinish_idle_run, NULL);
     printf("scheduling function\n");
+    printf("quick_preview_only %d\n", quick_preview_only);
   }
   else {
     quick_preview_only = 1;
@@ -1019,7 +1020,7 @@ Eina_Bool _display_preview(void *data)
   eina_array_free(finished_threads);
   finished_threads = NULL;
       
-  printf("finaly delay forced: %f\n", bench_delay_get());
+  printf("final delay for preview: %f\n", bench_delay_get());
 
   preview_timer = NULL;
 
@@ -1062,9 +1063,14 @@ _finished_tile(void *data, Ecore_Thread *th)
       //printf("delay for now: %f (%d)\n", delay, tdata->scale);
       eina_array_push(finished_threads, data);
       
-      if (!preview_timer && !preview_tiles) {
-          preview_timer = ecore_timer_add((high_quality_delay - delay)*0.001, &_display_preview, NULL);
+      if (first_preview) {
+	if (!preview_timer && !preview_tiles) {
+	    preview_timer = ecore_timer_add((high_quality_delay - delay)*0.001, &_display_preview, NULL);
+	}
       }
+      else
+	if (!worker)
+	  _display_preview(NULL);
 
       first_preview = 0;
       
@@ -1072,7 +1078,6 @@ _finished_tile(void *data, Ecore_Thread *th)
     }
     else {
       
-      //printf("finaly delay: %f\n", bench_delay_get());
       
       if (!first_preview && !pending_action) {
         grid_setsize();
@@ -1085,6 +1090,8 @@ _finished_tile(void *data, Ecore_Thread *th)
   }
   
   _insert_image(tdata);
+  printf("delay for %d: %f\n", tdata->scale, bench_delay_get());
+
   
   first_preview = 0;
   
@@ -1177,8 +1184,6 @@ int fill_area(int xm, int ym, int wm, int hm, int minscale, int preview)
   if (scale_start > size.scaledown_max)
     scale_start = size.scaledown_max;
   
-  printf("fill area start scale %d %d %d %d %d\n", scale_start, xm, ym, x ,y);
-
   for(scale=scale_start;scale>=minscale;scale--) {
     //additional scaledown for preview
     scalediv = ((uint32_t)1) << scale;
@@ -1670,10 +1675,7 @@ void step_image_do(void *data, Evas_Object *obj)
   size_recalc();
   first_preview = 1;
   fill_scroller_preview();
-  printf("config: %d %d\n", first_preview, worker);
   fill_scroller();
-  
-  printf("config: %d %d\n", first_preview, worker);
   
   printf("configuration delay a: %f\n", bench_delay_get());
     
@@ -1911,7 +1913,7 @@ on_exe_images_rsync(void *data, Evas_Object *obj, void *event_info)
   if (export->extensions && !strlen(export->extensions)) {
     export->extensions = NULL;
   }
-  export->path = strdup(elm_entry_entry_get(export_path));
+  export->path = strdup(elm_fileselector_entry_path_get(export_path));
   
   //progress bar
   export->eo_progress = elm_progressbar_add(export_box);
@@ -2953,12 +2955,19 @@ static Evas_Object *export_box_add(Evas_Object *parent)
   elm_box_pack_end(export_box, export_extensions);
   evas_object_show(export_extensions);
   
-  export_path = elm_entry_add(export_box);
+  /*export_path = elm_entry_add(export_box);
   elm_entry_scrollable_set(export_path, EINA_TRUE);
   elm_entry_single_line_set(export_path, EINA_TRUE);
   evas_object_size_hint_weight_set(export_path, EVAS_HINT_EXPAND, 0);
   evas_object_size_hint_align_set(export_path, EVAS_HINT_FILL, 0);
   elm_object_text_set(export_path, "caren@technik-stinkt.de:/home/caren/fotos_upload/");
+  elm_box_pack_end(export_box, export_path);
+  evas_object_show(export_path);*/
+  
+  export_path = elm_fileselector_entry_add(export_box);
+  elm_fileselector_entry_folder_only_set(export_path, EINA_TRUE);
+  evas_object_size_hint_weight_set(export_path, EVAS_HINT_EXPAND, 0);
+  evas_object_size_hint_align_set(export_path, EVAS_HINT_FILL, 0);
   elm_box_pack_end(export_box, export_path);
   evas_object_show(export_path);
   

@@ -363,7 +363,6 @@ fill_input_buffer (j_decompress_ptr cinfo)
     //FIXME
     int i = *src->data->size_pos - src->data->file_pos;
     //printf("size on fill: %dx%d\n%x %x %x %x %x %x\n%d\n", src->buffer[i+2]*256+src->buffer[i+3],src->buffer[i]*256+src->buffer[i+1],src->buffer[i],src->buffer[i+1],src->buffer[i+2],src->buffer[i+3],src->buffer[i+4],src->buffer[i+5],src->data->size_pos);
-    printf("set size to %d\n", src->data->serve_width);
     src->buffer[i+2] = src->data->serve_width / 256; //pretend size to be 256!
     src->buffer[i+3] = src->data->serve_width % 256;
   }
