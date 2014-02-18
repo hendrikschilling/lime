@@ -329,6 +329,8 @@ void int_changed_do(void *data, Evas_Object *obj)
   
   lime_config_test(sink);
   
+  set_filterchain_save_sidecar();
+  
   delgrid();
   
   size_recalc();
@@ -352,6 +354,8 @@ void float_changed_do(void *data, Evas_Object *obj)
   lime_setting_float_set(m->filter, m->name, (float)elm_spinner_value_get(obj));
   
   lime_config_test(sink);
+  
+  set_filterchain_save_sidecar();
   
   delgrid();
   
@@ -414,6 +418,16 @@ void _on_filter_select(void *data, Evas_Object *obj, void *event_info)
   filter_last_selected = data;
 }
 
+void set_filterchain_save_sidecar(void)
+{
+  File_Group *group = eina_inarray_nth(files, file_idx);
+  
+  group->last_fc = lime_filter_chain_serialize(((Filter_Chain*)eina_list_data_get(eina_list_next(filter_chain)))->f);
+  if (strrchr(group->last_fc, ','))
+    *strrchr(group->last_fc, ',') = '\0';
+  save_sidecar(group);
+}
+
 void fc_insert_filter(Filter *f, Eina_List *src, Eina_List *sink)
 {
   Filter_Chain *fc_src, *fc_sink;
@@ -443,10 +457,7 @@ void fc_insert_filter(Filter *f, Eina_List *src, Eina_List *sink)
   filter_connect(fc_src->f, 0, f, 0);
   filter_connect(f, 0, fc_sink->f, 0);
   
-  group->last_fc = lime_filter_chain_serialize(((Filter_Chain*)eina_list_data_get(filter_chain))->f);
-  if (strrchr(group->last_fc, ','))
-    *strrchr(group->last_fc, ',') = '\0';
-  save_sidecar(group);
+  set_filterchain_save_sidecar();
   
   delgrid();
   
@@ -577,7 +588,6 @@ void setting_spinner_insert(Evas_Object *vbox, Meta *setting)
     elm_spinner_step_set(spinner, fstep);
     elm_spinner_label_format_set(spinner, "%.3f");
     elm_spinner_value_set(spinner, (float)*(int*)setting->data);
-    printf("set val to %f\n", (float)*(int*)setting->data);
   }
   else if (setting->type == MT_FLOAT) {
     evas_object_smart_callback_add(spinner, "delay,changed", on_float_changed, setting);
@@ -1625,6 +1635,10 @@ void step_image_do(void *data, Evas_Object *obj)
     
     //FIXME select group according to load file 
     load = eina_list_data_get(filters);
+    if (strcmp(load->fc->shortname, "load")) {
+      load = lime_filter_new("load");
+      filters = eina_list_prepend(filters, load);
+    }
     sink = lime_filter_new("memsink");
     lime_setting_int_set(sink, "add alpha", 1);
     filters = eina_list_append(filters, sink);
@@ -2496,7 +2510,7 @@ void fc_new_from_filters(Eina_List *filters)
     
     //create gui, but not for first and last filters
     if (list_iter != filters && list_iter != eina_list_last(filters))
-      fc->item = elm_list_item_prepend(filter_list, f->fc->name, NULL, NULL, &_on_filter_select, eina_list_last(filter_chain));
+      fc->item = elm_list_item_append(filter_list, f->fc->name, NULL, NULL, &_on_filter_select, eina_list_last(filter_chain));
     
     //filter graph
     if (last)

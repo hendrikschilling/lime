@@ -136,7 +136,10 @@ Eina_List *lime_filter_chain_deserialize(char *str)
           case MT_INT :
             lime_setting_int_set(f, setting, atoi(cur));
             break;
-          case MT_STRING : 
+          case MT_FLOAT :
+            lime_setting_float_set(f, setting, atof(cur));
+            break;
+	  case MT_STRING :
             //printf("FIXME escaping in deserialization (\',\',\':\',\' \')!!!");
             tmp = strdup(cur);
             if (strchr(tmp, ':'))
