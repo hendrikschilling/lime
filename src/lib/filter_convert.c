@@ -112,7 +112,7 @@ static int _tunes_fixed(Filter *f)
 					hOutProfile, 
 					out_type, 
 					INTENT_PERCEPTUAL, 
-					0);
+					cmsFLAGS_FORCE_CLUT);
   data->common->initialized = 1;
   
   cmsCloseProfile(hInProfile);
