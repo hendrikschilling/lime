@@ -7,9 +7,9 @@
 
 #define MAX_SCALE_DIFF 20
 
-#define SEARCH_SIZE 32
+#define SEARCH_SIZE 8
 
-#define TILE_SIZE 64
+#define TILE_SIZE DEFAULT_TILE_SIZE
 
 typedef struct {
   int x, y;
@@ -429,13 +429,13 @@ static void _worker(Filter *f, Eina_Array *in, Eina_Array *out, Rect *area, int 
       for(i=0;i<TILE_SIZE;i++)
       {
 	match_rand(data, i, j, in, area, dist);
-	match_rand(data, i, j, in, area, dist);
-	match_rand(data, i, j, in, area, dist);
+	//match_rand(data, i, j, in, area, dist);
+	//match_rand(data, i, j, in, area, dist);
 	if (j) match_rand_from(data, i, j, 0, -1, in, area);
 	if (i) match_rand_from(data, i, j, -1, 0, in, area);
-	if (i && j) match_rand_from(data, i, j, -1, -1, in, area);
-	for(k=0;k<n/2;k++)
-	  match_rand_from_match(data, i, j, in, area);
+	//if (i && j) match_rand_from(data, i, j, -1, -1, in, area);
+	//for(k=0;k<n/2;k++)
+	//  match_rand_from_match(data, i, j, in, area);
 	sort_matches(data, i, j);
     }
     

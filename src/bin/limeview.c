@@ -545,6 +545,8 @@ static void on_select_filter_select(void *data, Evas_Object *obj, void *event_in
 static void
 on_remove_filter(void *data, Evas_Object *obj, void *event_info)
 {
+  bench_delay_start();
+  
   workerfinish_schedule(&remove_filter_do, data, obj);
 }
 
@@ -559,8 +561,8 @@ void setting_spinner_insert(Evas_Object *vbox, Meta *setting)
   int i;
   Meta *sub;
   Evas_Object *spinner;
-  int imin = 0, imax = 100, istep = 0;
-  float fmin = 0.0, fmax = 100.0, fstep = 0.0;
+  int imin = 0, imax = 100, istep = 1;
+  float fmin = 0.0, fmax = 100.0, fstep = 0.1;
   
   spinner = elm_spinner_add(vbox);
 
@@ -586,7 +588,7 @@ void setting_spinner_insert(Evas_Object *vbox, Meta *setting)
     else
       fstep = istep;
     elm_spinner_step_set(spinner, fstep);
-    elm_spinner_label_format_set(spinner, "%.3f");
+    elm_spinner_label_format_set(spinner, "%.0f");
     elm_spinner_value_set(spinner, (float)*(int*)setting->data);
   }
   else if (setting->type == MT_FLOAT) {
@@ -1197,8 +1199,8 @@ int fill_area(int xm, int ym, int wm, int hm, int minscale, int preview)
   for(scale=scale_start;scale>=minscale;scale--) {
     //additional scaledown for preview
     scalediv = ((uint32_t)1) << scale;
-      for(i=x/TILE_SIZE/scalediv;i<(x+w+TILE_SIZE*scalediv-1)/TILE_SIZE/scalediv;i++)
-    for(j=y/TILE_SIZE/scalediv;j<(y+h+TILE_SIZE*scalediv-1)/TILE_SIZE/scalediv;j++) {
+    for(j=y/TILE_SIZE/scalediv;j<(y+h+TILE_SIZE*scalediv-1)/TILE_SIZE/scalediv;j++)
+      for(i=x/TILE_SIZE/scalediv;i<(x+w+TILE_SIZE*scalediv-1)/TILE_SIZE/scalediv;i++) {
 
         cell = mat_cache_get(mat_cache, scale, i, j);
 	
@@ -2279,11 +2281,15 @@ on_zoom_out(void *data, Evas_Object *obj, void *event_info)
 
 static void on_insert_before(void *data, Evas_Object *obj, void *event_info)
 {
+  bench_delay_start();
+  
   workerfinish_schedule(&insert_before_do, NULL, NULL);
 }
 
 static void on_insert_after(void *data, Evas_Object *obj, void *event_info)
 {
+  bench_delay_start();
+  
   workerfinish_schedule(&insert_after_do, NULL, NULL);
 }
 
