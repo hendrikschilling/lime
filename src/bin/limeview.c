@@ -1874,9 +1874,9 @@ void start_single_export(Export_Data *export, Export_Job *job)
   filename = ecore_file_file_get(job->filename);
   
   if (job->filterchain)
-    sprintf(dst, "limedo \'%s,savejpeg:filename=%s/%s\' %s", job->filterchain, job->export->path, filename, job->filename);
+    sprintf(dst, "limedo \'%s,savejpeg:filename=%s/%s\' \'%s\'", job->filterchain, job->export->path, filename, job->filename);
   else
-    sprintf(dst, "limedo \'savejpeg:filename=%s/%s\' %s", job->export->path, filename, job->filename);
+    sprintf(dst, "limedo \'savejpeg:filename=%s/%s\' \'%s\'", job->export->path, filename, job->filename);
 
   printf("start export of: %s\n", dst);
   ecore_exe_run(dst, job);
@@ -2968,8 +2968,8 @@ static Evas_Object *export_box_add(Evas_Object *parent)
   
   //file endings to process
   export_extensions = elm_entry_add(export_box);
-  elm_entry_scrollable_set(export_path, EINA_TRUE);
-  elm_entry_single_line_set(export_path, EINA_TRUE);
+  elm_entry_scrollable_set(export_extensions, EINA_TRUE);
+  elm_entry_single_line_set(export_extensions, EINA_TRUE);
   evas_object_size_hint_weight_set(export_extensions, EVAS_HINT_EXPAND, 0);
   evas_object_size_hint_align_set(export_extensions, EVAS_HINT_FILL, 0);
   elm_box_pack_end(export_box, export_extensions);
