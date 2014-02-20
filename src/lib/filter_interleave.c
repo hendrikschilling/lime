@@ -18,7 +18,7 @@ static void _worker(Filter *f, Eina_Array *in, Eina_Array *out, Rect *area, int 
   
   area = ((Tiledata*)ea_data(in, 0))->area;
   
-  if (*(int*)data->colorspace->data == CS_INT_ARGB) {
+  if (*(int*)data->colorspace->data == CS_INT_ABGR) {
   hack_tiledata_fixsize(4, ea_data(out, 0));
   buf = ((Tiledata*)ea_data(out, 0))->data;
   
@@ -35,9 +35,9 @@ static void _worker(Filter *f, Eina_Array *in, Eina_Array *out, Rect *area, int 
   
     for(j=0;j<area->height;j++)
       for(i=0;i<area->width;i++) {
-	buf[(j*area->width+i)*3+0] = b[j*area->width+i];
+	buf[(j*area->width+i)*3+0] = r[j*area->width+i];
 	buf[(j*area->width+i)*3+1] = g[j*area->width+i];
-	buf[(j*area->width+i)*3+2] = r[j*area->width+i];
+	buf[(j*area->width+i)*3+2] = b[j*area->width+i];
       }
    }
 }
@@ -59,7 +59,7 @@ Filter *filter_interleave_new(void)
   filter->fixme_outcount = 1;
   
   select_color = eina_array_new(2);
-  pushint(select_color, CS_INT_ARGB);
+  pushint(select_color, CS_INT_ABGR);
   pushint(select_color, CS_INT_RGB);
   
   bitdepth = meta_new_data(MT_BITDEPTH, filter, malloc(sizeof(int)));

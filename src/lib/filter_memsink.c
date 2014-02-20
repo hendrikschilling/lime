@@ -76,7 +76,7 @@ Filter *filter_memsink_new(void)
   
   channel = meta_new_channel(filter, 1);
   color = meta_new_data(MT_COLOR, filter, malloc(sizeof(int)));
-  *(int*)(color->data) = CS_INT_ARGB;
+  *(int*)(color->data) = CS_INT_ABGR;
   meta_attach(channel, color);
   meta_attach(channel, bitdepth);
   meta_attach(channel, size);
