@@ -56,7 +56,7 @@ void lime_filters_init(void)
   eina_hash_add(lime_filters, filter_core_sharpen.shortname, &filter_core_sharpen);
   eina_hash_add(lime_filters, filter_core_denoise.shortname, &filter_core_denoise);
   eina_hash_add(lime_filters, filter_core_pretend.shortname, &filter_core_pretend);
-  eina_hash_add(lime_filters, filter_core_crop.shortname, &filter_core_crop);
+  //eina_hash_add(lime_filters, filter_core_crop.shortname, &filter_core_crop);
   eina_hash_add(lime_filters, filter_core_simplerotate.shortname, &filter_core_simplerotate);
   eina_hash_add(lime_filters, filter_core_savejpeg.shortname, &filter_core_savejpeg);
 }
@@ -87,6 +87,7 @@ Filter_Core *lime_filtercore_find(const char *name)
   return eina_hash_find(lime_filters, name);
 }
 
+//FIXME check if setting does exist, give some debug info if parsing fails!
 Eina_List *lime_filter_chain_deserialize(char *str)
 {
   int i;
@@ -113,7 +114,6 @@ Eina_List *lime_filter_chain_deserialize(char *str)
       return NULL;
     }
     
-    //FIXME
     if (next && next+1 < last)
       cur = next+1;
     else
