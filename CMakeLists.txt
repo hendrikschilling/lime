@@ -24,13 +24,7 @@ FIND_PACKAGE(JPEG REQUIRED)
 
 find_package (Threads)
 
-set(CMAKE_C_FLAGS "-Wall -g -O0")
-
-#FIND_PACKAGE( Eina REQUIRED )
-
-#add_subdirectory(utils)
-
-#add_executable(main main.cpp)
+set(CMAKE_C_FLAGS "-Wall -g")
 
 add_subdirectory(src/lib)
 add_subdirectory(src/bin)
