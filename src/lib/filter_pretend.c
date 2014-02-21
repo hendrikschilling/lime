@@ -132,7 +132,8 @@ Filter *filter_pretend_new(void)
   Meta *ch_out[3];
   filter->fixme_outcount = 3;
   _Data *data = calloc(sizeof(_Data), 1);
-  data->out_cs = 1;
+  data->in_cs = CS_RGB;
+  data->out_cs = CS_RGB;
   data->out_dim = calloc(sizeof(Dim), 1);
   ea_push(filter->data, data);
   filter->setting_changed = &_setting_changed;
@@ -157,7 +158,7 @@ Filter *filter_pretend_new(void)
   
   channel = meta_new_channel(filter, 1);
   data->color_out[0] = meta_new_data(MT_COLOR, filter, malloc(sizeof(int)));
-  *(int*)(data->color_out[0]->data) = CS_LAB_L;
+  *(int*)(data->color_out[0]->data) = CS_RGB_R;
   meta_attach(channel, data->color_out[0]);
   meta_attach(channel, size_out);
   meta_attach(channel, bitdepth);
@@ -166,7 +167,7 @@ Filter *filter_pretend_new(void)
   
   channel = meta_new_channel(filter, 2);
   data->color_out[1] = meta_new_data(MT_COLOR, filter, malloc(sizeof(int)));
-  *(int*)(data->color_out[1]->data) = CS_LAB_A;
+  *(int*)(data->color_out[1]->data) = CS_RGB_G;
   meta_attach(channel, data->color_out[1]);
   meta_attach(channel, size_out);
   meta_attach(channel, bitdepth);
@@ -175,7 +176,7 @@ Filter *filter_pretend_new(void)
   
   channel = meta_new_channel(filter, 3);
   data->color_out[2] = meta_new_data(MT_COLOR, filter, malloc(sizeof(int)));
-  *(int*)(data->color_out[2]->data) = CS_LAB_B;
+  *(int*)(data->color_out[2]->data) = CS_RGB_B;
   meta_attach(channel, data->color_out[2]);
   meta_attach(channel, size_out);
   meta_attach(channel, bitdepth);
