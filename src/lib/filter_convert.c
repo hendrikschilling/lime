@@ -1,10 +1,15 @@
 #include "filter_convert.h"
 #include "lcms2.h"
+#include "libswscale/swscale.h"
 
 typedef struct {
   int initialized;
   cmsHTRANSFORM transform;
+  struct SwsContext *sws;
 } _Common;
+
+#define INIT_LMCS 1
+#define INIT_SWS 2
 
 typedef struct {
   Meta *in_color, *in_bd,
@@ -36,8 +41,10 @@ static int _del(Filter *f)
     free(data);
   }
   
-  if (common->initialized)
+  if (common->initialized == INIT_LMCS)
     cmsDeleteTransform(common->transform);
+  if (common->initialized == INIT_SWS)
+    sws_freeContext(common->sws);
   
   free(common);
   
@@ -49,18 +56,37 @@ static void _worker(Filter *f, Eina_Array *in, Eina_Array *out, Rect *area, int 
   _Data *data = ea_data(f->data, thread_id);
   
   uint8_t *buf;
+  const uint8_t *in_planes[3];
+  uint8_t *out_planes[3];
+  int in_strides[3] = {DEFAULT_TILE_SIZE, DEFAULT_TILE_SIZE, DEFAULT_TILE_SIZE};
+  int out_strides[3] = {DEFAULT_TILE_SIZE, DEFAULT_TILE_SIZE, DEFAULT_TILE_SIZE};
   
   buf = data->buf;
   
-  memcpy(buf, ((Tiledata*)ea_data(in, 0))->data, DEFAULT_TILE_AREA);
-  memcpy(buf+DEFAULT_TILE_AREA,  ((Tiledata*)ea_data(in, 1))->data, DEFAULT_TILE_AREA);
-  memcpy(buf+2*DEFAULT_TILE_AREA,  ((Tiledata*)ea_data(in, 2))->data, DEFAULT_TILE_AREA);
   
-  cmsDoTransform(data->common->transform, buf, buf, DEFAULT_TILE_AREA);
-  
-  memcpy(((Tiledata*)ea_data(out, 0))->data, buf, DEFAULT_TILE_AREA);
-  memcpy(((Tiledata*)ea_data(out, 1))->data, buf+DEFAULT_TILE_AREA, DEFAULT_TILE_AREA);
-  memcpy(((Tiledata*)ea_data(out, 2))->data, buf+2*DEFAULT_TILE_AREA, DEFAULT_TILE_AREA);
+  if (data->common->transform) {
+    memcpy(buf, ((Tiledata*)ea_data(in, 0))->data, DEFAULT_TILE_AREA);
+    memcpy(buf+DEFAULT_TILE_AREA,  ((Tiledata*)ea_data(in, 1))->data, DEFAULT_TILE_AREA);
+    memcpy(buf+2*DEFAULT_TILE_AREA,  ((Tiledata*)ea_data(in, 2))->data, DEFAULT_TILE_AREA);
+    
+    cmsDoTransform(data->common->transform, buf, buf, DEFAULT_TILE_AREA);
+    
+    memcpy(((Tiledata*)ea_data(out, 0))->data, buf, DEFAULT_TILE_AREA);
+    memcpy(((Tiledata*)ea_data(out, 1))->data, buf+DEFAULT_TILE_AREA, DEFAULT_TILE_AREA);
+    memcpy(((Tiledata*)ea_data(out, 2))->data, buf+2*DEFAULT_TILE_AREA, DEFAULT_TILE_AREA);
+  }
+  else if (data->common->sws) {
+    in_planes[0] = ((Tiledata*)ea_data(in, 0))->data;
+    in_planes[1] = ((Tiledata*)ea_data(in, 1))->data;
+    in_planes[2] = ((Tiledata*)ea_data(in, 2))->data;
+    out_planes[0] = ((Tiledata*)ea_data(out, 0))->data;
+    out_planes[1] = ((Tiledata*)ea_data(out, 1))->data;
+    out_planes[2] = ((Tiledata*)ea_data(out, 2))->data;
+    
+    sws_scale(data->common->sws, in_planes, in_strides, 0, DEFAULT_TILE_SIZE, out_planes, out_strides);
+  }
+  else
+    abort();
 }
 
 #ifndef TYPE_Lab_8_PLANAR
@@ -70,14 +96,51 @@ static void _worker(Filter *f, Eina_Array *in, Eina_Array *out, Rect *area, int 
 static int _tunes_fixed(Filter *f)
 {
   cmsHPROFILE hInProfile, hOutProfile;
+  int lav_fmt_in, lav_fmt_out;
   uint32_t in_type, out_type;
   _Data *data = ea_data(f->data, 0);
   
   assert(*((Bitdepth*)data->in_bd->data) == BD_U8);
   assert(*((Bitdepth*)data->out_bd->data) == BD_U8);
   
-  if (data->common->initialized)
+  if (data->common->initialized == INIT_LMCS)
     cmsDeleteTransform(data->common->transform);
+  if (data->common->initialized == INIT_SWS)
+    sws_freeContext(data->common->sws);
+  
+  hInProfile = NULL;
+  hOutProfile = NULL;
+  lav_fmt_in = PIX_FMT_NONE;
+  lav_fmt_out = PIX_FMT_NONE;
+  
+  
+  switch (*((Colorspace*)data->in_color->data)) {
+    case CS_RGB :
+      lav_fmt_in = PIX_FMT_GBRP; 
+      break;
+    case CS_YUV : 
+      lav_fmt_in = PIX_FMT_YUV444P;
+      break;
+  }
+  
+  switch (*((Colorspace*)data->out_color->data)) {
+    case CS_RGB :
+      lav_fmt_out = PIX_FMT_GBRP; 
+      break;
+    case CS_YUV : 
+      lav_fmt_out = PIX_FMT_YUV444P;
+      break;
+  }
+  
+  if (lav_fmt_in != PIX_FMT_NONE && lav_fmt_out != PIX_FMT_NONE) {
+    data->common->sws = sws_getContext(DEFAULT_TILE_SIZE, DEFAULT_TILE_SIZE, lav_fmt_in, DEFAULT_TILE_SIZE, DEFAULT_TILE_SIZE, lav_fmt_out, SWS_POINT, NULL, NULL, NULL);
+
+    if (data->common->sws) {
+      data->common->initialized = INIT_SWS;
+      return 0;
+    }
+  }
+  
   
   switch (*((Colorspace*)data->in_color->data)) {
     case CS_RGB :
@@ -89,8 +152,8 @@ static int _tunes_fixed(Filter *f)
       in_type = TYPE_Lab_8_PLANAR;
       break;
     default:
-      printf("unhandled input color-space!\n");
-      return -1;
+      printf("FIXME unhandled input color-space!\n");
+      abort();
   }
   
   switch (*((Colorspace*)data->out_color->data)) {
@@ -104,7 +167,7 @@ static int _tunes_fixed(Filter *f)
       break;
     default:
       printf("unhandled output color-space!\n");
-      return -1;
+      abort();
   }
 
   data->common->transform = cmsCreateTransform(hInProfile, 
@@ -113,7 +176,7 @@ static int _tunes_fixed(Filter *f)
 					out_type, 
 					INTENT_PERCEPTUAL, 
 					cmsFLAGS_FORCE_CLUT);
-  data->common->initialized = 1;
+  data->common->initialized = INIT_LMCS;
   
   cmsCloseProfile(hInProfile);
   cmsCloseProfile(hOutProfile);
@@ -225,25 +288,25 @@ Filter *filter_convert_new(void)
   pushint(select_color, CS_LAB);
   pushint(select_color, CS_RGB);
   pushint(select_color, CS_YUV);
-  pushint(select_color, CS_HSV);
+  //pushint(select_color, CS_HSV);
   
   color1 = eina_array_new(4);
   pushint(color1, CS_LAB_L);
   pushint(color1, CS_RGB_R);
   pushint(color1, CS_YUV_Y);
-  pushint(color1, CS_HSV_V);
+  //pushint(color1, CS_HSV_V);
   
   color2 = eina_array_new(4);
   pushint(color2, CS_LAB_A);
   pushint(color2, CS_RGB_G);
   pushint(color2, CS_YUV_U);
-  pushint(color2, CS_HSV_H);
+  //pushint(color2, CS_HSV_H);
   
   color3 = eina_array_new(4);
   pushint(color3, CS_LAB_B);
   pushint(color3, CS_RGB_B);
   pushint(color3, CS_YUV_V);
-  pushint(color3, CS_HSV_S);
+  //pushint(color3, CS_HSV_S);
   
   tune_out_bitdepth = meta_new_select(MT_BITDEPTH, filter, select_bitdepth);
   meta_name_set(tune_out_bitdepth, "Output Bitdepth");
