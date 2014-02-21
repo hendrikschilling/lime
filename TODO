@@ -1,3 +1,5 @@
+- clean TODO ;-D
+
 fast realease:
 - check all filter work and load/save/process correctly, remove non-working
 - check export works for all cases

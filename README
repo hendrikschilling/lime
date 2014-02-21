@@ -1,83 +1,28 @@
-PLATFORMS
+WHATS IT DO?
 
-Only linux is officially supported, but every platform that utilizes X11
-should be directly compatible. The toolkit and support libraries from e17
-(http://www.enlightenment.org/) support windows using either the directdraw,
-gdi or direct3d engine, and MAX OSX could work natively with the cocoar engine,
-but those platforms probably require some adaptions.
-
-
-
-
-INSTALL
-
-(on linux)
-Lime requires the development packages of the following libraries (the first
-three packages might also be installed via the e17 meta-package on some
-distributions, which installs the whole e17 desktop).
-
-libeina
-libeio
-libelementary
-libtiff4
-libjpeg
-liblcms2
-
-On debian and derivatives you might just execute:
-apt-get install libeina-dev libeio-dev libelementary-dev libtiff4-dev liblcms2-dev
-
-
-Compilation
-
-Once the required packages are installed, change into the lime directory and do:
-cmake .
-make
-
-And for installation (optional):
-make install (as root)
-ldconfig (as root)
-
-
-
+Lime is a library plus tools for fast non-destructive interactive image editing.
+It's very fast.
+It has very low memory consumption.
 
 USAGE
 
-Applications installed by the procedure above are "limeview" and "limedo".
-
-limeview will allow to view and edit the images in the working directory or
-in a directory given as argument. limedo will execute the filter graph
-and does not include a gui. Bot take arguments to add filters to the filter
-graph, in the case of limeview those can be changed afterwards in the gui.
-The delete function int limeview only move the currently selected file to
-a "deleted" subfolder if that is available, and does nothing if the 
-folder does not exist. It does not acutally delete any file. Both programs 
-allow to set cache size and metrics and limeview allows some benchmarking.
-Call with --help to get more informations.
+Included applications are "limeview" and "limedo".
+limeview is a gui application to view, edit tag and sort images.
+limedo will execute a filter graph on the commandline, for example for image conversion
 
 examples:
 
-limedo gauss=100.0 savetiff=0,blurred.tif inputimage.tif
-
+  limedo sharpen:strength=50.0,savejpeg:filename=sharpened.jpg P9253314.JPG
+  
 This will filter inputimage.tif with a gaussian blur with sigma=100 and
-then save it to blurred.tif, in the sRGB color space (first option of savetiff).
+then save it to blurred.tif
 
 
-limedo contrast=4.0 compare=1 inputimage.tif
+  limedo pretend:scale=1,sharpen:strength=50.0,savejpeg:filename=output.jpg input.jpg
 
-This command will load inputimage and apply the contrast and compare filter, which
-will compare the scaled and the full scale result in the LAB color space (compare=1)
-and continuously print the maximum difference.
+Same as before, but at half scale (we pretend scale to be one step higher than it actually is).
 
 
-limeview -s 500 /bla/blub/somewhere denoise
+  limedo pretend:scale=3,rotate:rotation=90,savejpeg:filename=output.jpg input.jpg
 
-This command will start limeview with a cache size of 500 megabytes to view
-the folder /bla/blub/somwhere and add the denoise filter to the graph.
-
-
-limeview -s 10 -b global inputimage.tif
-
-This will execute the "global" benchmark on inputimage.tif with a cache size of
-10 megabytes. Note this command does not show a gui, everything is only rendered
-to a memory buffer.
-
+Scale input.jpg down by a factor of 8, rotate by 90 degrees and save as output.jpg

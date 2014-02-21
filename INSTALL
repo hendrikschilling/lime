@@ -1,0 +1,11 @@
+INSTALL
+
+You will need cmake and a bunch of other stuff.
+
+cmake .
+    See what it complains about.
+    Install a bunch of stuff
+make
+    hope everything compiles fine...
+make install (optional)
+
