@@ -679,6 +679,7 @@ void _loadjpeg_worker_ijg(Filter *f, Eina_Array *in, Eina_Array *out, Rect *area
   cinfo.scale_num = 1;
   cinfo.scale_denom = 1u << area->corner.scale;
   
+  cinfo.out_color_space   = JCS_YCbCr;
   cinfo.dct_method = JDCT_IFAST;
   cinfo.do_fancy_upsampling = FALSE;
   jpeg_start_decompress(&cinfo);
@@ -764,8 +765,10 @@ void _loadjpeg_worker_ijg_original(Filter *f, Eina_Array *in, Eina_Array *out, R
 
   cinfo.scale_num = 1;
   cinfo.scale_denom = 1u << area->corner.scale;
+  //assert(cinfo.jpeg_color_space == JCS_YCbCr);
   //cinfo.out_color_space = cinfo.jpeg_color_space;
   
+  cinfo.out_color_space   = JCS_YCbCr;
   cinfo.dct_method = JDCT_IFAST;
   cinfo.do_fancy_upsampling = FALSE;
   jpeg_start_decompress(&cinfo);
@@ -847,6 +850,7 @@ void _loadjpeg_worker_ijg_thumb(Filter *f, Eina_Array *in, Eina_Array *out, Rect
 
   (void)jpeg_read_header(&cinfo, TRUE);
   
+  cinfo.out_color_space   = JCS_YCbCr;
   cinfo.dct_method = JDCT_IFAST;
   cinfo.do_fancy_upsampling = FALSE;
   jpeg_start_decompress(&cinfo);
@@ -945,6 +949,8 @@ int _loadjpeg_input_fixed(Filter *f)
   jpeg_stdio_src(&cinfo, file);
   jpeg_read_header(&cinfo, TRUE);
   jpeg_calc_output_dimensions(&cinfo);
+  
+  assert(cinfo.jpeg_color_space == JCS_YCbCr);
   
   data->mcu_w = cinfo.max_h_samp_factor*8;
   data->mcu_h = cinfo.max_v_samp_factor*8;
@@ -1049,7 +1055,7 @@ Filter *filter_loadjpeg_new(void)
   
   channel = meta_new_channel(filter, 1);
   color = meta_new_data(MT_COLOR, filter, malloc(sizeof(int)));
-  *(int*)(color->data) = CS_RGB_R;
+  *(int*)(color->data) = CS_YUV_Y;
   meta_attach(channel, color);
   meta_attach(channel, bitdepth);
   meta_attach(channel, dim);
@@ -1057,7 +1063,7 @@ Filter *filter_loadjpeg_new(void)
   
   channel = meta_new_channel(filter, 2);
   color = meta_new_data(MT_COLOR, filter, malloc(sizeof(int)));
-  *(int*)(color->data) = CS_RGB_G;
+  *(int*)(color->data) = CS_YUV_U;
   meta_attach(channel, color);
   meta_attach(channel, bitdepth);
   meta_attach(channel, dim);
@@ -1065,7 +1071,7 @@ Filter *filter_loadjpeg_new(void)
   
   channel = meta_new_channel(filter, 3);
   color = meta_new_data(MT_COLOR, filter, malloc(sizeof(int)));
-  *(int*)(color->data) = CS_RGB_B;
+  *(int*)(color->data) = CS_YUV_V;
   meta_attach(channel, color);
   meta_attach(channel, bitdepth);
   meta_attach(channel, dim);
