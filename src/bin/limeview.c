@@ -18,7 +18,6 @@
  */
 
 #include <Elementary.h>
-//#include <elm_win_legacy.h>
 #include <Ecore.h>
 #include <Eio.h>
 #include <fcntl.h>
@@ -3329,7 +3328,6 @@ elm_main(int argc, char **argv)
   elm_hoversel_item_add(select_filter, "gauss", NULL, ELM_ICON_NONE, &on_select_filter_select, &filter_core_gauss);
   elm_hoversel_item_add(select_filter, "sharpen", NULL, ELM_ICON_NONE, &on_select_filter_select, &filter_core_sharpen);
   elm_hoversel_item_add(select_filter, "denoise", NULL, ELM_ICON_NONE, &on_select_filter_select, &filter_core_denoise);
-  elm_hoversel_item_add(select_filter, "crop", NULL, ELM_ICON_NONE, &on_select_filter_select, &filter_core_crop);
   elm_hoversel_item_add(select_filter, "rotate", NULL, ELM_ICON_NONE, &on_select_filter_select, &filter_core_simplerotate);
   elm_object_text_set(select_filter, "contrast");
   select_filter_func = filter_core_contrast.filter_new_f;
