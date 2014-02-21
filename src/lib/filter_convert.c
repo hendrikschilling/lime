@@ -4,6 +4,8 @@
 
 typedef struct {
   int initialized;
+  int packed_output;
+  int packed_input;
   cmsHTRANSFORM transform;
   struct SwsContext *sws;
 } _Common;
@@ -53,6 +55,7 @@ static int _del(Filter *f)
 
 static void _worker(Filter *f, Eina_Array *in, Eina_Array *out, Rect *area, int thread_id)
 {
+  int i, j;
   _Data *data = ea_data(f->data, thread_id);
   
   uint8_t *buf;
@@ -76,14 +79,39 @@ static void _worker(Filter *f, Eina_Array *in, Eina_Array *out, Rect *area, int 
     memcpy(((Tiledata*)ea_data(out, 2))->data, buf+2*DEFAULT_TILE_AREA, DEFAULT_TILE_AREA);
   }
   else if (data->common->sws) {
-    in_planes[0] = ((Tiledata*)ea_data(in, 0))->data;
-    in_planes[1] = ((Tiledata*)ea_data(in, 1))->data;
-    in_planes[2] = ((Tiledata*)ea_data(in, 2))->data;
-    out_planes[0] = ((Tiledata*)ea_data(out, 0))->data;
-    out_planes[1] = ((Tiledata*)ea_data(out, 1))->data;
-    out_planes[2] = ((Tiledata*)ea_data(out, 2))->data;
+    if (data->common->packed_input) {
+      abort();
+    }
+    else {
+      in_planes[0] = ((Tiledata*)ea_data(in, 0))->data;
+      in_planes[1] = ((Tiledata*)ea_data(in, 1))->data;
+      in_planes[2] = ((Tiledata*)ea_data(in, 2))->data;
+    }
+    
+    if (data->common->packed_output) {
+      out_planes[0] = buf;
+      out_planes[1] = buf;
+      out_planes[2] = buf;
+      out_strides[0] = DEFAULT_TILE_SIZE*3;
+      out_strides[1] = DEFAULT_TILE_SIZE*3;
+      out_strides[2] = DEFAULT_TILE_SIZE*3;
+    }
+    else {
+      out_planes[0] = ((Tiledata*)ea_data(out, 0))->data;
+      out_planes[1] = ((Tiledata*)ea_data(out, 1))->data;
+      out_planes[2] = ((Tiledata*)ea_data(out, 2))->data;
+    }
     
     sws_scale(data->common->sws, in_planes, in_strides, 0, DEFAULT_TILE_SIZE, out_planes, out_strides);
+    
+    
+    if (data->common->packed_output)
+      for(j=0;j<DEFAULT_TILE_SIZE;j++)
+	  for(i=0;i<DEFAULT_TILE_SIZE;i++) {
+	    ((uint8_t*)((Tiledata*)ea_data(out, 0))->data)[j*DEFAULT_TILE_SIZE+i] = buf[(j*DEFAULT_TILE_SIZE+i)*3];
+	    ((uint8_t*)((Tiledata*)ea_data(out, 1))->data)[j*DEFAULT_TILE_SIZE+i] = buf[(j*DEFAULT_TILE_SIZE+i)*3+1];
+	    ((uint8_t*)((Tiledata*)ea_data(out, 2))->data)[j*DEFAULT_TILE_SIZE+i] = buf[(j*DEFAULT_TILE_SIZE+i)*3+2];
+	  }
   }
   else
     abort();
@@ -112,7 +140,7 @@ static int _tunes_fixed(Filter *f)
   hOutProfile = NULL;
   lav_fmt_in = PIX_FMT_NONE;
   lav_fmt_out = PIX_FMT_NONE;
-  
+  data->common->packed_output = EINA_FALSE;
   
   switch (*((Colorspace*)data->in_color->data)) {
     case CS_RGB :
@@ -125,7 +153,14 @@ static int _tunes_fixed(Filter *f)
   
   switch (*((Colorspace*)data->out_color->data)) {
     case CS_RGB :
-      lav_fmt_out = PIX_FMT_GBRP; 
+      if (sws_isSupportedOutput(PIX_FMT_GBRP))
+	lav_fmt_out = PIX_FMT_GBRP;
+      else if (sws_isSupportedOutput(PIX_FMT_RGB24)) {
+	lav_fmt_out = PIX_FMT_RGB24;
+	data->common->packed_output = EINA_TRUE;
+      }
+      else
+	printf("no rgb output for swscale!\n");
       break;
     case CS_YUV : 
       lav_fmt_out = PIX_FMT_YUV444P;
@@ -139,6 +174,16 @@ static int _tunes_fixed(Filter *f)
       data->common->initialized = INIT_SWS;
       return 0;
     }
+    else {
+      printf("could not create conversion!\n");
+    }
+  }
+  else {
+    printf("no fast conv from:\n");
+    meta_print(data->in_color);
+    printf("\nto:\n");
+    meta_print(data->out_color);
+    printf("\n");
   }
   
   

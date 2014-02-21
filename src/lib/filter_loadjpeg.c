@@ -660,6 +660,7 @@ void _loadjpeg_worker_ijg(Filter *f, Eina_Array *in, Eina_Array *out, Rect *area
   cinfo.scale_num = 1;
   cinfo.scale_denom = 1u << area->corner.scale;
   
+  cinfo.out_color_space   = JCS_YCbCr;
   cinfo.dct_method = JDCT_IFAST;
   cinfo.do_fancy_upsampling = FALSE;
   jpeg_start_decompress(&cinfo);
@@ -745,9 +746,10 @@ void _loadjpeg_worker_ijg_original(Filter *f, Eina_Array *in, Eina_Array *out, R
 
   cinfo.scale_num = 1;
   cinfo.scale_denom = 1u << area->corner.scale;
-  assert(cinfo.jpeg_color_space == JCS_YCbCr);
-  cinfo.out_color_space = cinfo.jpeg_color_space;
+  //assert(cinfo.jpeg_color_space == JCS_YCbCr);
+  //cinfo.out_color_space = cinfo.jpeg_color_space;
   
+  cinfo.out_color_space   = JCS_YCbCr;
   cinfo.dct_method = JDCT_IFAST;
   cinfo.do_fancy_upsampling = FALSE;
   jpeg_start_decompress(&cinfo);
@@ -829,6 +831,7 @@ void _loadjpeg_worker_ijg_thumb(Filter *f, Eina_Array *in, Eina_Array *out, Rect
 
   (void)jpeg_read_header(&cinfo, TRUE);
   
+  cinfo.out_color_space   = JCS_YCbCr;
   cinfo.dct_method = JDCT_IFAST;
   cinfo.do_fancy_upsampling = FALSE;
   jpeg_start_decompress(&cinfo);
@@ -927,6 +930,8 @@ int _loadjpeg_input_fixed(Filter *f)
   jpeg_stdio_src(&cinfo, file);
   jpeg_read_header(&cinfo, TRUE);
   jpeg_calc_output_dimensions(&cinfo);
+  
+  assert(cinfo.jpeg_color_space == JCS_YCbCr);
   
   data->mcu_w = cinfo.max_h_samp_factor*8;
   data->mcu_h = cinfo.max_v_samp_factor*8;
