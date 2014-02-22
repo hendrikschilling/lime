@@ -26,7 +26,7 @@ typedef struct {
   int packed_output;
   int packed_input;
   cmsHTRANSFORM transform;
-  struct SwsContext *sws;
+  int lav_fmt_in, lav_fmt_out;
 } _Common;
 
 #define INIT_LMCS 1
@@ -37,15 +37,20 @@ typedef struct {
        *out_color, *out_bd;
   _Common *common;
   void *buf;
+  struct SwsContext *sws;
 } _Data;
 
 static void *_data_new(Filter *f, void *data)
 {
-  _Data *newdata = malloc(sizeof(_Data));
+  _Data *newdata = calloc(sizeof(_Data), 1);
   
   *newdata = *(_Data*)data;
-  newdata->buf = malloc(DEFAULT_TILE_AREA*3);
+  if (newdata->common->packed_input || newdata->common->packed_output)
+    newdata->buf = malloc(DEFAULT_TILE_AREA*3);
   
+  if (newdata->common->initialized == INIT_SWS)
+    newdata->sws = sws_getContext(DEFAULT_TILE_SIZE, DEFAULT_TILE_SIZE, newdata->common->lav_fmt_in, DEFAULT_TILE_SIZE, DEFAULT_TILE_SIZE, newdata->common->lav_fmt_out, SWS_POINT, NULL, NULL, NULL);
+
   return newdata;
 }
 
@@ -60,13 +65,12 @@ static int _del(Filter *f)
     common = data->common;
     free(data->buf);
     free(data);
+    if (common->initialized == INIT_SWS)
+      sws_freeContext(data->sws);
   }
   
   if (common->initialized == INIT_LMCS)
     cmsDeleteTransform(common->transform);
-  if (common->initialized == INIT_SWS)
-    sws_freeContext(common->sws);
-  
   free(common);
   
   return 0;
@@ -97,7 +101,7 @@ static void _worker(Filter *f, Eina_Array *in, Eina_Array *out, Rect *area, int 
     memcpy(((Tiledata*)ea_data(out, 1))->data, buf+DEFAULT_TILE_AREA, DEFAULT_TILE_AREA);
     memcpy(((Tiledata*)ea_data(out, 2))->data, buf+2*DEFAULT_TILE_AREA, DEFAULT_TILE_AREA);
   }
-  else if (data->common->sws) {
+  else if (data->sws) {
     if (data->common->packed_input) {
       abort();
     }
@@ -121,7 +125,7 @@ static void _worker(Filter *f, Eina_Array *in, Eina_Array *out, Rect *area, int 
       out_planes[2] = ((Tiledata*)ea_data(out, 2))->data;
     }
     
-    sws_scale(data->common->sws, in_planes, in_strides, 0, DEFAULT_TILE_SIZE, out_planes, out_strides);
+    sws_scale(data->sws, in_planes, in_strides, 0, DEFAULT_TILE_SIZE, out_planes, out_strides);
     
     
     if (data->common->packed_output)
@@ -143,7 +147,6 @@ static void _worker(Filter *f, Eina_Array *in, Eina_Array *out, Rect *area, int 
 static int _tunes_fixed(Filter *f)
 {
   cmsHPROFILE hInProfile, hOutProfile;
-  int lav_fmt_in, lav_fmt_out;
   uint32_t in_type, out_type;
   _Data *data = ea_data(f->data, 0);
   
@@ -152,44 +155,47 @@ static int _tunes_fixed(Filter *f)
   
   if (data->common->initialized == INIT_LMCS)
     cmsDeleteTransform(data->common->transform);
-  if (data->common->initialized == INIT_SWS)
-    sws_freeContext(data->common->sws);
+  //FIXME do we need to clean the sws and threads?
+  //if (data->common->initialized == INIT_SWS)
+  //  sws_freeContext(data->sws);
   
   hInProfile = NULL;
   hOutProfile = NULL;
-  lav_fmt_in = PIX_FMT_NONE;
-  lav_fmt_out = PIX_FMT_NONE;
+  data->common->lav_fmt_in = PIX_FMT_NONE;
+  data->common->lav_fmt_out = PIX_FMT_NONE;
   data->common->packed_output = EINA_FALSE;
+  data->common->packed_input = EINA_FALSE;
   
   switch (*((Colorspace*)data->in_color->data)) {
     case CS_RGB :
-      lav_fmt_in = PIX_FMT_GBRP; 
+      data->common->lav_fmt_in = PIX_FMT_GBRP; 
       break;
     case CS_YUV : 
-      lav_fmt_in = PIX_FMT_YUV444P;
+      data->common->lav_fmt_in = PIX_FMT_YUV444P;
       break;
   }
   
   switch (*((Colorspace*)data->out_color->data)) {
     case CS_RGB :
       if (sws_isSupportedOutput(PIX_FMT_GBRP))
-	lav_fmt_out = PIX_FMT_GBRP;
+	data->common->lav_fmt_out = PIX_FMT_GBRP;
       else if (sws_isSupportedOutput(PIX_FMT_RGB24)) {
-	lav_fmt_out = PIX_FMT_RGB24;
+	data->common->lav_fmt_out = PIX_FMT_RGB24;
 	data->common->packed_output = EINA_TRUE;
+	printf("packed output only :-(\n");
       }
       else
 	printf("no rgb output for swscale!\n");
       break;
     case CS_YUV : 
-      lav_fmt_out = PIX_FMT_YUV444P;
+      data->common->lav_fmt_out = PIX_FMT_YUV444P;
       break;
   }
   
-  if (lav_fmt_in != PIX_FMT_NONE && lav_fmt_out != PIX_FMT_NONE) {
-    data->common->sws = sws_getContext(DEFAULT_TILE_SIZE, DEFAULT_TILE_SIZE, lav_fmt_in, DEFAULT_TILE_SIZE, DEFAULT_TILE_SIZE, lav_fmt_out, SWS_POINT, NULL, NULL, NULL);
+  if (data->common->lav_fmt_in != PIX_FMT_NONE && data->common->lav_fmt_out != PIX_FMT_NONE) {
+    data->sws = sws_getContext(DEFAULT_TILE_SIZE, DEFAULT_TILE_SIZE, data->common->lav_fmt_in, DEFAULT_TILE_SIZE, DEFAULT_TILE_SIZE, data->common->lav_fmt_out, SWS_POINT, NULL, NULL, NULL);
 
-    if (data->common->sws) {
+    if (data->sws) {
       data->common->initialized = INIT_SWS;
       return 0;
     }
@@ -241,6 +247,8 @@ static int _tunes_fixed(Filter *f)
 					INTENT_PERCEPTUAL, 
 					cmsFLAGS_FORCE_CLUT);
   data->common->initialized = INIT_LMCS;
+  data->common->packed_input = EINA_TRUE;
+  data->common->packed_output = EINA_TRUE;
   
   cmsCloseProfile(hInProfile);
   cmsCloseProfile(hOutProfile);
