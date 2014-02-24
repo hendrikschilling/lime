@@ -849,6 +849,7 @@ void mat_free_func(void *user_data, void *cell_data)
 {
   _Img_Thread_Data *cell = cell_data;
   
+  evas_object_image_data_set(cell->img, NULL);
   evas_object_del(cell->img);
   free(cell->buf);
 }
@@ -1018,7 +1019,7 @@ void workerfinish_schedule(void (*func)(void *data, Evas_Object *obj), void *dat
   }
   else {
     quick_preview_only = 1;
-    printf("not scheduling function");
+    printf("not scheduling function\n");
   }
 }
 
@@ -1084,7 +1085,7 @@ int bench_do(void)
 void _insert_image(_Img_Thread_Data *tdata)
 {
   evas_object_image_data_set(tdata->img, tdata->buf);
-  evas_object_image_data_update_add(tdata->img, 0, 0, TILE_SIZE, TILE_SIZE);
+  //evas_object_image_data_update_add(tdata->img, 0, 0, TILE_SIZE, TILE_SIZE);
   evas_object_show(tdata->img);
   
   elm_grid_pack(grid, tdata->img, tdata->packx, tdata->packy, tdata->packw, tdata->packh);
