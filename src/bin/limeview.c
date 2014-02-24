@@ -127,7 +127,7 @@ int posx, posy;
 Evas_Object *slider_blur, *slider_contr, *gridbox = NULL;
 int cache_size;
 Dim size;
-Mat_Cache *mat_cache;
+Mat_Cache *mat_cache = NULL;
 Mat_Cache *mat_cache_old = NULL;
 int forbid_fill = 0;
 Eina_List *filter_last_selected = NULL;
@@ -1514,8 +1514,8 @@ void delgrid(void)
 {  
   if (mat_cache_old) {
     //we have not yet shown the current image (which would delete mat_cache_old)
-    abort();
-    return;
+    printf("FIXME have old matcache!\n");
+    mat_cache_old = NULL;
   }
   
   //mat_cache_flush(mat_cache);
@@ -1743,7 +1743,15 @@ void step_image_do(void *data, Evas_Object *obj)
     
     if (start_idx == file_idx){
       printf("no valid configuration found for any file!\n");
-      continue;
+      if (mat_cache) {
+	mat_cache_del(mat_cache);
+	mat_cache = NULL;
+      }
+      if (mat_cache_old) {
+	mat_cache_del(mat_cache_old);
+	mat_cache_old = NULL;
+      }
+      return;
     }
   }
   
@@ -3122,7 +3130,7 @@ elm_main(int argc, char **argv)
   lime_init();
   
   mat_cache = mat_cache_new();
-  //delgrid();
+  delgrid();
   
   thread_ids = calloc(sizeof(int)*(max_workers+1), 1);
   
