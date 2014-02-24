@@ -7,6 +7,7 @@ next:
 - clean printf a lot!
 
 short term:
+- fix tiff writer : we somehow write too much data (can be cleaned out with tiffcp)
 - valgrind: memleaks
 - really enable cache size changes
 - clean up code all filter
