@@ -26,7 +26,7 @@
 #define JPEG_TILE_WIDTH 256
 #define JPEG_TILE_HEIGHT 256
 
-#include "jinclude.h"
+#include "jpegint.h"
 #include "jpeglib.h"
 #include "jerror.h"
 #include <libexif/exif-loader.h>
@@ -117,10 +117,12 @@ typedef my_source_mgr * my_src_ptr;
     } \
   }
   
-int get_exif_preview(const char *file, uint8_t **preview)
+void get_exif_stuff(const char *file, uint8_t **preview, int *p_len, int *rotation)
 {
+  int orientation = 1;
   int len = 0;
   ExifLoader *l;
+  ExifEntry *entry;
   
   /* Create an ExifLoader object to manage the EXIF loading process */
   l = exif_loader_new();
@@ -137,6 +139,21 @@ int get_exif_preview(const char *file, uint8_t **preview)
     exif_loader_unref(l);
     l = NULL;
     if (ed) {
+      entry = exif_data_get_entry(ed, EXIF_TAG_ORIENTATION);
+   
+      if (entry) {
+	
+      orientation = *(short*)entry->data;
+      
+      if (orientation > 8)
+	orientation /= 256;
+      
+      if (orientation > 8 || orientation < 1)
+	orientation = 1;
+      }
+      
+      *rotation = orientation;
+
       /* Make sure the image had a thumbnail before trying to write it */
       if (ed->data && ed->size) {
 	//printf("found thumb image of size %d\n", ed->size);
@@ -154,7 +171,7 @@ int get_exif_preview(const char *file, uint8_t **preview)
     }
   }
   
-  return len;
+  *p_len = len;
 }
   
 int jpeg_read_infos(FILE *f, _Data *data)
@@ -273,6 +290,7 @@ int jpeg_read_infos(FILE *f, _Data *data)
       case 0xFE:
       case 0xE1: //FIXME get exif info!
         len = pos[2] * 256 + pos[3];
+	printf("exif is at %d len %d\n", file_pos - remain + 1, len);
         SKIP_BUF(len+2);
         break;
       default :
@@ -356,7 +374,7 @@ fill_input_buffer (j_decompress_ptr cinfo)
       size = (*src->data->index)[src->data->serve_iy*src->data->iw+src->data->serve_ix+1]-(*src->data->index)[src->data->serve_iy*src->data->iw+src->data->serve_ix];
     fseek(src->infile, (*src->data->index)[src->data->serve_iy*src->data->iw+src->data->serve_ix], SEEK_SET);
     assert(2*INPUT_BUF_SIZE >= size);
-    nbytes = JFREAD(src->infile, src->buffer, size);
+    nbytes = fread(src->buffer, 1, size, src->infile);
     //FIXME check size?
     if (size != INPUT_BUF_SIZE) {
       src->buffer[nbytes-1] = 0xd0 | src->data->rst_next;
@@ -376,9 +394,9 @@ fill_input_buffer (j_decompress_ptr cinfo)
   else if (src->data->file_pos < *src->data->size_pos 
       && src->data->file_pos + INPUT_BUF_SIZE >= *src->data->size_pos) {
     if (src->data->file_pos + 2*INPUT_BUF_SIZE >= (*src->data->index)[0])
-      nbytes = JFREAD(src->infile, src->buffer, (*src->data->index)[0]-src->data->file_pos);
+      nbytes = fread(src->buffer, 1, (*src->data->index)[0]-src->data->file_pos, src->infile);
     else
-      nbytes = JFREAD(src->infile, src->buffer, 2*INPUT_BUF_SIZE);
+      nbytes = fread(src->buffer, 1, 2*INPUT_BUF_SIZE, src->infile);
     //FIXME
     int i = *src->data->size_pos - src->data->file_pos;
     //printf("size on fill: %dx%d\n%x %x %x %x %x %x\n%d\n", src->buffer[i+2]*256+src->buffer[i+3],src->buffer[i]*256+src->buffer[i+1],src->buffer[i],src->buffer[i+1],src->buffer[i+2],src->buffer[i+3],src->buffer[i+4],src->buffer[i+5],src->data->size_pos);
@@ -387,7 +405,7 @@ fill_input_buffer (j_decompress_ptr cinfo)
   }
   else if (src->data->file_pos < (*src->data->index)[0]
       && src->data->file_pos + INPUT_BUF_SIZE >= (*src->data->index)[0]) {
-    nbytes = JFREAD(src->infile, src->buffer, (*src->data->index)[0]-src->data->file_pos);
+    nbytes = fread(src->buffer, 1, (*src->data->index)[0]-src->data->file_pos, src->infile);
   }
   else if (src->data->file_pos == (*src->data->index)[0]) {
     //printf("wohoo now feed fake jpeg\n");
@@ -396,7 +414,7 @@ fill_input_buffer (j_decompress_ptr cinfo)
     size = (*src->data->index)[src->data->serve_iy*src->data->iw+src->data->serve_ix+1]-(*src->data->index)[src->data->serve_iy*src->data->iw+src->data->serve_ix];
     fseek(src->infile, (*src->data->index)[src->data->serve_iy*src->data->iw+src->data->serve_ix], SEEK_SET);
     assert(INPUT_BUF_SIZE > size);
-    nbytes = JFREAD(src->infile, src->buffer, size);
+    nbytes = fread(src->buffer, 1, size, src->infile);
     src->buffer[nbytes-1] = 0xd0 | src->data->rst_next;
     src->data->rst_next = (src->data->rst_next+1) % 8;
     assert(nbytes == size);
@@ -412,7 +430,7 @@ fill_input_buffer (j_decompress_ptr cinfo)
     }
   }
   else
-    nbytes = JFREAD(src->infile, src->buffer, INPUT_BUF_SIZE);
+    nbytes = fread(src->buffer, 1, INPUT_BUF_SIZE, src->infile);
   
 
   if (nbytes <= 0) {
@@ -515,11 +533,11 @@ jpeg_hacked_stdio_src (j_decompress_ptr cinfo, FILE * infile, _Data *data)
   if (cinfo->src == NULL) { /* first time for this JPEG object? */
     cinfo->src = (struct jpeg_source_mgr *)
       (*cinfo->mem->alloc_small) ((j_common_ptr) cinfo, JPOOL_PERMANENT,
-          SIZEOF(my_source_mgr));
+          sizeof(my_source_mgr));
     src = (my_src_ptr) cinfo->src;
     src->buffer = (JOCTET *)
       (*cinfo->mem->alloc_small) ((j_common_ptr) cinfo, JPOOL_PERMANENT,
-          2*INPUT_BUF_SIZE * SIZEOF(JOCTET));
+          2*INPUT_BUF_SIZE * sizeof(JOCTET));
   }
 
   src = (my_src_ptr) cinfo->src;
@@ -564,36 +582,6 @@ void *_data_new(Filter *f, void *data)
   //newdata->index = calloc(sizeof(int**), 1);
   
   return newdata;
-}
-
-static int _get_exif_orientation(const char *file)
-{
-   int orientation = 1;
-   ExifData *data;
-   ExifEntry *entry;
-   
-   data = exif_data_new_from_file(file);
-   
-   if (!data)
-     return orientation;
-   
-   entry = exif_data_get_entry(data, EXIF_TAG_ORIENTATION);
-   
-   if (!entry) {
-    exif_data_free(data);
-    return orientation;
-   }
-   
-   orientation = *(short*)entry->data;
-   
-   if (orientation > 8)
-     orientation /= 256;
-   
-   if (orientation > 8 || orientation < 1)
-     orientation = 1;
-
-   exif_data_free(data);
-   return orientation;
 }
 
 void _loadjpeg_worker_ijg(Filter *f, Eina_Array *in, Eina_Array *out, Rect *area, int thread_id)
@@ -818,7 +806,6 @@ void _loadjpeg_worker_ijg_thumb(Filter *f, Eina_Array *in, Eina_Array *out, Rect
   uint8_t *r, *g, *b;
   uint8_t *rp, *gp, *bp;
   int i, j;
-  int xstep, ystep;
   JSAMPARRAY buffer;    /* Output row buffer */
   int row_stride;   /* physical row width in output buffer */
   int lines_read;
@@ -943,7 +930,9 @@ int _loadjpeg_input_fixed(Filter *f)
     return -1;
   }
   
-  data->rot = _get_exif_orientation(data->filename);
+  //data->rot = _get_exif_orientation(data->filename);
+  
+  get_exif_stuff(data->filename, &data->thumb_data, &data->thumb_len, &data->rot);
   
   jpeg_create_decompress(&cinfo);
   jpeg_stdio_src(&cinfo, file);
@@ -959,7 +948,7 @@ int _loadjpeg_input_fixed(Filter *f)
   data->h = cinfo.output_height;
   data->comp_count = cinfo.num_components;
   
-  data->thumb_len = get_exif_preview(data->filename, &data->thumb_data);
+  //data->thumb_len = get_exif_preview(data->filename, &data->thumb_data);
   
   //printf("seekable tile size: %dx%d\n", data->rst_int*data->mcu_w, data->mcu_h);
 
