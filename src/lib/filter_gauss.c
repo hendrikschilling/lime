@@ -264,7 +264,7 @@ Filter *filter_gauss_blur_new(void)
   
   channel = meta_new_channel(filter, 1);
   color[0] = meta_new_data(MT_COLOR, filter, malloc(sizeof(int)));
-  *(int*)(color[0]->data) = CS_LAB_L;
+  *(int*)(color[0]->data) = CS_YUV_Y;
   meta_attach(channel, color[0]);
   meta_attach(channel, bitdepth);
   meta_attach(out, channel);
@@ -272,7 +272,7 @@ Filter *filter_gauss_blur_new(void)
   
   channel = meta_new_channel(filter, 2);
   color[1] = meta_new_data(MT_COLOR, filter, malloc(sizeof(int)));
-  *(int*)(color[1]->data) = CS_LAB_A;
+  *(int*)(color[1]->data) = CS_YUV_U;
   meta_attach(channel, color[1]);
   meta_attach(channel, bitdepth);
   meta_attach(out, channel);
@@ -280,7 +280,7 @@ Filter *filter_gauss_blur_new(void)
   
   channel = meta_new_channel(filter, 3);
   color[2] = meta_new_data(MT_COLOR, filter, malloc(sizeof(int)));
-  *(int*)(color[2]->data) = CS_LAB_B;
+  *(int*)(color[2]->data) = CS_YUV_V;
   meta_attach(channel, color[2]);
   meta_attach(channel, bitdepth);
   meta_attach(out, channel);
