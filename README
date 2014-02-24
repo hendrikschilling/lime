@@ -12,12 +12,11 @@ Included applications are "limeview" and "limedo".
 limeview is a gui application to view, edit, tag (using xmp sidecars) and sort images.
 limedo will execute a filter graph on the commandline.
 
-examples:
+EXAMPLES
 
-  limedo sharpen:strength=50.0,savejpeg:filename=sharpened.jpg input.JPG
+  limedo sharpen:strength=50.0,savejpeg:filename=output.jpg input.jpg
   
-This will filter inputimage.tif with a gaussian blur with sigma=100 and
-then save it to blurred.tif
+This will sharpen input.jpg with strenth=50.0 and then save it to output.jpg
 
 
   limedo pretend:scale=1,sharpen:strength=50.0,savejpeg:filename=output.jpg input.jpg
