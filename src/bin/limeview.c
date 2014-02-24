@@ -1816,10 +1816,9 @@ void file_group_del(File_Group *group)
 
 void delete_image_do(void *data, Evas_Object *obj)
 {
-  abort();
-  /*char *dest = malloc(EINA_PATH_MAX);
-  char *dest_file = dest + (image_file - image_path);
-
+  char dest[EINA_PATH_MAX];
+  char *filenem;
+  
   Tagged_File *file;
   File_Group *group;
   
@@ -1829,17 +1828,17 @@ void delete_image_do(void *data, Evas_Object *obj)
   group = eina_inarray_nth(files, file_idx);
   
   EINA_INARRAY_FOREACH(group->files, file) {
+    if (!file->filename)
+      continue;
     if (file->filename) {
-      strcpy(dest, image_path);
-      sprintf(dest_file, "delete/%s", file->filename);
-      strcpy(image_file, file->filename);
-      eio_file_move(image_path, dest, NULL, &del_file_done, &del_file_error, file->filename);
+      //FIXME memleaks!
+      sprintf(dest, "%s/delete/%s", ecore_file_dir_get(file->filename), ecore_file_file_get(file->filename));
+      eio_file_move(file->filename, dest, NULL, &del_file_done, &del_file_error, file->filename);
     }
     if (file->sidecar) {
-      strcpy(dest, image_path);
-      sprintf(dest_file, "delete/%s", file->sidecar);
-      strcpy(image_file, file->sidecar);
-      eio_file_move(image_path, dest, NULL, &del_file_done, &del_file_error, file->sidecar);
+      //FIXME memleaks!
+      sprintf(dest, "%s/delete/%s", ecore_file_dir_get(file->sidecar), ecore_file_file_get(file->sidecar));
+      eio_file_move(file->sidecar, dest, NULL, &del_file_done, &del_file_error, file->filename);
     }
   }
   
@@ -1851,8 +1850,7 @@ void delete_image_do(void *data, Evas_Object *obj)
   
   step_image_do(NULL, NULL);
   
-  free(dest);
-  file_group_del(group);*/
+  file_group_del(group);
 }
 
 
@@ -2798,18 +2796,23 @@ void add_group_sidecar(File_Group *group)
   if (group->sidecar)
     return;
   
-  EINA_INARRAY_FOREACH(group->files, file)
+  //FIXME find a better way to find a xmp filename!
+  EINA_INARRAY_FOREACH(group->files, file) {
+    assert(file->filename);
     if (!strcmp(file->filename+strlen(file->filename)-4, ".jpg") || !strcmp(file->filename+strlen(file->filename)-4, ".JPG")) {
       buf = malloc(strlen(file->filename)+5);
       sprintf(buf, "%s.xmp", file->filename);
       group->sidecar = buf;
+      file->sidecar = group->sidecar;
       return;
     }
+  }
 
   file = eina_inarray_nth(group->files, 0);
   buf = malloc(strlen(file->filename+5));
   sprintf(buf, "%s.xmp", file->filename);
   group->sidecar = buf;
+  file->sidecar = group->sidecar;
 }
 
 void save_sidecar(File_Group *group)
