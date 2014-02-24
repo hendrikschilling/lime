@@ -1,23 +1,17 @@
 - clean TODO ;-D
 
-fast realease:
-- check all filter work and load/save/process correctly, remove non-working
-- check export works for all cases
-- add dir/file open button
+next:
+- make directory loading neater, do all xmp stuff async in background
+- add (very simple) configuration cache (speed up image browsing in limeview)
 - clean export gui
 - clean printf a lot!
 
 short term:
 - valgrind: memleaks
-- valgrind: illegal read/writes
 - really enable cache size changes
 - clean up code all filter
 - api purge "clobber", replace by buffering
 - hide private stuff
-- more static functions in filters!
-- limeview abort if not configuarble file is in a folder!
-- packages for ubunt? and mac?
-- license
 - limeview: mat_cache remove only invisible stuff when too full
 - limeview: glitches on step_image with many tags in tags list
 
