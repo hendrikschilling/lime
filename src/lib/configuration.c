@@ -720,7 +720,7 @@ int test_filter_config_real(Filter *f, int write_graph)
   Eina_Array *copy = eina_array_new(8);
   Eina_Array *matches_compat;
   Eina_Array *restrictions = eina_array_new(8);
-  //Eina_Array *applied_metas = eina_array_new(8);
+  Eina_Array *trash = eina_array_new(32);
   
   assert(f->node->con_trees_out != NULL);
   assert(ea_count(f->node->con_trees_out) == 1);
@@ -729,9 +729,14 @@ int test_filter_config_real(Filter *f, int write_graph)
     if (f->input_fixed(f)) {
       eina_array_free(match_source);
       eina_array_free(match_sink);
+      for(i=0;i<ea_count(copied);i++)
+	free(ea_data(copied, i));
       eina_array_free(copied);
       eina_array_free(copy);
       eina_array_free(restrictions);
+      //for(i=0;i<ea_count(trash);i++)
+	//free(ea_data(trash, i));
+      eina_array_free(trash);
       return 0;
     }
   
@@ -756,6 +761,8 @@ int test_filter_config_real(Filter *f, int write_graph)
     match_source = eina_array_new(8);
     eina_array_free(match_sink);
     match_sink = eina_array_new(8);
+    while(ea_count(copied))
+      eina_array_push(trash, eina_array_pop(copied));
     eina_array_free(copied);
     copied = eina_array_new(8);
     eina_array_free(copy);
@@ -768,9 +775,14 @@ int test_filter_config_real(Filter *f, int write_graph)
       ea_metas_data_zero(applied_metas);
       eina_array_free(match_source);
       eina_array_free(match_sink);
+      for(i=0;i<ea_count(copied);i++)
+	free(ea_data(copied, i));
       eina_array_free(copied);
       eina_array_free(copy);
       eina_array_free(restrictions);
+      //for(i=0;i<ea_count(trash);i++)
+	//free(ea_data(trash, i));
+      eina_array_free(trash);
       return pos;
     }
     
@@ -788,8 +800,14 @@ int test_filter_config_real(Filter *f, int write_graph)
 	eina_array_free(matches_compat);
 	eina_array_free(match_source);
 	eina_array_free(match_sink);
+	for(i=0;i<ea_count(copied);i++)
+	  free(ea_data(copied, i));
 	eina_array_free(copied);
 	eina_array_free(copy);
+	eina_array_free(restrictions);
+	//for(i=0;i<ea_count(trash);i++)
+	  //free(ea_data(trash, i));
+	eina_array_free(trash);
 	return pos;
       }
    
@@ -881,9 +899,14 @@ int test_filter_config_real(Filter *f, int write_graph)
   
   eina_array_free(match_source);
   eina_array_free(match_sink);
+  for(i=0;i<ea_count(copied);i++)
+    free(ea_data(copied, i));
   eina_array_free(copied);
   eina_array_free(copy);
   eina_array_free(restrictions);
+  //for(i=0;i<ea_count(trash);i++)
+    //free(ea_data(trash, i));
+  eina_array_free(trash);
   
   return -1;
 }
