@@ -199,7 +199,7 @@ static int _del(Filter *f)
 Filter *filter_loadtiff_new(void)
 {
   Filter *filter = filter_new(&filter_core_loadtiff);
-  Meta *in, *out, *channel, *bitdepth, *dim;
+  Meta *in, *out, *channel, *bitdepth, *dim, *fliprot;
   _Data *data = calloc(sizeof(_Data), 1);
   data->dim = calloc(sizeof(Dim), 1);
   
@@ -228,6 +228,10 @@ Filter *filter_loadtiff_new(void)
   in->replace = out;
   eina_array_push(filter->in, in);
   data->input = in;
+  
+  fliprot = meta_new_data(MT_FLIPROT, filter, malloc(sizeof(int)));
+  *(int*)fliprot->data = 1;
+  meta_attach(out, fliprot);
   
   channel = meta_new_channel(filter, 1);
   data->color[0] = meta_new_data(MT_COLOR, filter, malloc(sizeof(int)));

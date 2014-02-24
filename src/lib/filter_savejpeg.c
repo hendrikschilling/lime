@@ -60,7 +60,7 @@ static void _worker(Filter *f, Eina_Array *in, Eina_Array *out, Rect *area, int 
 Filter *filter_savejpeg_new(void)
 {
   Filter *filter = filter_new(&filter_core_savejpeg);
-  Meta *in, *channel, *bitdepth, *color, *size, *setting;
+  Meta *in, *channel, *bitdepth, *color, *size, *setting, *fliprot;
   _Data *data = calloc(sizeof(_Data), 1);
   ea_push(filter->data, data);
   
@@ -76,6 +76,10 @@ Filter *filter_savejpeg_new(void)
   
   in = meta_new(MT_BUNDLE, filter);
   eina_array_push(filter->in, in);
+  
+  fliprot = meta_new_data(MT_FLIPROT, filter, malloc(sizeof(int)));
+  *(int*)fliprot->data = 1;
+  meta_attach(in, fliprot);
   
   channel = meta_new_channel(filter, 1);
   color = meta_new_data(MT_COLOR, filter, malloc(sizeof(int)));

@@ -466,8 +466,9 @@ static int _setting_changed(Filter *f)
 Filter *filter_savetiff_new(void)
 {
   Filter *filter = filter_new(&filter_core_savetiff);
-  Meta *in, *channel, *bitdepth, *size, *setting, *bound;
+  Meta *in, *channel, *bitdepth, *size, *setting, *bound, *fliprot;
   _Data *data = calloc(sizeof(_Data), 1);
+  data->colorspace = CS_LAB;
   ea_push(filter->data, data);
   
   filter->mode_iter = filter_mode_iter_new();
@@ -489,6 +490,10 @@ Filter *filter_savetiff_new(void)
   
   in = meta_new(MT_BUNDLE, filter);
   eina_array_push(filter->in, in);
+  
+  fliprot = meta_new_data(MT_FLIPROT, filter, malloc(sizeof(int)));
+  *(int*)fliprot->data = 1;
+  meta_attach(in, fliprot);
   
   channel = meta_new_channel(filter, 1);
   data->color[0] = meta_new_data(MT_COLOR, filter, malloc(sizeof(int)));
