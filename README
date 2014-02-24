@@ -8,14 +8,7 @@ Lime is very fast and easy on memory:
 Memory usage (observed by valgrind --tool=massif):
 
 creating an image pyramid
-limedo savetiff:filename=output.tif input.tif          29.55MB     default tile size 25MB!
-
-
-execution time for
-
-real    1m23.855s
-user    0m27.258s
-sys     0m5.070s
+limedo savetiff:filename=output.tif input.tif          29.55MB     default cache size 25MB!
 
 
 USAGE
