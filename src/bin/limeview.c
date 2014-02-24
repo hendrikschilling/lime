@@ -49,6 +49,9 @@
 #define TILE_SIZE DEFAULT_TILE_SIZE
 #define MAX_XMP_FILE 1024*1024
 #define HACK_ITERS_FOR_REAL_IDLE 1
+#define PREREAD_SIZE 4096*16
+#define PREREAD_RANGE 5
+#define FAST_SKIP_RENDER_DELAY 0.1
 
 int high_quality_delay =  300;
 int max_reaction_delay =  1000;
@@ -883,7 +886,7 @@ Eina_Bool idle_run_render(void *data)
   if (!pending_action) {
     if (quick_preview_only)
       //FIXME what time is good?
-      timer_render = ecore_timer_add(0.1, &timer_run_render, NULL);
+      timer_render = ecore_timer_add(FAST_SKIP_RENDER_DELAY, &timer_run_render, NULL);
     else {
       fill_scroller_preview();
       fill_scroller();
@@ -892,6 +895,52 @@ Eina_Bool idle_run_render(void *data)
   }
   
   return ECORE_CALLBACK_CANCEL;
+}
+
+
+int wrap_files_idx(float idx)
+{
+  if (idx < 0)
+    return eina_inarray_count(files)-1;
+  if (idx >= eina_inarray_count(files))
+    return 0;
+  return idx;
+}
+
+static void _fadvice_file(void *data, Ecore_Thread *th)
+{
+  int fd;
+  
+  eina_sched_prio_drop();
+  
+  printf("preread %s\n", data);
+  
+  fd = open(data, O_RDONLY);
+  posix_fadvise(fd, 0,PREREAD_SIZE,POSIX_FADV_WILLNEED);
+  close(fd);
+  
+  
+  printf("preread %s finished\n", data);
+  return 0;
+}
+
+//FIXME check tag filter?
+static void preread_filerange(int range)
+{
+  int i, j;
+  File_Group *group;
+  const char *filename;
+  //start_idx = file_idx;
+  
+  for(j=file_idx;j<file_idx+range*file_step;j+=file_step) {
+    
+    group = eina_inarray_nth(files, wrap_files_idx(j));
+    for(i=0;i<eina_inarray_count(group->files);i++) {
+      filename = ((Tagged_File*)eina_inarray_nth(group->files, i))->filename;
+      if (filename)
+	ecore_thread_run(_fadvice_file, NULL, NULL, filename);
+    }
+  }
 }
 
 Eina_Bool workerfinish_idle_run(void *data)
@@ -908,6 +957,7 @@ Eina_Bool workerfinish_idle_run(void *data)
   
   if (hacky_idle_iter_pending) {
     hacky_idle_iter_pending--;
+    preread_filerange(PREREAD_RANGE);
     return ECORE_CALLBACK_RENEW;
   }
   
@@ -956,6 +1006,9 @@ _process_tile(void *data, Ecore_Thread *th)
   eina_sched_prio_drop();
   lime_render_area(&tdata->area, sink, tdata->t_id);
 }
+
+
+
 
 int bench_do(void)
 {
@@ -1492,15 +1545,6 @@ int files_similar(const char *a, const char *b)
       had_point = 1;
   
   return had_point;
-}
-
-int wrap_files_idx(float idx)
-{
-  if (idx < 0)
-    return eina_inarray_count(files)-1;
-  if (idx >= eina_inarray_count(files))
-    return 0;
-  return idx;
 }
 
 void step_image_do(void *data, Evas_Object *obj);
@@ -2230,6 +2274,8 @@ _ls_main_cb(void *data, Eio_File *handler, const Eina_File_Direct_Info *info)
     files_unsorted = eina_list_append(files_unsorted, file);
     
     sprintf(buf, "found %d files", file_count);
+    //FIXME this takes a lot of time when called with all files!
+    //if (file_count % 17 == 0)
     elm_object_text_set(load_label, strdup(buf));
   }
 }
