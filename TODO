@@ -16,6 +16,7 @@ short term:
 - limeview: glitches on step_image with many tags in tags list
 
 mid term:
+- add generic evas/elm object for lime
 - simplify specification tree definition
 - fix gauss blur rounding
 - speed up configuration
