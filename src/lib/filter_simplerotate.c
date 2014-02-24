@@ -123,6 +123,16 @@ static void _worker(Filter *f, Eina_Array *in, Eina_Array *out, Rect *area, int 
 }
 
 
+static int _del(Filter *f)
+{
+  _Data *data = ea_data(f->data, 0);
+  
+  free(data->out_dim);
+  free(data);
+  
+  return 0;
+}
+
 Filter *filter_simplerotate_new(void)
 {
   Filter *filter = filter_new(&filter_core_simplerotate);
@@ -132,6 +142,7 @@ Filter *filter_simplerotate_new(void)
   data->out_dim = calloc(sizeof(Dim), 1);
   data->rotation = 270;
 
+  filter->del = &_del;
   filter->mode_buffer = filter_mode_buffer_new();
   filter->mode_buffer->threadsafe = 1;
   filter->mode_buffer->worker = &_worker;

@@ -22,20 +22,20 @@
 typedef struct {
   uint8_t *data;
   int *use_alpha;
-} _Memsink_Data;
+} _Data;
 
 void *_memsink_data_new(Filter *f, void *data)
 {
-  _Memsink_Data *new = calloc(sizeof(_Memsink_Data), 1);
+  _Data *new = calloc(sizeof(_Data), 1);
   
-  new->use_alpha = ((_Memsink_Data*)data)->use_alpha;
+  new->use_alpha = ((_Data*)data)->use_alpha;
   
   return new;
 }
 
 void filter_memsink_buffer_set(Filter *f, uint8_t *raw_data, int thread_id)
 {
-    _Memsink_Data *data;
+    _Data *data;
     
     filter_fill_thread_data(f, thread_id);
     
@@ -48,7 +48,7 @@ static void _memsink_worker(Filter *f, Eina_Array *in, Eina_Array *out, Rect *ar
 {
   int i, j;
   uint8_t *buf, *rgb;
-  _Memsink_Data *data = ea_data(f->data, thread_id);
+  _Data *data = ea_data(f->data, thread_id);
   buf = data->data;
   
   assert(in && ea_count(in) == 1);
@@ -66,15 +66,31 @@ static void _memsink_worker(Filter *f, Eina_Array *in, Eina_Array *out, Rect *ar
       }
 }
 
+static int _del(Filter *f)
+{
+  _Data *data = ea_data(f->data, 0);
+  int i;
+  
+  free(data->use_alpha);
+  
+  for(i=0;i<ea_count(f->data);i++) {
+    data = ea_data(f->data, i);
+    free(data);
+  }
+  
+  return 0;
+}
+
 Filter *filter_memsink_new(void)
 {
   Filter *filter = filter_new(&filter_core_memsink);
   Meta *in, *channel, *bitdepth, *color, *size, *setting, *bound, *fliprot;
-  _Memsink_Data *data = calloc(sizeof(_Memsink_Data), 1);
+  _Data *data = calloc(sizeof(_Data), 1);
   data->use_alpha = malloc(sizeof(int));
   *data->use_alpha = 0;
   ea_push(filter->data, data);
   
+  filter->del = &_del;
   filter->mode_buffer = filter_mode_buffer_new();
   filter->mode_buffer->worker = &_memsink_worker;
   filter->mode_buffer->threadsafe = 1;

@@ -62,6 +62,15 @@ static void _worker(Filter *f, Eina_Array *in, Eina_Array *out, Rect *area, int 
 }
 
 
+static int _del(Filter *f)
+{
+  _Data *data = ea_data(f->data, 0);
+  
+  free(data);
+  
+  return 0;
+}
+
 Filter *filter_interleave_new(void)
 {
   Filter *filter = filter_new(&filter_core_interleave);
@@ -71,6 +80,7 @@ Filter *filter_interleave_new(void)
   _Data *data = calloc(sizeof(_Data), 1);
   ea_push(filter->data, data);
 
+  filter->del = &_del;
   filter->mode_buffer = filter_mode_buffer_new();
   filter->mode_buffer->threadsafe = 1;
   filter->mode_buffer->worker = &_worker;

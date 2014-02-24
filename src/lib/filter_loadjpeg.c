@@ -26,7 +26,6 @@
 #define JPEG_TILE_WIDTH 256
 #define JPEG_TILE_HEIGHT 256
 
-#include "jpegint.h"
 #include "jpeglib.h"
 #include "jerror.h"
 #include <libexif/exif-loader.h>

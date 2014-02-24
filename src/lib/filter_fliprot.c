@@ -135,6 +135,16 @@ static void _worker(Filter *f, Eina_Array *in, Eina_Array *out, Rect *area, int 
 
 }
 
+static int _del(Filter *f)
+{
+  _Data *data = ea_data(f->data, 0);
+  int i;
+  
+  free(data->out_dim);
+  free(data);
+  
+  return 0;
+}
 
 static Filter *_new(void)
 {
@@ -143,9 +153,8 @@ static Filter *_new(void)
   Meta *ch_out[3];
   _Data *data = calloc(sizeof(_Data), 1);
   data->out_dim = calloc(sizeof(Dim), 1);
-  
-  printf("new fliprot filter!\n");
 
+  filter->del = &_del;
   filter->mode_buffer = filter_mode_buffer_new();
   filter->mode_buffer->threadsafe = 1;
   filter->mode_buffer->worker = &_worker;

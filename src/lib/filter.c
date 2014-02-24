@@ -212,7 +212,7 @@ void filter_del(Filter *f)
   if (f->del)
     f->del(f);
   else
-    printf("FIXME! del filter!\n");
+    printf("FIXME! del filter %s!\n", f->fc->shortname);
   
   metas = eina_hash_pointer_new(&_free_meta);
   
