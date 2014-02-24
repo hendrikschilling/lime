@@ -954,14 +954,18 @@ int _loadjpeg_input_fixed(Filter *f)
   
   //data->rot = _get_exif_orientation(data->filename);
   
-  get_exif_stuff(data->filename, &data->thumb_data, &data->thumb_len, &data->rot);
-  
   jpeg_create_decompress(&cinfo);
   jpeg_stdio_src(&cinfo, file);
   jpeg_read_header(&cinfo, TRUE);
   jpeg_calc_output_dimensions(&cinfo);
   
-  assert(cinfo.jpeg_color_space == JCS_YCbCr);
+  if (cinfo.jpeg_color_space != JCS_YCbCr) {
+    printf("implement jpeg_color_space %d\n", cinfo.jpeg_color_space);
+    return -1;
+  }
+  
+  get_exif_stuff(data->filename, &data->thumb_data, &data->thumb_len, &data->rot);
+  
   
   data->mcu_w = cinfo.max_h_samp_factor*8;
   data->mcu_h = cinfo.max_v_samp_factor*8;

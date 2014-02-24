@@ -136,6 +136,7 @@ int _loadtiff_input_fixed(Filter *f)
 {
   uint32_t width, height;
   uint32_t twidth, theight;
+  uint32_t twidth_d, theight_d;
   short color;
   int succ = 0;
   _Data *data = ea_data(f->data, 0);
@@ -156,6 +157,11 @@ int _loadtiff_input_fixed(Filter *f)
     TIFFClose(data->file);
     return -1;
   }
+  
+  if (!twidth)
+    return -1;
+  if (!theight)
+    return -1;
   
   ((Dim*)data->dim)->width = width;
   ((Dim*)data->dim)->height = height;
@@ -179,6 +185,12 @@ int _loadtiff_input_fixed(Filter *f)
   data->directory = 0;
   
   while (TIFFReadDirectory(data->file)) {
+    TIFFGetField(data->file, TIFFTAG_TILEWIDTH, &twidth);
+    TIFFGetField(data->file, TIFFTAG_TILELENGTH, &theight);
+    if (twidth_d != twidth)
+      return -1;
+    if (theight_d != theight)
+      return -1;
     ((Dim*)data->dim)->scaledown_max++;
     data->directory++;
   }
