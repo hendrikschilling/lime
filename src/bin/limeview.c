@@ -750,13 +750,6 @@ void mat_cache_del(Mat_Cache *mat_cache)
   free(mat_cache);
 }
 
-/*void mat_free_func(void *user_data, void *cell_data)
-{
-  Evas_Object *img = cell_data;
-  
-  evas_object_del(img);
-}*/
-
 void mat_cache_max_set(Mat_Cache *mat_cache, int scale)
 {
   int i;
@@ -856,8 +849,8 @@ void mat_free_func(void *user_data, void *cell_data)
 {
   _Img_Thread_Data *cell = cell_data;
   
-  free(cell->buf);
   evas_object_del(cell->img);
+  free(cell->buf);
 }
 
 void mat_cache_set(Mat_Cache *mat_cache, int scale, int x, int y, void *data)

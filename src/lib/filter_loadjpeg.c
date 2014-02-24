@@ -992,8 +992,11 @@ int _loadjpeg_input_fixed(Filter *f)
 
 static int _del(Filter *f)
 {
-  _Data *data;
+  _Data *data = ea_data(f->data, 0);
   int i;
+  
+  free(data->thumb_data);
+  
   for(i=0;i<ea_count(f->data);i++) {
     data = ea_data(f->data, i);
     free(data);

@@ -726,8 +726,14 @@ int test_filter_config_real(Filter *f, int write_graph)
   assert(ea_count(f->node->con_trees_out) == 1);
   
   if (f->input_fixed)
-    if (f->input_fixed(f))
+    if (f->input_fixed(f)) {
+      eina_array_free(match_source);
+      eina_array_free(match_sink);
+      eina_array_free(copied);
+      eina_array_free(copy);
+      eina_array_free(restrictions);
       return 0;
+    }
   
   con = ea_data(f->node->con_trees_out, 0);
     
@@ -760,6 +766,11 @@ int test_filter_config_real(Filter *f, int write_graph)
     if (!matches_compat) {
       //printf("failed\n");
       ea_metas_data_zero(applied_metas);
+      eina_array_free(match_source);
+      eina_array_free(match_sink);
+      eina_array_free(copied);
+      eina_array_free(copy);
+      eina_array_free(restrictions);
       return pos;
     }
     
@@ -774,6 +785,11 @@ int test_filter_config_real(Filter *f, int write_graph)
     if (con->sink->filter->input_fixed)
       if (con->sink->filter->input_fixed(con->sink->filter)) {
 	ea_metas_data_zero(applied_metas);
+	eina_array_free(matches_compat);
+	eina_array_free(match_source);
+	eina_array_free(match_sink);
+	eina_array_free(copied);
+	eina_array_free(copy);
 	return pos;
       }
    
@@ -820,6 +836,7 @@ int test_filter_config_real(Filter *f, int write_graph)
       con = NULL;
     
     pos++;
+    eina_array_free(matches_compat);
   }
   
   int j;
