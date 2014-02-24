@@ -1,18 +1,20 @@
 WHATS IT DO?
 
 Lime is a library plus tools for fast non-destructive interactive image editing.
-It's very fast.
-It has very low memory consumption.
+A unique approach is used, using filters which work with scaled images for higher performance when screen size exceeds image size.
+Image editing is based an a filter chain for non-destructive editing.
+Lime is very fast and easy on memory:
+
 
 USAGE
 
 Included applications are "limeview" and "limedo".
-limeview is a gui application to view, edit tag and sort images.
-limedo will execute a filter graph on the commandline, for example for image conversion
+limeview is a gui application to view, edit, tag (using xmp sidecars) and sort images.
+limedo will execute a filter graph on the commandline.
 
 examples:
 
-  limedo sharpen:strength=50.0,savejpeg:filename=sharpened.jpg P9253314.JPG
+  limedo sharpen:strength=50.0,savejpeg:filename=sharpened.jpg input.JPG
   
 This will filter inputimage.tif with a gaussian blur with sigma=100 and
 then save it to blurred.tif
