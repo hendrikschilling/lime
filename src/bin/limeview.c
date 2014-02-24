@@ -112,7 +112,7 @@ typedef struct {
   Evas_Object **high_of_layer;
   Evas_Object **low_of_layer;
   int scale_max;
-  Eina_Array *images;
+  Eina_Array **imgs;
 } Mat_Cache;
 
 int max_workers;
@@ -690,7 +690,6 @@ Mat_Cache *mat_cache_new(void)
   Mat_Cache *mat_cache = calloc(sizeof(Mat_Cache), 1);
   
   mat_cache->scale_max = -1;
-  mat_cache->images = eina_array_new(64);
   
   return mat_cache;
 }
@@ -698,39 +697,56 @@ Mat_Cache *mat_cache_new(void)
 void mat_cache_flush(Mat_Cache *mat_cache)
 {
   int i;
+  _Img_Thread_Data *tdata;
+  Eina_Iterator *iter;
+  uint8_t *buf;
   
   for(i=0;i<=mat_cache->scale_max;i++) {
-    if (mat_cache->mats[i]) {
-      eina_matrixsparse_size_set(mat_cache->mats[i], 1, 1);
-      eina_matrixsparse_data_idx_set(mat_cache->mats[i], 0, 0, NULL);
+    if (mat_cache->mats[i]) { 
+      /*iter = eina_matrixsparse_iterator_new(mat_cache->mats[i]);
+      while (eina_iterator_next (iter, &img)) {
+	buf = evas_object_image_data_get(img, EINA_TRUE);
+	evas_object_image_data_set(img, NULL);
+	free(buf);
+      }
+      eina_iterator_free(iter);*/
+      
+      eina_matrixsparse_free(mat_cache->mats[i]);
+      mat_cache->mats[i] = NULL;
     }
     mat_cache->low_of_layer[i] = NULL;
     mat_cache->high_of_layer[i] = NULL;
   }
-  
-  while (ea_count(mat_cache->images)) {
-    //here segfault!
-    evas_object_del(ea_pop(mat_cache->images));
-  }
 }
 
-/*void mat_cache_check(Mat_Cache *mat_cache)
+void mat_cache_check(Mat_Cache *mat_cache)
 {
   int layer = 0;
-  float scale = actual_scale_get();
+  float scale = scale_goal;
+  Eina_Iterator *iter;
+  Evas_Object *img;
   
   while (scale > 1.0) {
+    /*iter = eina_matrixsparse_iterator_new(mat_cache->mats[layer]);
+    
+    while (eina_iterator_next (iter, &img)) {
+      evas_object_del(img);
+    }
+    eina_iterator_free(iter);*/
+    
+    //eina_matrixsparse_size_set(mat_cache->mats[layer], 1, 1);
+    //eina_matrixsparse_data_idx_set(mat_cache->mats[layer], 0, 0, NULL);
+    mat_cache->low_of_layer[layer] = NULL;
+    mat_cache->high_of_layer[layer] = NULL;
+    
     layer++;
     scale /= 2;
   }
-}*/
+}
 
 void mat_cache_del(Mat_Cache *mat_cache)
 {
-  mat_cache_flush(mat_cache);
-  
-  eina_array_free(mat_cache->images);
-  
+  mat_cache_flush(mat_cache);  
   free(mat_cache);
 }
 
@@ -749,6 +765,7 @@ void mat_cache_max_set(Mat_Cache *mat_cache, int scale)
     return;
   
   mat_cache->mats = realloc(mat_cache->mats, sizeof(Eina_Matrixsparse*)*(scale+1));
+  mat_cache->imgs = realloc(mat_cache->imgs, sizeof(_Img_Thread_Data*)*(scale+1));
   mat_cache->high_of_layer = realloc(mat_cache->high_of_layer, sizeof(Evas_Object*)*(scale+1));
   mat_cache->low_of_layer = realloc(mat_cache->low_of_layer, sizeof(Evas_Object*)*(scale+1));
   
@@ -756,6 +773,7 @@ void mat_cache_max_set(Mat_Cache *mat_cache, int scale)
     mat_cache->mats[i] = NULL;
     mat_cache->high_of_layer[i] = NULL;
     mat_cache->low_of_layer[i] = NULL;
+    mat_cache->imgs[i] = NULL;
   }
     
   mat_cache->scale_max = scale;
@@ -834,6 +852,14 @@ float actual_scale_get()
   return (float)size.width / grid_w;
 }
 
+void mat_free_func(void *user_data, void *cell_data)
+{
+  _Img_Thread_Data *cell = cell_data;
+  
+  free(cell->buf);
+  evas_object_del(cell->img);
+}
+
 void mat_cache_set(Mat_Cache *mat_cache, int scale, int x, int y, void *data)
 {
   long unsigned int mx, my;
@@ -841,7 +867,7 @@ void mat_cache_set(Mat_Cache *mat_cache, int scale, int x, int y, void *data)
   mat_cache_max_set(mat_cache, scale);
   
   if (!mat_cache->mats[scale])
-    mat_cache->mats[scale] = eina_matrixsparse_new(x+1, y+1, NULL, NULL);  
+    mat_cache->mats[scale] = eina_matrixsparse_new(x+1, y+1, &mat_free_func, NULL);  
   
   eina_matrixsparse_size_get(mat_cache->mats[scale], &mx, &my);
 
@@ -859,8 +885,6 @@ void mat_cache_set(Mat_Cache *mat_cache, int scale, int x, int y, void *data)
   
   //printf("pos: %dx%d before %dx%d\n", eina)
   eina_matrixsparse_data_idx_set(mat_cache->mats[scale], x, y, data);
-  
-  eina_array_push(mat_cache->images, data);
 }
 
 void elm_exit_do(void *data, Evas_Object *obj)
@@ -893,6 +917,8 @@ Eina_Bool idle_run_render(void *data)
     }
       
   }
+  
+  idle_render = NULL;
   
   return ECORE_CALLBACK_CANCEL;
 }
@@ -969,6 +995,8 @@ Eina_Bool workerfinish_idle_run(void *data)
   pending_obj = NULL;
   pend_tmp_func(pend_tmp_data, pend_tmp_obj);
   
+  workerfinish_idle = NULL;
+  
   return ECORE_CALLBACK_CANCEL;
 }
 
@@ -978,8 +1006,10 @@ void workerfinish_schedule(void (*func)(void *data, Evas_Object *obj), void *dat
   pending_data = data;
   pending_obj = obj;
   
-  if (idle_render)
+  if (idle_render) {
     ecore_idle_enterer_del(idle_render);
+    idle_render = NULL;
+  }
     
   if (!worker) {
     assert(!mat_cache_old);
@@ -987,6 +1017,7 @@ void workerfinish_schedule(void (*func)(void *data, Evas_Object *obj), void *dat
     if (workerfinish_idle) {
       printf("delete scheduled function\n");
       ecore_idle_enterer_del(workerfinish_idle);
+      workerfinish_idle = NULL;
     }
     workerfinish_idle = ecore_idle_enterer_add(workerfinish_idle_run, NULL);
     printf("scheduling function\n");
@@ -1006,9 +1037,6 @@ _process_tile(void *data, Ecore_Thread *th)
   eina_sched_prio_drop();
   lime_render_area(&tdata->area, sink, tdata->t_id);
 }
-
-
-
 
 int bench_do(void)
 {
@@ -1062,7 +1090,6 @@ int bench_do(void)
 
 void _insert_image(_Img_Thread_Data *tdata)
 {
-    //image data has a ref counter, need to decrease it!
   evas_object_image_data_set(tdata->img, tdata->buf);
   evas_object_image_data_update_add(tdata->img, 0, 0, TILE_SIZE, TILE_SIZE);
   evas_object_show(tdata->img);
@@ -1098,7 +1125,6 @@ Eina_Bool _display_preview(void *data)
   //grid_setsize();
   for(i=0;i<ea_count(finished_threads);i++) {
     _insert_image(ea_data(finished_threads, i));
-    free(ea_data(finished_threads, i));
   }
   eina_array_free(finished_threads);
   finished_threads = NULL;
@@ -1156,7 +1182,7 @@ _finished_tile(void *data, Ecore_Thread *th)
 	  _display_preview(NULL);
 
       first_preview = 0;
-      
+
       return;
     }
     else {
@@ -1184,6 +1210,7 @@ _finished_tile(void *data, Ecore_Thread *th)
     //this will schedule an idle enterer to only process func after we are finished with rendering
     workerfinish_schedule(pending_action, pending_data, pending_obj);
   }
+  
 }
 
 int lock_free_thread_id(void)
@@ -1319,7 +1346,8 @@ int fill_area(int xm, int ym, int wm, int hm, int minscale, int preview)
 	  
 	  tdata = calloc(sizeof(_Img_Thread_Data), 1);
 	 
-  	  buf = evas_object_image_data_get(img, EINA_TRUE);
+  	  //buf = evas_object_image_data_get(img, EINA_TRUE);
+	  buf = malloc(TILE_SIZE*TILE_SIZE*4);
 	  
 	  //elm_grid_pack(grid, img, i*TILE_SIZE*scalediv, j*TILE_SIZE*scalediv, TILE_SIZE*scalediv, TILE_SIZE*scalediv);
 	  
@@ -1344,7 +1372,7 @@ int fill_area(int xm, int ym, int wm, int hm, int minscale, int preview)
 	  assert(buf);
 	  filter_memsink_buffer_set(sink, tdata->buf, tdata->t_id);
 	  
-	  mat_cache_set(mat_cache, scale, i, j, img);
+	  mat_cache_set(mat_cache, scale, i, j, tdata);
 	  	  
 	  worker++;
 	  
