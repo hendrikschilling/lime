@@ -64,6 +64,7 @@ int hacky_idle_iter_render = 0;
 int quick_preview_only = 0;
 
 Tagfiles *files = NULL;
+Tagfiles *files_new = NULL;
 int last_file_step = 1;
 
 Elm_Genlist_Item_Class *tags_list_itc;
@@ -2034,10 +2035,10 @@ static void _ls_done_cb(Tagfiles *tagfiles, void *data)
     idle_progress_print = NULL;
   }
   
-  assert(!files);
   if (files)
     tagfiles_del(files);
-  files = tagfiles;
+  files = files_new;
+  files_new = NULL;
   
   elm_slider_min_max_set(file_slider, 0, tagfiles_count(files)-1);
   evas_object_smart_callback_add(file_slider, "changed", &on_jump_image, NULL);
@@ -2080,16 +2081,23 @@ static void _ls_done_cb(Tagfiles *tagfiles, void *data)
 void on_open_dir(char *path)
 { 
   char *dir = path;
+
   if (dir) {
     printf("open dir %s\n", path);
+    
+    if (files_new) {
+      tagfiles_del(files_new);
+      files_new = NULL;
+    }
+    
     elm_fileselector_button_path_set(fsb, dir);
     load_notify = elm_notify_add(win);
     load_label = elm_label_add(load_notify);
-    elm_object_text_set(load_label, "found 0 files");
+    elm_object_text_set(load_label, "found 0 files groups");
     elm_object_content_set(load_notify, load_label);
     evas_object_show(load_label);
     evas_object_show(load_notify);
-    tagfiles_new_from_dir(dir, _ls_progress_cb, _ls_done_cb);
+    files_new = tagfiles_new_from_dir(dir, _ls_progress_cb, _ls_done_cb);
   }
 }
 

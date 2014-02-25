@@ -48,6 +48,7 @@ struct _File_Group {
 
 struct _Tagfiles {
   int idx;
+  Eina_Array *dirs_ls;
   Eina_Array *files_ls;
   Eina_Inarray *files;
   Eina_Hash *files_hash;
@@ -114,7 +115,7 @@ char *filegroup_filterchain(File_Group *g)
 }
 
 static Eina_Bool
-_ls_filter_cb(void *data, Eio_File *handler, Eina_File_Direct_Info *info)
+_ls_filter_cb(void *data, Eio_File *handler, const Eina_File_Direct_Info *info)
 {  
   if (info->type == EINA_FILE_REG || info->type == EINA_FILE_LNK || info->type == EINA_FILE_UNKNOWN || info->type == EINA_FILE_DIR)
     return EINA_TRUE;
@@ -195,18 +196,18 @@ static void _ls_main_cb(void *data, Eio_File *handler, const Eina_File_Direct_In
 {
   Tagfiles *tagfiles = data;
   const char *file;
+  
+  file = eina_stringshare_add(info->path);
+  if (!file)
+    return;
 
   if (info->type != EINA_FILE_DIR) {
-
-    file = eina_stringshare_add(info->path);
-    
-    if (!file)
-      return;
-    
     insert_file(tagfiles, file);
     
     tagfiles->progress_cb(tagfiles, tagfiles->cb_data);
   }
+  else
+    eina_array_push(tagfiles->dirs_ls, file);
 }
 
 int tagfiles_init(void)
@@ -291,28 +292,55 @@ void xmp_gettags(Tagfiles *tagfiles, const char *file, File_Group *group)
   return;
 }
 
-
-static void _ls_done_cb(void *data, Eio_File *handler)
-{
-  Tagfiles *tagfiles = data;
-  Eina_List *l, *l_next;
-  const char **file;
-  File_Group *group;
-   
-  while (eina_array_count(tagfiles->files_ls)) {
-    group = eina_array_pop(tagfiles->files_ls);
-    eina_inarray_push(tagfiles->files, &group);
-  }
-  
-  //FIXME call done cb!
-  tagfiles->done_cb(tagfiles, tagfiles->cb_data);
-}
-
 static void _ls_error_cb(void *data, Eio_File *handler, int error)
 {
   fprintf(stderr, "error: [%s]\n", strerror(error));
   abort();
   //FIXME implement error cb!
+}
+
+
+int filegroup_cmp(File_Group **a, File_Group **b)
+{
+  Tagged_File *fa = NULL, *fb = NULL;
+  
+  if (eina_inarray_count((*a)->files))
+    fa = eina_inarray_nth((*a)->files, 0);
+  if (eina_inarray_count((*b)->files))
+    fb = eina_inarray_nth((*b)->files, 0);
+  
+  if (!fa->filename)
+    fa = NULL;
+  if (!fb->filename)
+    fb = NULL;
+  
+  if (!fa) return -1;
+  else if (!fb) return 1;
+  
+  return strcmp(fa->filename, fb->filename);
+}
+
+static void _ls_done_cb(void *data, Eio_File *handler)
+{
+  Tagfiles *tagfiles = data;
+  File_Group *group;
+   
+    
+  
+  while (eina_array_count(tagfiles->files_ls)) {
+    group = eina_array_pop(tagfiles->files_ls);
+    eina_inarray_push(tagfiles->files, &group);
+  }
+  
+  printf("sort!\n");
+  eina_inarray_sort(tagfiles->files, filegroup_cmp);
+  
+  //FIXME sort!
+  
+  if (eina_array_count(tagfiles->dirs_ls))
+    eio_file_direct_ls(eina_array_pop(tagfiles->dirs_ls), &_ls_filter_cb, &_ls_main_cb,&_ls_done_cb, &_ls_error_cb, tagfiles);
+  else
+    tagfiles->done_cb(tagfiles, tagfiles->cb_data);
 }
 
 
@@ -326,8 +354,9 @@ Tagfiles *tagfiles_new_from_dir(const char *path, void (*progress_cb)(Tagfiles *
   files->files = eina_inarray_new(sizeof(File_Group*), 128);
   files->files_hash = eina_hash_string_superfast_new(NULL);
   files->files_ls = eina_array_new(1024);
+  files->dirs_ls = eina_array_new(16);
   
-  eio_dir_direct_ls(path, &_ls_filter_cb, &_ls_main_cb,&_ls_done_cb, &_ls_error_cb, files);
+  eio_file_direct_ls(path, &_ls_filter_cb, &_ls_main_cb,&_ls_done_cb, &_ls_error_cb, files);
   
   return files;
 }
@@ -381,7 +410,6 @@ int cmp_tagged_files(Tagged_File *a, Tagged_File *b)
   
   return cmp;
 }
-
 
 Eina_Bool xmp_add_tags_lr_func(const Eina_Hash *hash, const void *key, void *data, void *fdata)
 {
@@ -463,8 +491,7 @@ static void new_tag_file(File_Group *group)
 
 void add_group_sidecar(File_Group *group)
 {
-  char *buf;
-  Tagged_File *file;
+  abort();
   
   if (group->sidecar)
     return;
@@ -472,7 +499,6 @@ void add_group_sidecar(File_Group *group)
   return;
   
   //FIXME find a better way to find a xmp filename!
-  abort();
   /*EINA_INARRAY_FOREACH(group->files, &file) {
     assert(file->filename);
     if (!strcmp(file->filename+strlen(file->filename)-4, ".jpg") || !strcmp(file->filename+strlen(file->filename)-4, ".JPG")) {
