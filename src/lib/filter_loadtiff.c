@@ -158,10 +158,9 @@ int _loadtiff_input_fixed(Filter *f)
     return -1;
   }
   
-  if (!twidth)
-    return -1;
-  if (!theight)
-    return -1;
+  if (!twidth || !theight) {
+    printf("FIXME: TIFF unsupported tile configuration %dx%d\n", twidth, theight);
+  }
   
   ((Dim*)data->dim)->width = width;
   ((Dim*)data->dim)->height = height;
@@ -185,12 +184,12 @@ int _loadtiff_input_fixed(Filter *f)
   data->directory = 0;
   
   while (TIFFReadDirectory(data->file)) {
-    TIFFGetField(data->file, TIFFTAG_TILEWIDTH, &twidth);
-    TIFFGetField(data->file, TIFFTAG_TILELENGTH, &theight);
-    if (twidth_d != twidth)
+    TIFFGetField(data->file, TIFFTAG_TILEWIDTH, &twidth_d);
+    TIFFGetField(data->file, TIFFTAG_TILELENGTH, &theight_d);
+    if (twidth_d != twidth || theight_d != theight) {
+      printf("FIXME: TIFF: unsopported subimage tile size: %dx%d in %d\n", twidth_d, theight_d, ((Dim*)data->dim)->scaledown_max+1);
       return -1;
-    if (theight_d != theight)
-      return -1;
+    }
     ((Dim*)data->dim)->scaledown_max++;
     data->directory++;
   }
