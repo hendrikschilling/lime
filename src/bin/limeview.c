@@ -57,6 +57,7 @@ int max_fast_scaledown = 5;
 int first_preview = 0;
 Ecore_Idle_Enterer *workerfinish_idle = NULL;
 Ecore_Idle_Enterer *idle_render = NULL;
+Ecore_Idle_Enterer *idle_progress_print = NULL;
 Ecore_Timer *timer_render = NULL;
 int hacky_idle_iter_pending = 0;
 int hacky_idle_iter_render = 0;
@@ -1351,13 +1352,16 @@ void step_image_do(void *data, Evas_Object *obj);
 
 static void on_jump_image(void *data, Evas_Object *obj, void *event_info)
 {
-  abort();
-  /*if (file_idx == (int)elm_slider_value_get(file_slider))
+  if (!files)
     return;
+  
+  int idx = elm_slider_value_get(file_slider);
+  
+  tagfiles_idx_set(files, idx);
   
   if (mat_cache_old && !worker)
     _display_preview(NULL);
-  workerfinish_schedule(&step_image_do, NULL, NULL);*/
+  workerfinish_schedule(&step_image_do, NULL, NULL);
 }
 
 
@@ -1596,7 +1600,7 @@ void step_image_do(void *data, Evas_Object *obj)
   
   printf("configuration delay c: %f\n", bench_delay_get());  
   
-  //elm_slider_value_set(file_slider, file_idx+0.1);
+  elm_slider_value_set(file_slider, tagfiles_idx(files));
 }
 
 void del_file_done(void *data, Eio_File *handler)
@@ -1928,13 +1932,12 @@ on_next_image(void *data, Evas_Object *obj, void *event_info)
   last_file_step = 1;
   
   //already waiting for an action?
-  if (!pending_action) {
+  if (!pending_action && files) {
     hacky_idle_iter_pending = HACK_ITERS_FOR_REAL_IDLE;
     
     bench_delay_start();
-    //elm_slider_value_set(file_slider, wrap_files_idx(elm_slider_value_get(file_slider)+1)+0.1);
+    tagfiles_step(files, last_file_step);
 
-    //FIXME delay worker until we have shown the preview?
     if (mat_cache_old && !worker)
       _display_preview(NULL);
     workerfinish_schedule(&step_image_do, NULL, NULL);
@@ -1953,11 +1956,11 @@ on_prev_image(void *data, Evas_Object *obj, void *event_info)
   last_file_step = -1;
   
   //already waiting for an action?
-  if (!pending_action) {
+  if (!pending_action && files) {
     hacky_idle_iter_pending = HACK_ITERS_FOR_REAL_IDLE;
     
     bench_delay_start();
-    //elm_slider_value_set(file_slider, wrap_files_idx(elm_slider_value_get(file_slider)-0.9));
+    tagfiles_step(files, last_file_step);
     
     if (mat_cache_old && !worker)
       _display_preview(NULL);
@@ -2002,12 +2005,34 @@ on_zoom_in(void *data, Evas_Object *obj, void *event_info)
   zoom_in_do();
 }
 
+Eina_Bool _idle_progress_printer(void *data)
+{
+  Tagged_File *tagfiles = data;
+  char buf[64];
+  
+  sprintf(buf, "found %d file groups", tagfiles_count(tagfiles));
+  
+  elm_object_text_set(load_label, buf);
+  
+  return ECORE_CALLBACK_PASS_ON;
+}
+
+static void _ls_progress_cb(Tagfiles *tagfiles, void *data)
+{
+  if (!idle_progress_print)
+    idle_progress_print = ecore_idle_enterer_add(&_idle_progress_printer, tagfiles);
+}
 
 static void _ls_done_cb(Tagfiles *tagfiles, void *data)
 {
   evas_object_del(load_notify);
   
   printf("ls done!\n");
+  
+  if (idle_progress_print) {
+    ecore_idle_enterer_del(idle_progress_print);
+    idle_progress_print = NULL;
+  }
   
   assert(!files);
   if (files)
@@ -2058,13 +2083,13 @@ void on_open_dir(char *path)
   if (dir) {
     printf("open dir %s\n", path);
     elm_fileselector_button_path_set(fsb, dir);
-    tagfiles_new_from_dir(dir, NULL, _ls_done_cb);
     load_notify = elm_notify_add(win);
     load_label = elm_label_add(load_notify);
     elm_object_text_set(load_label, "found 0 files");
     elm_object_content_set(load_notify, load_label);
     evas_object_show(load_label);
     evas_object_show(load_notify);
+    tagfiles_new_from_dir(dir, _ls_progress_cb, _ls_done_cb);
   }
 }
 
