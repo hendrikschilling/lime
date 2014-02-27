@@ -933,14 +933,10 @@ static void _fadvice_file(void *data, Ecore_Thread *th)
   
   eina_sched_prio_drop();
   
-  printf("preread %s\n", data);
-  
   fd = open(data, O_RDONLY);
   posix_fadvise(fd, 0,PREREAD_SIZE,POSIX_FADV_WILLNEED);
   close(fd);
   
-  
-  printf("preread %s finished\n", data);
   return 0;
 }
 
