@@ -120,9 +120,9 @@ static void _worker(Filter *f, Eina_Array *in, Eina_Array *out, Rect *area, int 
       out_strides[2] = DEFAULT_TILE_SIZE*3;
     }
     else {
-      out_planes[0] = ((Tiledata*)ea_data(out, 0))->data;
-      out_planes[1] = ((Tiledata*)ea_data(out, 1))->data;
-      out_planes[2] = ((Tiledata*)ea_data(out, 2))->data;
+      out_planes[0] = ((Tiledata*)ea_data(out, 1))->data;
+      out_planes[1] = ((Tiledata*)ea_data(out, 2))->data;
+      out_planes[2] = ((Tiledata*)ea_data(out, 0))->data;
     }
     
     sws_scale(data->sws, in_planes, in_strides, 0, DEFAULT_TILE_SIZE, out_planes, out_strides);
