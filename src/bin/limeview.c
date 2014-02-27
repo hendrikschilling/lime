@@ -861,7 +861,6 @@ void workerfinish_schedule(void (*func)(void *data, Evas_Object *obj), void *dat
   }
     
   if (!worker) {
-    assert(!mat_cache_old);
     
     if (workerfinish_idle) {
       printf("delete scheduled function\n");
