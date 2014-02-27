@@ -1084,6 +1084,13 @@ int bench_do(void)
 
 void _insert_image(_Img_Thread_Data *tdata)
 {
+  tdata->img = evas_object_image_filled_add(win);
+  evas_object_image_colorspace_set(tdata->img, EVAS_COLORSPACE_ARGB8888);
+  evas_object_image_alpha_set(tdata->img, EINA_FALSE);
+  evas_object_image_size_set(tdata->img, TILE_SIZE, TILE_SIZE);
+  evas_object_image_smooth_scale_set(tdata->img, EINA_FALSE); 
+  evas_object_image_scale_hint_set(tdata->img, EVAS_IMAGE_SCALE_HINT_STATIC);
+  evas_object_image_scale_hint_set(tdata->img, EVAS_IMAGE_CONTENT_HINT_STATIC);
   evas_object_image_data_set(tdata->img, tdata->buf);
   //evas_object_image_data_update_add(tdata->img, 0, 0, TILE_SIZE, TILE_SIZE);
   evas_object_show(tdata->img);
@@ -1302,13 +1309,7 @@ int fill_area(int xm, int ym, int wm, int hm, int minscale, int preview)
 	  }
 		
 	if (!cell) {
-	  img = evas_object_image_filled_add(evas_object_evas_get(win));
-	  evas_object_image_colorspace_set(img, EVAS_COLORSPACE_ARGB8888);
-	  evas_object_image_alpha_set(img, EINA_FALSE);
-	  evas_object_image_size_set(img, TILE_SIZE, TILE_SIZE);
-	  evas_object_image_smooth_scale_set(img, EINA_FALSE); 
-	  evas_object_image_scale_hint_set(img, EVAS_IMAGE_SCALE_HINT_STATIC);
-	  evas_object_image_scale_hint_set(img, EVAS_IMAGE_CONTENT_HINT_STATIC);
+	  img = evas_object_image_add(evas_object_evas_get(win));
 	  
 	  minx = i*TILE_SIZE*scalediv;
 	  miny = j*TILE_SIZE*scalediv;
@@ -1346,7 +1347,7 @@ int fill_area(int xm, int ym, int wm, int hm, int minscale, int preview)
 	  //elm_grid_pack(grid, img, i*TILE_SIZE*scalediv, j*TILE_SIZE*scalediv, TILE_SIZE*scalediv, TILE_SIZE*scalediv);
 	  
 	  tdata->buf = buf;
-	  tdata->img = img;
+	  //tdata->img = img;
 	  tdata->scale = scale;
 	  tdata->area = area;
 	  tdata->packx = i*TILE_SIZE*scalediv;
