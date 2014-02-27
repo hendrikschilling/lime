@@ -27,6 +27,7 @@ static void _worker(Filter *f, Eina_Array *in, Eina_Array *out, Rect *area, int 
 {
   int i, j;
   uint8_t *buf, *r, *g, *b;
+  int *buf_int;
   _Data *data = ea_data(f->data, 0);
   
   assert(in && ea_count(in) == 3);
@@ -39,14 +40,10 @@ static void _worker(Filter *f, Eina_Array *in, Eina_Array *out, Rect *area, int 
   
   if (*(int*)data->colorspace->data == CS_INT_ABGR) {
   hack_tiledata_fixsize(4, ea_data(out, 0));
-  buf = ((Tiledata*)ea_data(out, 0))->data;
+  buf_int = ((Tiledata*)ea_data(out, 0))->data;
   
-    for(j=0;j<area->height;j++)
-      for(i=0;i<area->width;i++) {
-	buf[(j*area->width+i)*4+0] = b[j*area->width+i];
-	buf[(j*area->width+i)*4+1] = g[j*area->width+i];
-	buf[(j*area->width+i)*4+2] = r[j*area->width+i];
-      }
+    for(;buf_int<(int*)((Tiledata*)ea_data(out, 0))->data+area->width*area->height;buf_int++)
+	*buf_int = (255 << 24) | (*(r++) << 16) | (*(g++) << 8) | (*(b++));
   }
    else {
   hack_tiledata_fixsize(3, ea_data(out, 0));
