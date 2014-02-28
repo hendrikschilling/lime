@@ -136,6 +136,7 @@ int _loadtiff_input_fixed(Filter *f)
 {
   uint32_t width, height;
   uint32_t twidth, theight;
+  uint32_t twidth_d, theight_d;
   short color;
   int succ = 0;
   _Data *data = ea_data(f->data, 0);
@@ -152,7 +153,13 @@ int _loadtiff_input_fixed(Filter *f)
   succ += TIFFGetField(data->file, TIFFTAG_PHOTOMETRIC, &color);
   
   if (succ != 5) {
-    printf("TIFF in unsupported configuration %s\n", data->input->data);
+    printf("TIFF unsupported configuration %s\n", data->input->data);
+    TIFFClose(data->file);
+    return -1;
+  }
+  
+  if (!width || !height || !twidth || !theight) {
+    printf("TIFF unsupported configuration %s\n", data->input->data);
     TIFFClose(data->file);
     return -1;
   }
@@ -173,12 +180,22 @@ int _loadtiff_input_fixed(Filter *f)
        *(int*)(data->color[2]->data) = CS_LAB_B;
       break;
     default:
-      abort();
+    printf("TIFF unsupported colorspace %s\n", data->input->data);
+    TIFFClose(data->file);
+    return -1;
   }
     
   data->directory = 0;
   
   while (TIFFReadDirectory(data->file)) {
+    succ = 0;
+    succ += TIFFGetField(data->file, TIFFTAG_TILEWIDTH, &twidth_d);
+    succ += TIFFGetField(data->file, TIFFTAG_TILELENGTH, &theight_d);
+    if (succ != 2 || twidth != twidth_d || theight != theight_d) {
+      printf("TIFF unsupported configuration %s\n", data->input->data);
+      TIFFClose(data->file);
+      return -1;
+    }
     ((Dim*)data->dim)->scaledown_max++;
     data->directory++;
   }
