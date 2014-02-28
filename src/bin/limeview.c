@@ -1259,26 +1259,28 @@ on_done(void *data, Evas_Object *obj, void *event_info)
   workerfinish_schedule(&elm_exit_do, NULL, NULL);
 }
 
-/*
+
 void group_select_do(void *data, Evas_Object *obj)
 {
+  int group_idx;
   int failed;
   const char *filename;
+  Elm_Object_Item *it;
   
   delgrid();
     
-  File_Group *group = eina_inarray_nth(files, file_idx);
+  File_Group *group = tagfiles_get(files);
   
   group_idx = *(int*)data;
     
   failed = 1;
   
   while(failed) {
-    if (group_idx == eina_inarray_count(group->files)) {
+    if (group_idx == filegroup_count(group)) {
       group_idx = 0;
     }
     
-    filename = ((Tagged_File*)eina_inarray_nth(group->files, group_idx))->filename;
+    filename = filegroup_nth(group, group_idx);
     if (!filename) {
       group_idx++;
       continue;
@@ -1287,14 +1289,25 @@ void group_select_do(void *data, Evas_Object *obj)
     lime_setting_string_set(load, "filename", filename);
     
     failed = lime_config_test(sink);
-    if (failed)
+    if (failed) {
       group_idx++;
+      printf("could not configure: %s\n", filename);
+    }
   }
+  
+  it = elm_list_first_item_get(group_list);
+  while (group_idx) {
+    it = elm_list_item_next(it);
+    group_idx--;
+  }
+  elm_list_item_selected_set(it, EINA_TRUE);
+  
   size_recalc();
 
   fill_scroller_preview();
   fill_scroller();
-}*/
+}
+
 /*
 void tags_select_do(void *data, Evas_Object *obj)
 {
@@ -1368,8 +1381,7 @@ static void on_jump_image(void *data, Evas_Object *obj, void *event_info)
 static void
 on_group_select(void *data, Evas_Object *obj, void *event_info)
 { 
-  //FIXME reenable, avoid double call
-  //workerfinish_schedule(&group_select_do, data, obj);
+  workerfinish_schedule(&group_select_do, data, obj);
 }
 
 typedef struct {
@@ -1446,13 +1458,14 @@ Eina_Bool tag_filter_check_or_hash_func(const Eina_Hash *hash, const void *key, 
 
 void step_image_do(void *data, Evas_Object *obj)
 {
-//  int i;
+  int i;
   int start_idx;
   int group_idx;
+  int *idx_cp;
   int failed;
   File_Group *group;
   const char *filename;
-  //Elm_Object_Item *item;
+  Elm_Object_Item *item;
   Eina_List *filters;
   
   printf("non-chancellation delay: %f\n", bench_delay_get());
@@ -1559,46 +1572,38 @@ void step_image_do(void *data, Evas_Object *obj)
     }
   }
   
-  printf("configuration delay: %f\n", bench_delay_get());
+  printf("early configuration delay: %f\n", bench_delay_get());
+  
   //we start as early as possible with rendering!
   forbid_fill--;
   size_recalc();
   first_preview = 1;
   fill_scroller_preview();
   fill_scroller();
+    
+  elm_list_clear(group_list);
+  for(i=0;i<filegroup_count(group);i++)
+    if (filegroup_nth(group, i)) {
+      idx_cp = malloc(sizeof(int));
+      *idx_cp = i;
+      item = elm_list_item_append(group_list, filegroup_nth(group, i), NULL, NULL, &on_group_select, idx_cp);
+      if (group_idx == i) {
+	elm_list_item_selected_set(item, EINA_TRUE);
+      }
+    }
   
-  printf("configuration delay a: %f\n", bench_delay_get());
-  
-  /*elm_list_clear(group_list);
-   *  for(i=0;i<eina_inarray_count(group->files);i++)
-   *    if (((Tagged_File*)eina_inarray_nth(group->files, i))->filename) {
-   *      idx_cp = malloc(sizeof(int));
-   *idx_cp = i;
-   *      item = elm_list_item_append(group_list, ((Tagged_File*)eina_inarray_nth(group->files, i))->filename, NULL, NULL, &on_group_select, idx_cp);
-   *      if (group_idx == i) {
-   *	elm_list_item_selected_set(item, EINA_TRUE);
-}
-}*/
-  
-  
-  printf("configuration delay b: %f\n", bench_delay_get());
-  
-  //elm_list_go(group_list);
+  elm_list_go(group_list);
   
   //update tag list
   //elm_genlist_clear(tags_list);
   
-  printf("configuration delay b1: %f\n", bench_delay_get());
-  
   //FIXME why is this so fucking slow?
   //eina_hash_foreach(known_tags, tags_hash_func, group);
-  
-  printf("configuration delay b2: %f\n", bench_delay_get());
   
   //update tag rating
   //elm_segment_control_item_selected_set(elm_segment_control_item_get(seg_rating, group->tag_rating), EINA_TRUE);
   
-  printf("configuration delay c: %f\n", bench_delay_get());  
+  printf("late configuration delay c: %f\n", bench_delay_get());  
   
   elm_slider_value_set(file_slider, tagfiles_idx(files));
 }
@@ -2007,7 +2012,7 @@ on_zoom_in(void *data, Evas_Object *obj, void *event_info)
 
 Eina_Bool _idle_progress_printer(void *data)
 {
-  Tagged_File *tagfiles = data;
+  Tagfiles *tagfiles = data;
   char buf[64];
   
   sprintf(buf, "found %d file groups", tagfiles_count(tagfiles));
