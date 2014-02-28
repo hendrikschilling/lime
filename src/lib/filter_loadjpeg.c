@@ -33,8 +33,12 @@
 
 /* Expanded data source object for stdio input */
 
+typedef struct {
+  int error;
+} _Common;
 
 typedef struct {
+  _Common *common;
   Meta *input;
   Meta *dim;
   int rot;
@@ -634,17 +638,22 @@ void _loadjpeg_worker_ijg(Filter *f, Eina_Array *in, Eina_Array *out, Rect *area
   b = ((Tiledata*)ea_data(out, 2))->data;
   
   file = fopen(data->filename, "rb");
-    
-  if (!file)
-    abort();
   
-  
-  
+  if (!file) {
+    printf("error opening file!\n");
+    data->common->error = EINA_TRUE;
+    return;
+  }
   
   if (!(*data->index)) {
     pthread_mutex_lock(data->lock);
     if (!(*data->index)) {
-      jpeg_read_infos(file, data);
+      if (jpeg_read_infos(file, data)) {
+	printf("corrupt jpeg!\n");
+	data->common->error = EINA_TRUE;
+	fclose(file);
+	return;
+      }
       fseek(file, 0, SEEK_SET);
     }
     pthread_mutex_unlock(data->lock);
@@ -655,7 +664,9 @@ void _loadjpeg_worker_ijg(Filter *f, Eina_Array *in, Eina_Array *out, Rect *area
   if (setjmp(jerr.setjmp_buffer)) {
     jpeg_destroy_decompress(&cinfo);
     fclose(file);
-    abort();
+    printf("error opening jpeg file!\n");
+    data->common->error = EINA_TRUE;
+    return;
   }
   jpeg_create_decompress(&cinfo);
 
@@ -734,15 +745,21 @@ void _loadjpeg_worker_ijg_original(Filter *f, Eina_Array *in, Eina_Array *out, R
   
   file = fopen(data->filename, "rb");
     
-  if (!file)
-    abort();
+  if (!file) {
+    printf("error opening file!\n");
+    data->common->error = EINA_TRUE;
+    return;
+  }
   
   cinfo.err = jpeg_std_error(&jerr.pub);
   
   if (setjmp(jerr.setjmp_buffer)) {
     jpeg_destroy_decompress(&cinfo);
-    fclose(file);
-    abort();
+    fclose(file); {
+    printf("error opening jpeg file!\n");
+    data->common->error = EINA_TRUE;
+    return;
+  }
   }
   jpeg_create_decompress(&cinfo);
 
@@ -827,8 +844,11 @@ void _loadjpeg_worker_ijg_thumb(Filter *f, Eina_Array *in, Eina_Array *out, Rect
   cinfo.err = jpeg_std_error(&jerr.pub);
   
   if (setjmp(jerr.setjmp_buffer)) {
-    jpeg_destroy_decompress(&cinfo);
-    abort();
+    jpeg_destroy_decompress(&cinfo); {
+    printf("error opening jpeg file!\n");
+    data->common->error = EINA_TRUE;
+    return;
+  }
   }
   jpeg_create_decompress(&cinfo);
 
@@ -878,6 +898,9 @@ void _loadjpeg_worker_ijg_thumb(Filter *f, Eina_Array *in, Eina_Array *out, Rect
 void _loadjpeg_worker(Filter *f, Eina_Array *in, Eina_Array *out, Rect *area, int thread_id)
 {
   _Data *data = ea_data(f->data, thread_id);
+  
+  if (data->common->error)
+    return;
   
   if (area->corner.scale < data->seekable)
     _loadjpeg_worker_ijg(f, in, out, area, thread_id);
@@ -1010,6 +1033,7 @@ Filter *filter_loadjpeg_new(void)
   Filter *filter = filter_new(&filter_core_loadjpeg);
   Meta *in, *out, *channel, *bitdepth, *color, *dim, *fliprot;
   _Data *data = calloc(sizeof(_Data), 1);
+  data->common = calloc(sizeof(_Common), 1);
   data->index = calloc(sizeof(int**), 1);
   data->size_pos = calloc(sizeof(int*), 1);
   data->lock = calloc(sizeof(pthread_mutex_t), 1);
