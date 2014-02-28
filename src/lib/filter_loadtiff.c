@@ -137,6 +137,7 @@ int _loadtiff_input_fixed(Filter *f)
   uint32_t width, height;
   uint32_t twidth, theight;
   short color;
+  int succ = 0;
   _Data *data = ea_data(f->data, 0);
   
   data->file = TIFFOpen(data->input->data, "r");
@@ -144,11 +145,17 @@ int _loadtiff_input_fixed(Filter *f)
   if (!data->file)
     return -1;
   
-  TIFFGetField(data->file, TIFFTAG_IMAGEWIDTH, &width);
-  TIFFGetField(data->file, TIFFTAG_IMAGELENGTH, &height);
-  TIFFGetField(data->file, TIFFTAG_TILEWIDTH, &twidth);
-  TIFFGetField(data->file, TIFFTAG_TILELENGTH, &theight);
-  TIFFGetField(data->file, TIFFTAG_PHOTOMETRIC, &color);
+  succ += TIFFGetField(data->file, TIFFTAG_IMAGEWIDTH, &width);
+  succ += TIFFGetField(data->file, TIFFTAG_IMAGELENGTH, &height);
+  succ += TIFFGetField(data->file, TIFFTAG_TILEWIDTH, &twidth);
+  succ += TIFFGetField(data->file, TIFFTAG_TILELENGTH, &theight);
+  succ += TIFFGetField(data->file, TIFFTAG_PHOTOMETRIC, &color);
+  
+  if (succ != 5) {
+    printf("TIFF in unsupported configuration %s\n", data->input->data);
+    TIFFClose(data->file);
+    return -1;
+  }
   
   ((Dim*)data->dim)->width = width;
   ((Dim*)data->dim)->height = height;
