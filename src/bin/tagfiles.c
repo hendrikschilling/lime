@@ -319,22 +319,36 @@ int filegroup_cmp(File_Group **a, File_Group **b)
   return strcmp(fa->filename, fb->filename);
 }
 
+int dir_strcmp_neg(const char **a, const char **b)
+{
+  return -strcmp(*a, *b);
+}
+
+int filegroup_cmp_neg(File_Group **a, File_Group **b)
+{
+  return -filegroup_cmp(a, b);
+}
+
 static void _ls_done_cb(void *data, Eio_File *handler)
 {
   Tagfiles *tagfiles = data;
   File_Group *group;
 
+  //we sort files before appending to main file list!
+  //this limits the files to be sorted
+  eina_inarray_sort(tagfiles->files_ls, filegroup_cmp_neg);
+  
   while (eina_inarray_count(tagfiles->files_ls)) {
     group = *(File_Group**)eina_inarray_pop(tagfiles->files_ls);
     eina_inarray_push(tagfiles->files, &group);
   }
   
-  eina_inarray_sort(tagfiles->files, filegroup_cmp);
-  
-  //FIXME sort!
-  
-  if (eina_inarray_count(tagfiles->dirs_ls))
+  if (eina_inarray_count(tagfiles->dirs_ls)) {
+    //dirs are sorted before scanning so we do not need to sort all files at once!
+    eina_inarray_sort(tagfiles->dirs_ls, dir_strcmp_neg);
+    printf("scan %s\n", *(char**)eina_inarray_nth(tagfiles->dirs_ls, eina_inarray_count(tagfiles->dirs_ls)-1));
     eio_file_direct_ls(*(char**)eina_inarray_pop(tagfiles->dirs_ls), &_ls_filter_cb, &_ls_main_cb,&_ls_done_cb, &_ls_error_cb, tagfiles);
+  }
   else
     tagfiles->done_cb(tagfiles, tagfiles->cb_data);
 }
