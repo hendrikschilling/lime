@@ -1400,6 +1400,8 @@ Eina_Bool tags_hash_func(const Eina_Hash *hash, const void *key, void *data, voi
   tag->tag = data;
   tag->group = fdata;
   
+  printf("known tag: %s\n", tag->tag);
+  
   elm_genlist_item_append(tags_list, tags_list_itc, tag, NULL, ELM_GENLIST_ITEM_NONE, NULL, NULL);
 
   return 1;
@@ -1600,10 +1602,10 @@ void step_image_do(void *data, Evas_Object *obj)
   elm_list_go(group_list);
   
   //update tag list
-  //elm_genlist_clear(tags_list);
+  elm_genlist_clear(tags_list);
   
   //FIXME why is this so fucking slow?
-  //eina_hash_foreach(known_tags, tags_hash_func, group);
+  eina_hash_foreach(tagfiles_known_tags(files), tags_hash_func, group);
   
   //update tag rating
   //elm_segment_control_item_selected_set(elm_segment_control_item_get(seg_rating, group->tag_rating), EINA_TRUE);
@@ -2496,8 +2498,10 @@ static void on_new_tag(void *data, Evas_Object *obj, void *event_info)
   */
 }
 
-/*static void on_tag_changed(void *data, Evas_Object *obj, void *event_info)
+static void on_tag_changed(void *data, Evas_Object *obj, void *event_info)
 {
+  abort();
+  /*
   Tags_List_Item_Data *tag = data;
   File_Group *group = (File_Group*)eina_inarray_nth(files, file_idx);
   
@@ -2512,8 +2516,8 @@ static void on_new_tag(void *data, Evas_Object *obj, void *event_info)
   save_sidecar(tag->group);
   
   if (!group_in_filters(group, tags_filter))
-    step_image_do(NULL, NULL);
-}*/
+    step_image_do(NULL, NULL);*/
+}
 
 /*static void on_tag_filter_changed(void *data, Evas_Object *obj, void *event_info)
 {
@@ -2558,8 +2562,7 @@ static void on_filter_rating_changed(void *data, Evas_Object *obj, void *event_i
 
 static Evas_Object *_tag_gen_cont_get(void *data, Evas_Object *obj, const char *part)
 { 
-  abort();
-  /*Evas_Object *check;
+  Evas_Object *check;
   Tags_List_Item_Data *tag = data;
   
   if (strcmp(part, "elm.swallow.icon"))
@@ -2569,12 +2572,12 @@ static Evas_Object *_tag_gen_cont_get(void *data, Evas_Object *obj, const char *
   elm_object_focus_allow_set(check, EINA_FALSE);
 
   elm_object_part_text_set(check, "default", tag->tag);
-  if (eina_hash_find(tag->group->tags, tag->tag))
+  if (eina_hash_find(filegroup_tags(tag->group), tag->tag))
     elm_check_state_set(check, EINA_TRUE);
 
   evas_object_smart_callback_add(check, "changed", on_tag_changed, tag);
    
-  return check;*/
+  return check;
 }
 
 static Evas_Object *_tag_filter_cont_get(void *data, Evas_Object *obj, const char *part)

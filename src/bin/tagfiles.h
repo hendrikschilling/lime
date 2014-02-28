@@ -41,6 +41,7 @@ int tagfiles_init(void);
 void tagfiles_shutdown(void);
 int tagfiles_scanned_dirs(Tagfiles *tagfiles);
 int tagfiles_scanned_files(Tagfiles *tagfiles);
+int tagfiles_known_tags(Tagfiles *tagfiles);
 
 const char * filegroup_nth(File_Group *g, int n);
 int filegroup_count(File_Group *g);
