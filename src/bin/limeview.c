@@ -45,7 +45,7 @@
 #include "filter_savejpeg.h"
 
 #define TILE_SIZE DEFAULT_TILE_SIZE
-#define HACK_ITERS_FOR_REAL_IDLE 1
+#define HACK_ITERS_FOR_REAL_IDLE 0
 #define PREREAD_SIZE 4096*16
 #define PREREAD_RANGE 5
 #define FAST_SKIP_RENDER_DELAY 0.1
@@ -58,6 +58,7 @@ int first_preview = 0;
 Ecore_Idle_Enterer *workerfinish_idle = NULL;
 Ecore_Idle_Enterer *idle_render = NULL;
 Ecore_Idle_Enterer *idle_progress_print = NULL;
+Ecore_Idle_Enterer *tag_list_update_idler = NULL;
 Ecore_Timer *timer_render = NULL;
 int hacky_idle_iter_pending = 0;
 int hacky_idle_iter_render = 0;
@@ -115,6 +116,7 @@ Eina_Array *finished_threads = NULL;
 Ecore_Timer *preview_timer = NULL;
 void fc_new_from_filters(Eina_List *filters);
 int fixme_no_group_select = 0;
+File_Group *cur_group = NULL;
 
 int bench_idx = 0;
 int preview_tiles = 0;
@@ -1400,8 +1402,6 @@ Eina_Bool tags_hash_func(const Eina_Hash *hash, const void *key, void *data, voi
   tag->tag = data;
   tag->group = fdata;
   
-  printf("known tag: %s\n", tag->tag);
-  
   elm_genlist_item_append(tags_list, tags_list_itc, tag, NULL, ELM_GENLIST_ITEM_NONE, NULL, NULL);
 
   return 1;
@@ -1460,6 +1460,29 @@ Eina_Bool tag_filter_check_or_hash_func(const Eina_Hash *hash, const void *key, 
   
   return check.valid;
 }*/
+
+Eina_Bool  tag_list_update(void *data)
+{
+  if (!cur_group)
+    return;
+  
+  if (!tagfiles_known_tags(files))
+    return;
+  
+  elm_genlist_clear(tags_list);
+  eina_hash_foreach(tagfiles_known_tags(files), tags_hash_func, cur_group);
+  
+  tag_list_update_idler = NULL;
+  return ECORE_CALLBACK_CANCEL;
+}
+
+void on_known_tags_changed(Tagfiles *tagfiles, void *data)
+{ 
+  if (tag_list_update_idler)
+    return;
+  
+  tag_list_update_idler = ecore_idle_enterer_add(tag_list_update, NULL);
+}
 
 void step_image_do(void *data, Evas_Object *obj)
 {
@@ -1577,6 +1600,8 @@ void step_image_do(void *data, Evas_Object *obj)
     }
   }
   
+  cur_group = group;
+  
   printf("early configuration delay: %f\n", bench_delay_get());
   
   //we start as early as possible with rendering!
@@ -1605,12 +1630,13 @@ void step_image_do(void *data, Evas_Object *obj)
   elm_genlist_clear(tags_list);
   
   //FIXME why is this so fucking slow?
-  eina_hash_foreach(tagfiles_known_tags(files), tags_hash_func, group);
+  if (tagfiles_known_tags(files) && !tag_list_update_idler)
+    tag_list_update_idler = ecore_idle_enterer_add(tag_list_update, NULL);
   
   //update tag rating
-  //elm_segment_control_item_selected_set(elm_segment_control_item_get(seg_rating, group->tag_rating), EINA_TRUE);
+  elm_segment_control_item_selected_set(elm_segment_control_item_get(seg_rating, filegroup_rating(group)), EINA_TRUE);
   
-  printf("late configuration delay c: %f\n", bench_delay_get());  
+  printf("late configuration delay: %f\n", bench_delay_get());  
   
   elm_slider_value_set(file_slider, tagfiles_idx(files));
 }
@@ -2157,7 +2183,7 @@ void on_open_dir(char *path)
     elm_object_content_set(load_notify, load_label);
     evas_object_show(load_label);
     evas_object_show(load_notify);
-    files_new = tagfiles_new_from_dir(dir, _ls_progress_cb, _ls_done_cb);
+    files_new = tagfiles_new_from_dir(dir, _ls_progress_cb, _ls_done_cb, on_known_tags_changed);
   }
 }
 

@@ -62,12 +62,14 @@ struct _Tagfiles {
   int full_dir_inserted_idx;
   int cur_dir_files_count;
   int xmp_scanned_idx;
+  Ecore_Thread *xmp_thread;
   Eina_Inarray *dirs_ls;
   Eina_Inarray *files_ls;
   Eina_Inarray *files;
   Eina_Hash *files_hash;
   void (*progress_cb)(Tagfiles *files, void *data);
   void (*done_cb)(Tagfiles *files, void *data);
+  void (*known_tags_cb)(Tagfiles *files, void *data);
   Eina_Hash *known_tags;
   void *cb_data;
 };
@@ -105,6 +107,48 @@ Eina_Hash *filegroup_tags(File_Group *group)
   return group->tags;
 }
 
+int filegroup_rating(File_Group *group)
+{
+  if (group->state != GROUP_LOADED) {
+    //FIXME we have to check that this group is alrey scanned!
+    xmp_gettags(group);
+    group->state = GROUP_LOADED;
+  }
+  
+  return (int)group->tag_rating;
+}
+
+static void _xmp_scanner(void *data, Ecore_Thread *th);
+
+static void _xmp_finish(void *data, Ecore_Thread *th)
+{
+  Tagfiles *tagfiles = data;
+  
+  tagfiles->xmp_thread = NULL;
+  
+  //ls_done was called between _xmp_scanner exited and before finish was called
+  if (tagfiles->xmp_scanned_idx < eina_inarray_count(tagfiles->files))
+    tagfiles->xmp_thread = ecore_thread_run(_xmp_scanner, _xmp_finish, NULL, tagfiles);
+}
+
+static void _xmp_notify(void *data, Ecore_Thread *thread, void *msg_data)
+{
+  Tagfiles *tagfiles = data;
+  
+  if (tagfiles->known_tags_cb)
+    tagfiles->known_tags_cb(tagfiles, tagfiles->cb_data);
+}
+
+static void _xmp_scanner(void *data, Ecore_Thread *th)
+{
+  Tagfiles *tagfiles = data;
+  
+  while (tagfiles->xmp_scanned_idx < eina_inarray_count(tagfiles->files)) {
+    xmp_gettags(*(File_Group**)eina_inarray_nth(tagfiles->files, tagfiles->xmp_scanned_idx));
+    tagfiles->xmp_scanned_idx++;
+  }
+}
+
 int filegroup_cmp_neg(File_Group **a, File_Group **b)
 {
   return -filegroup_cmp(a, b);
@@ -124,7 +168,7 @@ int tagfiles_scanned_dirs(Tagfiles *tagfiles)
   return tagfiles->scanned_dirs;
 }
 
-int tagfiles_known_tags(Tagfiles *tagfiles)
+Eina_Hash *tagfiles_known_tags(Tagfiles *tagfiles)
 {
   filegroup_tags(tagfiles_get(tagfiles));
   
@@ -376,8 +420,6 @@ void xmp_gettags(File_Group *group)
     return;
   }
   
- 
-
   if (xmp_prefix_namespace_uri("lr", NULL))
   {
     propValue = xmp_string_new();
@@ -387,8 +429,10 @@ void xmp_gettags(File_Group *group)
       tag = strdup(xmp_string_cstr(propValue));
       if (!eina_hash_find(group->tags, tag))
 			eina_hash_add(group->tags, tag, tag);
-      if (!eina_hash_find(group->tagfiles->known_tags, tag))
+      if (!eina_hash_find(group->tagfiles->known_tags, tag)) {
 			eina_hash_add(group->tagfiles->known_tags, tag, tag);
+	ecore_thread_feedback(group->tagfiles->xmp_thread, NULL);
+      }
     }
 
     xmp_iterator_free(iter); 
@@ -415,6 +459,8 @@ void xmp_gettags(File_Group *group)
   xmp_free(xmp);
   free(buf);
   
+  
+  group->state = GROUP_LOADED;
   return;
 }
 
@@ -469,6 +515,9 @@ static void _ls_done_cb(void *data, Eio_File *handler)
   _files_check_sort(tagfiles);
   tagfiles->full_dir_inserted_idx += tagfiles->cur_dir_files_count;
   tagfiles->cur_dir_files_count = 0;
+  
+  if (!tagfiles->xmp_thread)
+    tagfiles->xmp_thread = ecore_thread_feedback_run(_xmp_scanner, _xmp_notify, _xmp_finish, NULL, tagfiles, EINA_FALSE);
     
   //have finished dir - next dir is guaranteed to come after all files already seen
   tagfiles->unsorted_insert = EINA_FALSE;
@@ -482,12 +531,13 @@ static void _ls_done_cb(void *data, Eio_File *handler)
 }
 
 
-Tagfiles *tagfiles_new_from_dir(const char *path, void (*progress_cb)(Tagfiles *files, void *data), void (*done_cb)(Tagfiles *files, void *data))
+Tagfiles *tagfiles_new_from_dir(const char *path, void (*progress_cb)(Tagfiles *files, void *data), void (*done_cb)(Tagfiles *files, void *data), void (*known_tags_cb)(Tagfiles *files, void *data))
 {
   Tagfiles *files = calloc(sizeof(Tagfiles), 1);
   
   files->progress_cb = progress_cb;
   files->done_cb = done_cb;
+  files->known_tags_cb = known_tags_cb;
   files->known_tags = eina_hash_string_superfast_new(NULL);
   files->files = eina_inarray_new(sizeof(File_Group*), 128);
   files->files_hash = eina_hash_string_superfast_new(NULL);
