@@ -2019,6 +2019,51 @@ Eina_Bool _idle_progress_printer(void *data)
   
   elm_object_text_set(load_label, buf);
   
+  if (files_new) {
+    if (files)
+      tagfiles_del(files);
+    files = files_new;
+    files_new = NULL;
+  
+    elm_slider_min_max_set(file_slider, 0, tagfiles_count(files)-1);
+    evas_object_smart_callback_add(file_slider, "changed", &on_jump_image, NULL);
+    elm_slider_value_set(file_slider, 0);
+    evas_object_size_hint_weight_set(file_slider, EVAS_HINT_EXPAND, 0);
+    evas_object_size_hint_align_set(file_slider, EVAS_HINT_FILL, 0);
+    elm_slider_unit_format_set(file_slider, "%.0f");
+    evas_object_show(file_slider);
+    
+    if (!gridbox) {
+      gridbox = elm_box_add(win);
+      elm_object_content_set(scroller, gridbox);
+      evas_object_size_hint_weight_set(gridbox, EVAS_HINT_EXPAND, EVAS_HINT_EXPAND);
+      evas_object_size_hint_align_set(gridbox, EVAS_HINT_FILL, EVAS_HINT_FILL);
+      evas_object_show(gridbox);
+      
+      grid = elm_grid_add(win);
+      clipper = evas_object_rectangle_add(evas_object_evas_get(win));
+      elm_grid_pack(grid, clipper, 0, 0, size.width, size.height);
+      evas_object_size_hint_min_set(grid,  200, 200);
+      elm_box_recalculate(gridbox);
+      elm_box_pack_start(gridbox, grid);
+      evas_object_show(grid);
+    }
+    
+    elm_genlist_clear(tags_filter_list);
+    //eina_hash_foreach(known_tags, tags_hash_filter_func, NULL);
+    
+    //grid_setsize();
+    
+    bench_delay_start();
+    
+    evas_object_show(scroller);
+  
+    //grid_setsize(); 
+    step_image_do(NULL, NULL);
+  }
+  else
+    elm_slider_min_max_set(file_slider, 0, tagfiles_count(files)-1);
+  
   return ECORE_CALLBACK_PASS_ON;
 }
 
@@ -2039,47 +2084,51 @@ static void _ls_done_cb(Tagfiles *tagfiles, void *data)
     idle_progress_print = NULL;
   }
   
-  if (files)
-    tagfiles_del(files);
-  files = files_new;
-  files_new = NULL;
+  if (files_new) {
+    if (files)
+      tagfiles_del(files);
+    files = files_new;
+    files_new = NULL;
   
-  elm_slider_min_max_set(file_slider, 0, tagfiles_count(files)-1);
-  evas_object_smart_callback_add(file_slider, "changed", &on_jump_image, NULL);
-  elm_slider_value_set(file_slider, 0);
-  evas_object_size_hint_weight_set(file_slider, EVAS_HINT_EXPAND, 0);
-  evas_object_size_hint_align_set(file_slider, EVAS_HINT_FILL, 0);
-  elm_slider_unit_format_set(file_slider, "%.0f");
-  evas_object_show(file_slider);
-  
-  if (!gridbox) {
-    gridbox = elm_box_add(win);
-    elm_object_content_set(scroller, gridbox);
-    evas_object_size_hint_weight_set(gridbox, EVAS_HINT_EXPAND, EVAS_HINT_EXPAND);
-    evas_object_size_hint_align_set(gridbox, EVAS_HINT_FILL, EVAS_HINT_FILL);
-    evas_object_show(gridbox);
+    elm_slider_min_max_set(file_slider, 0, tagfiles_count(files)-1);
+    evas_object_smart_callback_add(file_slider, "changed", &on_jump_image, NULL);
+    elm_slider_value_set(file_slider, 0);
+    evas_object_size_hint_weight_set(file_slider, EVAS_HINT_EXPAND, 0);
+    evas_object_size_hint_align_set(file_slider, EVAS_HINT_FILL, 0);
+    elm_slider_unit_format_set(file_slider, "%.0f");
+    evas_object_show(file_slider);
     
-    grid = elm_grid_add(win);
-    clipper = evas_object_rectangle_add(evas_object_evas_get(win));
-    elm_grid_pack(grid, clipper, 0, 0, size.width, size.height);
-    evas_object_size_hint_min_set(grid,  200, 200);
-    elm_box_recalculate(gridbox);
-    elm_box_pack_start(gridbox, grid);
-    evas_object_show(grid);
+    if (!gridbox) {
+      gridbox = elm_box_add(win);
+      elm_object_content_set(scroller, gridbox);
+      evas_object_size_hint_weight_set(gridbox, EVAS_HINT_EXPAND, EVAS_HINT_EXPAND);
+      evas_object_size_hint_align_set(gridbox, EVAS_HINT_FILL, EVAS_HINT_FILL);
+      evas_object_show(gridbox);
+      
+      grid = elm_grid_add(win);
+      clipper = evas_object_rectangle_add(evas_object_evas_get(win));
+      elm_grid_pack(grid, clipper, 0, 0, size.width, size.height);
+      evas_object_size_hint_min_set(grid,  200, 200);
+      elm_box_recalculate(gridbox);
+      elm_box_pack_start(gridbox, grid);
+      evas_object_show(grid);
+    }
+    
+    elm_genlist_clear(tags_filter_list);
+    //eina_hash_foreach(known_tags, tags_hash_filter_func, NULL);
+    
+    
+    //grid_setsize();
+    
+    bench_delay_start();
+    
+    evas_object_show(scroller);
+  
+    //grid_setsize(); 
+    step_image_do(NULL, NULL);
   }
-  
-  elm_genlist_clear(tags_filter_list);
-  //eina_hash_foreach(known_tags, tags_hash_filter_func, NULL);
-  
-  
-  //grid_setsize();
-  
-  bench_delay_start();
-  
-  evas_object_show(scroller);
- 
-  //grid_setsize(); 
-  step_image_do(NULL, NULL);
+  else
+    elm_slider_min_max_set(file_slider, 0, tagfiles_count(files)-1);
 }
 
 void on_open_dir(char *path)

@@ -48,6 +48,8 @@ struct _File_Group {
 
 struct _Tagfiles {
   int idx;
+  int files_sorted;
+  int unsorted_insert;
   Eina_Inarray *dirs_ls;
   Eina_Inarray *files_ls;
   Eina_Inarray *files;
@@ -58,11 +60,78 @@ struct _Tagfiles {
   void *cb_data;
 };
 
-File_Group *tagfiles_get(Tagfiles *files)
+int filegroup_cmp(File_Group **a, File_Group **b)
 {
-  assert(files->idx < eina_inarray_count(files->files));
+  Tagged_File *fa = NULL, *fb = NULL;
   
-  return *(File_Group**)eina_inarray_nth(files->files, files->idx);
+  if (eina_inarray_count((*a)->files))
+    fa = eina_inarray_nth((*a)->files, 0);
+  if (eina_inarray_count((*b)->files))
+    fb = eina_inarray_nth((*b)->files, 0);
+  
+  if (!fa->filename)
+    fa = NULL;
+  if (!fb->filename)
+    fb = NULL;
+  
+  if (!fa) return -1;
+  else if (!fb) return 1;
+  
+  return strcmp(fa->filename, fb->filename);
+}
+
+int filegroup_cmp_neg(File_Group **a, File_Group **b)
+{
+  return -filegroup_cmp(a, b);
+}
+
+
+static void _files_check_sort(Tagfiles *files)
+{
+  if (files->files_sorted)
+    return;
+  
+  eina_inarray_sort(files->files, filegroup_cmp);
+  files->files_sorted = EINA_TRUE;
+}
+
+File_Group *tagfiles_get(Tagfiles *tagfiles)
+{
+  File_Group *group;
+  
+  if (tagfiles->idx < eina_inarray_count(tagfiles->files)) {
+    _files_check_sort(tagfiles);
+    return *(File_Group**)eina_inarray_nth(tagfiles->files, tagfiles->idx);
+  }
+  else {
+    //we have to take files from files_ls
+    assert(tagfiles->idx < eina_inarray_count(tagfiles->files) + eina_inarray_count(tagfiles->files_ls));
+    
+    //we have already inserte files from this dir: always need to sort after insert
+    if (tagfiles->unsorted_insert) {
+      while (eina_inarray_count(tagfiles->files_ls)) {
+	group = *(File_Group**)eina_inarray_pop(tagfiles->files_ls);
+	eina_inarray_push(tagfiles->files, &group);
+      }
+      tagfiles->files_sorted = EINA_FALSE;
+      //eina_inarray_sort(tagfiles->files, filegroup_cmp);
+    }
+    //we have not yet inserted any files from the dir - can sort before!
+    else {
+      assert(tagfiles->files_sorted == EINA_TRUE);
+      
+      eina_inarray_sort(tagfiles->files_ls, filegroup_cmp_neg);
+      while (eina_inarray_count(tagfiles->files_ls)) {
+	group = *(File_Group**)eina_inarray_pop(tagfiles->files_ls);
+	eina_inarray_push(tagfiles->files, &group);
+      }
+    }
+    tagfiles->unsorted_insert = EINA_TRUE;
+    
+    _files_check_sort(tagfiles);
+    assert(tagfiles->idx < eina_inarray_count(tagfiles->files));
+    return *(File_Group**)eina_inarray_nth(tagfiles->files, tagfiles->idx);
+  }
 }
 
 int tagfiles_idx(Tagfiles *files)
@@ -72,6 +141,8 @@ int tagfiles_idx(Tagfiles *files)
 
 int tagfiles_idx_set(Tagfiles *files, int idx)
 {
+  //FIXME check if we are still listing files?
+  
   while (idx < 0)
     idx += tagfiles_count(files);
   
@@ -298,35 +369,9 @@ static void _ls_error_cb(void *data, Eio_File *handler, int error)
   //FIXME implement error cb!
 }
 
-
-int filegroup_cmp(File_Group **a, File_Group **b)
-{
-  Tagged_File *fa = NULL, *fb = NULL;
-  
-  if (eina_inarray_count((*a)->files))
-    fa = eina_inarray_nth((*a)->files, 0);
-  if (eina_inarray_count((*b)->files))
-    fb = eina_inarray_nth((*b)->files, 0);
-  
-  if (!fa->filename)
-    fa = NULL;
-  if (!fb->filename)
-    fb = NULL;
-  
-  if (!fa) return -1;
-  else if (!fb) return 1;
-  
-  return strcmp(fa->filename, fb->filename);
-}
-
 int dir_strcmp_neg(const char **a, const char **b)
 {
   return -strcmp(*a, *b);
-}
-
-int filegroup_cmp_neg(File_Group **a, File_Group **b)
-{
-  return -filegroup_cmp(a, b);
 }
 
 static void _ls_done_cb(void *data, Eio_File *handler)
@@ -334,14 +379,27 @@ static void _ls_done_cb(void *data, Eio_File *handler)
   Tagfiles *tagfiles = data;
   File_Group *group;
 
-  //we sort files before appending to main file list!
-  //this limits the files to be sorted
-  eina_inarray_sort(tagfiles->files_ls, filegroup_cmp_neg);
-  
-  while (eina_inarray_count(tagfiles->files_ls)) {
-    group = *(File_Group**)eina_inarray_pop(tagfiles->files_ls);
-    eina_inarray_push(tagfiles->files, &group);
+  //we have already inserted files from this dir: always need to sort after insert
+  if (tagfiles->unsorted_insert) {
+    while (eina_inarray_count(tagfiles->files_ls)) {
+      group = *(File_Group**)eina_inarray_pop(tagfiles->files_ls);
+      eina_inarray_push(tagfiles->files, &group);
+    }
+    tagfiles->files_sorted = EINA_FALSE;
   }
+  //we have not yet inserted any files from the dir - can sort before!
+  else {
+    if (tagfiles->files_sorted)
+      eina_inarray_sort(tagfiles->files_ls, filegroup_cmp_neg);
+    while (eina_inarray_count(tagfiles->files_ls)) {
+      group = *(File_Group**)eina_inarray_pop(tagfiles->files_ls);
+      eina_inarray_push(tagfiles->files, &group);
+    }
+  }
+  _files_check_sort(tagfiles);
+    
+  //have finished dir - next dir is guaranteed to come after all files already seen
+  tagfiles->unsorted_insert = EINA_FALSE;
   
   if (eina_inarray_count(tagfiles->dirs_ls)) {
     //dirs are sorted before scanning so we do not need to sort all files at once!
@@ -365,6 +423,7 @@ Tagfiles *tagfiles_new_from_dir(const char *path, void (*progress_cb)(Tagfiles *
   files->files_hash = eina_hash_string_superfast_new(NULL);
   files->files_ls = eina_inarray_new(sizeof(File_Group*), 128);
   files->dirs_ls = eina_inarray_new(sizeof(char *), 32);
+  files->files_sorted = EINA_TRUE;
   
   eio_file_direct_ls(path, &_ls_filter_cb, &_ls_main_cb,&_ls_done_cb, &_ls_error_cb, files);
   
