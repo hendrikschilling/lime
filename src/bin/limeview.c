@@ -114,6 +114,7 @@ int verbose;
 Eina_Array *finished_threads = NULL;
 Ecore_Timer *preview_timer = NULL;
 void fc_new_from_filters(Eina_List *filters);
+int fixme_no_group_select = 0;
 
 int bench_idx = 0;
 int preview_tiles = 0;
@@ -1381,7 +1382,9 @@ static void on_jump_image(void *data, Evas_Object *obj, void *event_info)
 static void
 on_group_select(void *data, Evas_Object *obj, void *event_info)
 { 
-  workerfinish_schedule(&group_select_do, data, obj);
+  //FIXME no double select!
+  if (!fixme_no_group_select)
+    workerfinish_schedule(&group_select_do, data, obj);
 }
 
 typedef struct {
@@ -1588,7 +1591,9 @@ void step_image_do(void *data, Evas_Object *obj)
       *idx_cp = i;
       item = elm_list_item_append(group_list, filegroup_nth(group, i), NULL, NULL, &on_group_select, idx_cp);
       if (group_idx == i) {
+	fixme_no_group_select = EINA_TRUE;
 	elm_list_item_selected_set(item, EINA_TRUE);
+	fixme_no_group_select = EINA_FALSE;
       }
     }
   
@@ -2015,7 +2020,7 @@ Eina_Bool _idle_progress_printer(void *data)
   Tagfiles *tagfiles = data;
   char buf[64];
   
-  sprintf(buf, "found %d file groups", tagfiles_count(tagfiles));
+  sprintf(buf, "scanned %d files in %d dirs", tagfiles_scanned_files(tagfiles), tagfiles_scanned_dirs(tagfiles));
   
   elm_object_text_set(load_label, buf);
   

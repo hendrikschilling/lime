@@ -22,6 +22,7 @@
 #include <exempi/xmp.h>
 #include <exempi/xmpconsts.h>
 #include <assert.h>
+#include <Ecore.h>
 #include "tagfiles.h"
 
 #define MAX_XMP_FILE 1024*1024
@@ -47,6 +48,8 @@ struct _File_Group {
 };
 
 struct _Tagfiles {
+  int scanned_files;
+  int scanned_dirs;
   int idx;
   int files_sorted;
   int unsorted_insert;
@@ -93,6 +96,16 @@ static void _files_check_sort(Tagfiles *files)
   
   eina_inarray_sort(files->files, filegroup_cmp);
   files->files_sorted = EINA_TRUE;
+}
+
+int tagfiles_scanned_dirs(Tagfiles *tagfiles)
+{
+  return tagfiles->scanned_dirs;
+}
+
+int tagfiles_scanned_files(Tagfiles *tagfiles)
+{
+  return tagfiles->scanned_files;
 }
 
 File_Group *tagfiles_get(Tagfiles *tagfiles)
@@ -272,12 +285,15 @@ static void _ls_main_cb(void *data, Eio_File *handler, const Eina_File_Direct_In
     return;
 
   if (info->type != EINA_FILE_DIR) {
+    tagfiles->scanned_files++;
     insert_file(tagfiles, file);
     
     tagfiles->progress_cb(tagfiles, tagfiles->cb_data);
   }
-  else
+  else {
+    tagfiles->scanned_dirs++;
     eina_inarray_push(tagfiles->dirs_ls, &file);
+  }
 }
 
 int tagfiles_init(void)
@@ -374,6 +390,21 @@ int dir_strcmp_neg(const char **a, const char **b)
   return -strcmp(*a, *b);
 }
 
+
+static void _ls_done_cb(void *data, Eio_File *handler);
+
+Eina_Bool _idle_ls_continue(void *data) 
+{
+  Tagfiles *tagfiles = data;
+  
+  //FIXME do sort in extra thread instead of when idle?
+  eina_inarray_sort(tagfiles->dirs_ls, dir_strcmp_neg);
+  printf("scan %s\n", *(char**)eina_inarray_nth(tagfiles->dirs_ls, eina_inarray_count(tagfiles->dirs_ls)-1));
+  eio_file_direct_ls(*(char**)eina_inarray_pop(tagfiles->dirs_ls), &_ls_filter_cb, &_ls_main_cb,&_ls_done_cb, &_ls_error_cb, tagfiles);
+    
+  return ECORE_CALLBACK_CANCEL;
+}
+
 static void _ls_done_cb(void *data, Eio_File *handler)
 {
   Tagfiles *tagfiles = data;
@@ -403,9 +434,7 @@ static void _ls_done_cb(void *data, Eio_File *handler)
   
   if (eina_inarray_count(tagfiles->dirs_ls)) {
     //dirs are sorted before scanning so we do not need to sort all files at once!
-    eina_inarray_sort(tagfiles->dirs_ls, dir_strcmp_neg);
-    printf("scan %s\n", *(char**)eina_inarray_nth(tagfiles->dirs_ls, eina_inarray_count(tagfiles->dirs_ls)-1));
-    eio_file_direct_ls(*(char**)eina_inarray_pop(tagfiles->dirs_ls), &_ls_filter_cb, &_ls_main_cb,&_ls_done_cb, &_ls_error_cb, tagfiles);
+    ecore_idle_enterer_add(_idle_ls_continue, tagfiles);
   }
   else
     tagfiles->done_cb(tagfiles, tagfiles->cb_data);
