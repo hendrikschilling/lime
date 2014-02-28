@@ -3377,7 +3377,7 @@ elm_main(int argc, char **argv)
   Evas_Object *tb = elm_toolbar_add(win);
   evas_object_size_hint_weight_set(tb, EVAS_HINT_EXPAND, 0);
   evas_object_size_hint_align_set(tb, EVAS_HINT_FILL, 0);
-  elm_toolbar_item_append (tb, NULL, "filter", on_tab_select, tab_filter);
+  elm_toolbar_item_selected_set(elm_toolbar_item_append (tb, NULL, "filter", on_tab_select, tab_filter), EINA_TRUE);
   elm_toolbar_item_append (tb, NULL, "group", on_tab_select, tab_group);
   elm_toolbar_item_append (tb, NULL, "tags", on_tab_select, tab_tags);
   elm_toolbar_item_append (tb, NULL, "export", on_tab_select, tab_export);
