@@ -132,6 +132,10 @@ void (*pending_action)(void *data, Evas_Object *obj);
 void *pending_data;
 Evas_Object *pending_obj;
 
+Eina_Hash *tags_filter = NULL;
+int tags_filter_rating = 0;
+char *dir;
+
 static void on_scroller_move(void *data, Evas_Object *obj, void *event_info);
 static void fill_scroller(void);
 void workerfinish_schedule(void (*func)(void *data, Evas_Object *obj), void *data, Evas_Object *obj);
@@ -1433,35 +1437,35 @@ Eina_Bool tag_filter_check_and_hash_func(const Eina_Hash *hash, const void *key,
 
 Eina_Bool tag_filter_check_or_hash_func(const Eina_Hash *hash, const void *key, void *data, void *fdata)
 {
-  abort();
-  /*Filter_Check_Data *check = fdata;
+  Filter_Check_Data *check = fdata;
   
-  if (eina_hash_find(check->group->tags, data))
+  if (eina_hash_find(filegroup_tags(check->group), data))
     check->valid = 1;
   
-  return 1;*/
+  return 1;
 }
 
-/*int group_in_filters(File_Group *group, Eina_Hash *filters)
+int group_in_filters(File_Group *group, Eina_Hash *filters)
 {
   Filter_Check_Data check;
   
-  if (group->tag_rating < tags_filter_rating)
+  if (filegroup_rating(group) < tags_filter_rating)
     return 0;
   
   //for or hash!
-  if (!eina_hash_population(filters))
+  if (!filters || !eina_hash_population(filters))
     check.valid = 1;
   else
     check.valid = 0;
   check.group = group;
   
-  eina_hash_foreach(filters, tag_filter_check_or_hash_func, &check);
+  if (filters)
+    eina_hash_foreach(filters, tag_filter_check_or_hash_func, &check);
   
   return check.valid;
-}*/
+}
 
-Eina_Bool  tag_list_update(void *data)
+Eina_Bool tag_list_update(void *data)
 {
   if (!cur_group)
     return;
@@ -1471,6 +1475,10 @@ Eina_Bool  tag_list_update(void *data)
   
   elm_genlist_clear(tags_list);
   eina_hash_foreach(tagfiles_known_tags(files), tags_hash_func, cur_group);
+  
+  
+  elm_genlist_clear(tags_filter_list);
+  eina_hash_foreach(tagfiles_known_tags(files), tags_hash_filter_func, NULL);
   
   tag_list_update_idler = NULL;
   return ECORE_CALLBACK_CANCEL;
@@ -1521,7 +1529,7 @@ void step_image_do(void *data, Evas_Object *obj)
   while (failed) {
     group_idx = 0;
     
-    /*if (group_in_filters(group, tags_filter))*/ {
+    if (group_in_filters(group, tags_filter)) {
       while(failed) {
 	if (group_idx == filegroup_count(group))
 	  break;
@@ -2082,9 +2090,6 @@ Eina_Bool _idle_progress_printer(void *data)
       evas_object_show(grid);
     }
     
-    elm_genlist_clear(tags_filter_list);
-    //eina_hash_foreach(known_tags, tags_hash_filter_func, NULL);
-    
     //grid_setsize();
     
     bench_delay_start();
@@ -2147,7 +2152,7 @@ static void _ls_done_cb(Tagfiles *tagfiles, void *data)
       evas_object_show(grid);
     }
     
-    elm_genlist_clear(tags_filter_list);
+    //elm_genlist_clear(tags_filter_list);
     //eina_hash_foreach(known_tags, tags_hash_filter_func, NULL);
     
     
@@ -2545,9 +2550,9 @@ static void on_tag_changed(void *data, Evas_Object *obj, void *event_info)
     step_image_do(NULL, NULL);*/
 }
 
-/*static void on_tag_filter_changed(void *data, Evas_Object *obj, void *event_info)
+static void on_tag_filter_changed(void *data, Evas_Object *obj, void *event_info)
 {
-  File_Group *group = (File_Group*)eina_inarray_nth(files, file_idx);
+  File_Group *group = cur_group;
   char *tag;
   
   tag = data;
@@ -2562,7 +2567,7 @@ static void on_tag_changed(void *data, Evas_Object *obj, void *event_info)
   
   if (!group_in_filters(group, tags_filter))
       step_image_do(NULL, NULL);
-}*/
+}
 
 static void on_rating_changed(void *data, Evas_Object *obj, void *event_info)
 {
@@ -2578,12 +2583,12 @@ static void on_rating_changed(void *data, Evas_Object *obj, void *event_info)
 static void on_filter_rating_changed(void *data, Evas_Object *obj, void *event_info)
 {
   abort();
-  /*File_Group *group = (File_Group*)eina_inarray_nth(files, file_idx);
+  File_Group *group = cur_group;
   
   tags_filter_rating = elm_segment_control_item_index_get(elm_segment_control_item_selected_get(obj));
   
   if (!group_in_filters(group, tags_filter))
-    step_image_do(NULL, NULL);*/
+    step_image_do(NULL, NULL);
 }
 
 static Evas_Object *_tag_gen_cont_get(void *data, Evas_Object *obj, const char *part)
@@ -2608,8 +2613,7 @@ static Evas_Object *_tag_gen_cont_get(void *data, Evas_Object *obj, const char *
 
 static Evas_Object *_tag_filter_cont_get(void *data, Evas_Object *obj, const char *part)
 {
-  abort();
-  /*Evas_Object *check;
+  Evas_Object *check;
   
   if (strcmp(part, "elm.swallow.icon"))
     return NULL;
@@ -2623,7 +2627,7 @@ static Evas_Object *_tag_filter_cont_get(void *data, Evas_Object *obj, const cha
 
   evas_object_smart_callback_add(check, "changed", on_tag_filter_changed, data);
   
-  return check;*/
+  return check;
 }
 
 /*static void on_export_type_sel(void *data, Evas_Object *obj, void *event_info)
@@ -2754,7 +2758,7 @@ elm_main(int argc, char **argv)
   //known_tags = eina_hash_stringshared_new(NULL);
   //tags_filter = eina_hash_stringshared_new(NULL);
 //  known_tags = eina_hash_string_superfast_new(NULL);
-//  tags_filter = eina_hash_string_superfast_new(NULL);
+  tags_filter = eina_hash_string_superfast_new(NULL);
   
   //strcpy(image_path, dir);
   //image_file = image_path + strlen(image_path);

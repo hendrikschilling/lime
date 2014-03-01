@@ -31,10 +31,6 @@
 #define GROUP_COMPLETE 1
 #define GROUP_LOADED   2
 
-/*Eina_Hash *tags_filter;
-int tags_filter_rating = 0;
-char *dir;*/
-
 struct _Tagged_File {
   const char *dirname;
   const char *filename;
