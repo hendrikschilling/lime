@@ -91,53 +91,6 @@ int lime_setting_type_get(Filter *f, const char *setting)
   return -1;
 }
 
-char *lime_filter_chain_serialize(Filter *f)
-{
-  int i;
-  //FIXME handle large settings
-  char *buf = malloc(4096);
-  char *str = buf;
-  Meta *m;
-  
-  while (f) {
-    str += sprintf(str, "%s", f->fc->shortname);
-    for(i=0;i<ea_count(f->settings);i++) {
-      m = ea_data(f->settings, i);
-      if (m->data)
-        switch (m->type) {
-          case MT_INT :
-            str += sprintf(str, ":%s=%d", m->name, *(int*)m->data);
-            break;
-          case MT_FLOAT : 
-            str += sprintf(str, ":%s=%f", m->name, *(float*)m->data);
-            break;
-          case MT_STRING : 
-            assert(!strchr((char*)m->data, ':'));
-            str += sprintf(str, ":%s=%s", m->name, (char*)m->data);
-            break;
-      }
-    else
-      printf("no data for %s\n", m->name);
-    }
-    
-    if (f->node_orig->con_trees_out &&  ea_count(f->node_orig->con_trees_out))
-      f = ((Con*)ea_data(f->node_orig->con_trees_out, 0))->sink->filter;
-    else
-      f = NULL;
-
-    /* FIXME
-    if (f->out && ea_count(f->out))
-      f = eina_array_data_get(f->out, 0);
-    else
-      f = NULL;*/
-    
-    if (f)
-      str += sprintf(str, ",");
-  }
-  
-  return buf;
-}
-
 int lime_setting_float_set(Filter *f, const char *setting, float value)
 {
   int i;

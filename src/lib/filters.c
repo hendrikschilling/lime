@@ -87,6 +87,105 @@ Filter_Core *lime_filtercore_find(const char *name)
   return eina_hash_find(lime_filters, name);
 }
 
+char *string_escape_colon(char *str)
+{
+  char *str_ptr = str;
+  char esc[EINA_PATH_MAX];
+  char *esc_ptr = esc;
+  
+  while (*str_ptr) {
+    esc_ptr[0] = str_ptr[0];
+    //create double colon
+    if (str_ptr[0] == ':') {
+      esc_ptr[0] = ':';
+      esc_ptr++;
+    }
+    esc_ptr++;
+    str_ptr++;
+  }
+  
+  return strdup(str);
+}
+
+char *string_unescape_colon(char *esc)
+{
+  char *esc_ptr = esc;
+  char str[EINA_PATH_MAX];
+  char *str_ptr = str;
+  
+  while (*esc_ptr) {
+    *str_ptr = *esc_ptr;
+    //skip any double colon
+    if (esc_ptr[0] == ':' && esc_ptr[1] == ':')
+      esc_ptr++;
+    esc_ptr++;
+    str_ptr++;
+  }
+  
+  return strdup(str);
+}
+
+char *next_single_colon(char *str)
+{
+  char *found = strchr(str, ':');
+  
+  while (found) {
+    if (found[1] != ':')
+      return found;
+    found = strchr(found+2, ':');
+  }
+  
+  return NULL;
+}
+
+
+char *lime_filter_chain_serialize(Filter *f)
+{
+  int i;
+  //FIXME handle large settings
+  char *buf = malloc(4096);
+  char *str = buf;
+  Meta *m;
+  
+  while (f) {
+    str += sprintf(str, "%s", f->fc->shortname);
+    for(i=0;i<ea_count(f->settings);i++) {
+      m = ea_data(f->settings, i);
+      if (m->data)
+        switch (m->type) {
+          case MT_INT :
+            str += sprintf(str, ":%s=%d", m->name, *(int*)m->data);
+            break;
+          case MT_FLOAT : 
+            str += sprintf(str, ":%s=%f", m->name, *(float*)m->data);
+            break;
+          case MT_STRING : 
+            assert(!strchr((char*)m->data, ':'));
+            str += sprintf(str, ":%s=%s", m->name, string_escape_colon((char*)m->data));
+            break;
+      }
+    else
+      printf("no data for %s\n", m->name);
+    }
+    
+    if (f->node_orig->con_trees_out &&  ea_count(f->node_orig->con_trees_out))
+      f = ((Con*)ea_data(f->node_orig->con_trees_out, 0))->sink->filter;
+    else
+      f = NULL;
+
+    /* FIXME
+    if (f->out && ea_count(f->out))
+      f = eina_array_data_get(f->out, 0);
+    else
+      f = NULL;*/
+    
+    if (f)
+      str += sprintf(str, ",");
+  }
+  
+  return buf;
+}
+
 //FIXME check if setting does exist, give some debug info if parsing fails!
 Eina_List *lime_filter_chain_deserialize(char *str)
 {
@@ -104,7 +203,7 @@ Eina_List *lime_filter_chain_deserialize(char *str)
   char *setting;
   char *tmp;
   while (cur) {
-    next = strchr(cur, ':');
+    next = next_single_colon(cur);
     if (next)
       *next = '\0';
     f = lime_filter_new(cur);
@@ -159,20 +258,19 @@ Eina_List *lime_filter_chain_deserialize(char *str)
             lime_setting_float_set(f, setting, atof(cur));
             break;
 	  case MT_STRING :
-            //printf("FIXME escaping in deserialization (\',\',\':\',\' \')!!!");
             tmp = strdup(cur);
-            if (strchr(tmp, ':'))
-              *strchr(tmp, ':') = '\0';
+            if (next_single_colon(tmp))
+              *next_single_colon(tmp) = '\0';
             if (strchr(tmp, ','))
               *strchr(tmp, ',') = '\0';
-            lime_setting_string_set(f, setting, tmp);
+            lime_setting_string_set(f, setting, string_unescape_colon(tmp));
             free(tmp);
             break;
           default :
             printf("FIXME implement type %s settings parsing\n", mt_type_str(lime_setting_type_get(f, setting)));
         }
           
-          next = strchr(cur, ':');
+          next = next_single_colon(cur);
           if (next && next+1 < last && (!strchr(cur, ',') || next < strchr(cur, ','))) {
             cur = next+1;
             next = strchr(cur, '=');

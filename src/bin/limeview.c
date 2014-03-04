@@ -23,11 +23,9 @@
 #include <fcntl.h>
 #include <libgen.h>
 
-#include <exempi/xmp.h>
-#include <exempi/xmpconsts.h>
-
 #include "Lime.h"
 #include "cli.h"
+#include "tagfiles.h"
 
 #include "filter_convert.h"
 #include "filter_gauss.h"
@@ -47,8 +45,7 @@
 #include "filter_savejpeg.h"
 
 #define TILE_SIZE DEFAULT_TILE_SIZE
-#define MAX_XMP_FILE 1024*1024
-#define HACK_ITERS_FOR_REAL_IDLE 1
+#define HACK_ITERS_FOR_REAL_IDLE 0
 #define PREREAD_SIZE 4096*16
 #define PREREAD_RANGE 5
 #define FAST_SKIP_RENDER_DELAY 0.1
@@ -60,12 +57,17 @@ int max_fast_scaledown = 5;
 int first_preview = 0;
 Ecore_Idle_Enterer *workerfinish_idle = NULL;
 Ecore_Idle_Enterer *idle_render = NULL;
+Ecore_Idle_Enterer *idle_progress_print = NULL;
 Ecore_Timer *timer_render = NULL;
+Eina_Array *taglist_add = NULL;
 int hacky_idle_iter_pending = 0;
 int hacky_idle_iter_render = 0;
 int quick_preview_only = 0;
 
-Eina_Hash *known_tags;
+Tagfiles *files = NULL;
+Tagfiles *files_new = NULL;
+int last_file_step = 1;
+
 Elm_Genlist_Item_Class *tags_list_itc;
 Elm_Genlist_Item_Class *tags_filter_itc;
 
@@ -76,30 +78,6 @@ typedef struct {
   Evas_Object *eo_progress;
   int count;
 } Export_Data;
-
-typedef struct {
-  const char *dirname;
-  const char *filename;
-  const char *sidecar;
-  Eina_Array *tags;
-} Tagged_File;
-
-typedef struct {
-  Eina_Inarray *files; //tagged files
-  const char *sidecar; //sidecar file used for the image group
-  char *last_fc; //serialization of the last filter chain
-  Eina_Hash *tags; //all tags of the group or a file in the group
-  int32_t tag_rating;
-  //Eina_Array *group_tags; //tags that are assigned specifically to the group
-} File_Group;
-
-Eina_Inarray *files;
-
-//char image_path[EINA_PATH_MAX];
-//char *image_file;
-Eina_Hash *tags_filter;
-int tags_filter_rating = 0;
-char *dir;
 
 typedef struct {
   Filter *f;
@@ -133,18 +111,15 @@ int forbid_fill = 0;
 Eina_List *filter_last_selected = NULL;
 Eina_List *filter_chain = NULL;
 Filter *(*select_filter_func)(void);
-Eina_List *files_unsorted = NULL;
 int verbose;
 Eina_Array *finished_threads = NULL;
 Ecore_Timer *preview_timer = NULL;
 void fc_new_from_filters(Eina_List *filters);
+int fixme_no_group_select = 0;
+File_Group *cur_group = NULL;
 
-int file_step = 1;
-int file_idx = 0;
-int group_idx;
 int bench_idx = 0;
 int preview_tiles = 0;
-int file_count;
 
 int *thread_ids;
 
@@ -157,30 +132,15 @@ void (*pending_action)(void *data, Evas_Object *obj);
 void *pending_data;
 Evas_Object *pending_obj;
 
+Eina_Hash *tags_filter = NULL;
+int tags_filter_rating = 0;
+char *dir;
+
 static void on_scroller_move(void *data, Evas_Object *obj, void *event_info);
 static void fill_scroller(void);
 void workerfinish_schedule(void (*func)(void *data, Evas_Object *obj), void *data, Evas_Object *obj);
 void filter_settings_create_gui(Eina_List *chain_node, Evas_Object *box);
 void fill_scroller_preview();
-void save_sidecar(File_Group *group);
-
-
-Tagged_File *tagged_file_new_from_path(const char *path)
-{
-  Tagged_File *file = calloc(sizeof(Tagged_File), 1);
-  char *filename;
-  
-  filename = strrchr(path, '/');
-  
-  if (filename) {
-    file->dirname = eina_stringshare_add_length(path, filename-path);
-    file->filename = eina_stringshare_add(filename+1);
-  }
-  else
-    file->filename = eina_stringshare_add(path);
-
-  return file;
-}
 
 Filter_Chain *fc_new(Filter *f)
 {
@@ -264,83 +224,13 @@ void grid_setsize(void)
   forbid_fill--;
 }
 
-void xmp_gettags(const char *file, File_Group *group)
-{
-  int len;
-  FILE *f;
-  XmpPtr xmp;
-  char *buf;
-  const char *tag;
-  XmpIteratorPtr iter;
-  XmpStringPtr propValue;
-  
-  buf = malloc(MAX_XMP_FILE);
-  
-  f = fopen(file, "r");
-  
-  if (!f)
-    return;
-  
-  len = fread(buf, 1, MAX_XMP_FILE, f);
-    
-  fclose(f);
-  
-  xmp = xmp_new(buf, len);
-  
-  if (!xmp) {
-    printf("parse failed\n");
-    xmp_free(xmp);
-    free(buf);
-    return;
-  }
-  
- 
-
-  if (xmp_prefix_namespace_uri("lr", NULL))
-  {
-    propValue = xmp_string_new();
-    iter = xmp_iterator_new(xmp, "http://ns.adobe.com/lightroom/1.0/", "lr:hierarchicalSubject", XMP_ITER_JUSTLEAFNODES);
-  
-    while (xmp_iterator_next(iter, NULL, NULL, propValue, NULL)) {
-      tag = strdup(xmp_string_cstr(propValue));
-      if (!eina_hash_find(group->tags, tag))
-			eina_hash_add(group->tags, tag, tag);
-      if (!eina_hash_find(known_tags, tag))
-			eina_hash_add(known_tags, tag, tag);
-    }
-
-    xmp_iterator_free(iter); 
-    xmp_string_free(propValue);
-  }
-  
-  if (xmp_prefix_namespace_uri("xmp", NULL))
-  {
-    if (!xmp_get_property_int32(xmp, "http://ns.adobe.com/xap/1.0/", "xmp:Rating", &group->tag_rating, NULL))
-      group->tag_rating = 0;
-  }
-  
-  if (xmp_prefix_namespace_uri("lime", NULL))
-  {
-    propValue = xmp_string_new();
-    if (xmp_get_property(xmp, "http://technik-stinkt.de/lime/0.1/", "lime:lastFilterChain", propValue, NULL))
-      group->last_fc = strdup(xmp_string_cstr(propValue));
-    else
-      group->last_fc = NULL;
-    xmp_string_free(propValue);
-  }
-  
-  
-  xmp_free(xmp);
-  free(buf);
-  
-  return;
-}
 
 void int_changed_do(void *data, Evas_Object *obj)
 {
   Meta *m = data;
   
   assert(!worker);
+  assert(cur_group);
 
   forbid_fill++;
   
@@ -350,7 +240,7 @@ void int_changed_do(void *data, Evas_Object *obj)
   
   lime_config_test(sink);
   
-  set_filterchain_save_sidecar();
+  filegroup_filterchain_set(cur_group, lime_filter_chain_serialize(((Filter_Chain*)eina_list_data_get(eina_list_next(filter_chain)))->f));
   
   delgrid();
   
@@ -367,6 +257,7 @@ void float_changed_do(void *data, Evas_Object *obj)
   Meta *m = data;
   
   assert(!worker);
+  assert(cur_group);
   
   forbid_fill++;
   
@@ -376,7 +267,7 @@ void float_changed_do(void *data, Evas_Object *obj)
   
   lime_config_test(sink);
   
-  set_filterchain_save_sidecar();
+  filegroup_filterchain_set(cur_group, lime_filter_chain_serialize(((Filter_Chain*)eina_list_data_get(eina_list_next(filter_chain)))->f));
   
   delgrid();
   
@@ -395,9 +286,9 @@ void remove_filter_do(void *data, Evas_Object *obj)
   Eina_List *chain_node = data;
   Filter_Chain *fc = eina_list_data_get(chain_node);
   Filter_Chain *prev, *next;
-  File_Group *group = eina_inarray_nth(files, file_idx);
   
   assert(!worker);
+  assert(cur_group);
 
   forbid_fill++;
   
@@ -408,27 +299,19 @@ void remove_filter_do(void *data, Evas_Object *obj)
   prev = eina_list_data_get(eina_list_prev(chain_node));
   next = eina_list_data_get(eina_list_next(chain_node));
   
-  del_filter_settings(); 
-  filter_chain = eina_list_remove_list(filter_chain, chain_node);
-  
-  elm_object_item_del(fc->item);
   filter_connect(prev->f, 0, next->f, 0);
   
-  group->last_fc = lime_filter_chain_serialize(((Filter_Chain*)eina_list_data_get(filter_chain))->f);
-  if (strrchr(group->last_fc, ','))
-    *strrchr(group->last_fc, ',') = '\0';
-  save_sidecar(group);
+  del_filter_settings(); 
+  elm_object_item_del(fc->item);
+  filter_chain = eina_list_remove_list(filter_chain, chain_node);
   
-  delgrid();
-  
-  //test_filter_config(load);
-  
-  size_recalc();
+  lime_config_test(sink);
+ 
+  filegroup_filterchain_set(cur_group, lime_filter_chain_serialize(((Filter_Chain*)eina_list_data_get(eina_list_next(filter_chain)))->f));
   
   forbid_fill--;
   
-  fill_scroller_preview();
-  fill_scroller();
+  step_image_do();
 }
 
 void _on_filter_select(void *data, Evas_Object *obj, void *event_info)
@@ -439,23 +322,15 @@ void _on_filter_select(void *data, Evas_Object *obj, void *event_info)
   filter_last_selected = data;
 }
 
-void set_filterchain_save_sidecar(void)
-{
-  File_Group *group = eina_inarray_nth(files, file_idx);
-  
-  group->last_fc = lime_filter_chain_serialize(((Filter_Chain*)eina_list_data_get(eina_list_next(filter_chain)))->f);
-  if (strrchr(group->last_fc, ','))
-    *strrchr(group->last_fc, ',') = '\0';
-  save_sidecar(group);
-}
-
 void fc_insert_filter(Filter *f, Eina_List *src, Eina_List *sink)
 {
   Filter_Chain *fc_src, *fc_sink;
   Filter_Chain *fc;
   fc = fc_new(f);
-  File_Group *group = eina_inarray_nth(files, file_idx);
+  Eina_List *chain_node = NULL;
     
+  assert(cur_group);
+  
   //we always have src or sink, but those might not have an elm_item!
   assert(src);
   assert(sink);
@@ -464,13 +339,16 @@ void fc_insert_filter(Filter *f, Eina_List *src, Eina_List *sink)
   fc_sink = eina_list_data_get(sink);
   
   filter_chain = eina_list_append_relative_list(filter_chain, fc, src);
+  chain_node = filter_chain;
+  while (eina_list_data_get(chain_node) != fc)
+    chain_node = eina_list_next(chain_node);
 
   if (fc_src->item)
-    fc->item = elm_list_item_insert_after(filter_list, fc_src->item, f->fc->name, NULL, NULL, &_on_filter_select, eina_list_prev(sink));
+    fc->item = elm_list_item_insert_after(filter_list, fc_src->item, f->fc->name, NULL, NULL, &_on_filter_select, chain_node);
   else if (fc_sink->item)
-    fc->item = elm_list_item_insert_before(filter_list, fc_sink->item, f->fc->name, NULL, NULL, &_on_filter_select, eina_list_prev(sink));
+    fc->item = elm_list_item_insert_before(filter_list, fc_sink->item, f->fc->name, NULL, NULL, &_on_filter_select, chain_node);
   else
-    fc->item = elm_list_item_append(filter_list, f->fc->name, NULL, NULL, &_on_filter_select, eina_list_prev(sink));
+    fc->item = elm_list_item_append(filter_list, f->fc->name, NULL, NULL, &_on_filter_select, chain_node);
   
   elm_list_item_selected_set(fc->item, EINA_TRUE);
   elm_list_go(filter_list);
@@ -478,7 +356,7 @@ void fc_insert_filter(Filter *f, Eina_List *src, Eina_List *sink)
   filter_connect(fc_src->f, 0, f, 0);
   filter_connect(f, 0, fc_sink->f, 0);
   
-  set_filterchain_save_sidecar();
+  filegroup_filterchain_set(cur_group, lime_filter_chain_serialize(((Filter_Chain*)eina_list_data_get(eina_list_next(filter_chain)))->f));
   
   delgrid();
   
@@ -697,9 +575,9 @@ Mat_Cache *mat_cache_new(void)
 void mat_cache_flush(Mat_Cache *mat_cache)
 {
   int i;
-  _Img_Thread_Data *tdata;
+//  _Img_Thread_Data *tdata;
   Eina_Iterator *iter;
-  uint8_t *buf;
+  //uint8_t *buf;
   
   for(i=0;i<=mat_cache->scale_max;i++) {
     if (mat_cache->mats[i]) { 
@@ -723,8 +601,8 @@ void mat_cache_check(Mat_Cache *mat_cache)
 {
   int layer = 0;
   float scale = scale_goal;
-  Eina_Iterator *iter;
-  Evas_Object *img;
+//  Eina_Iterator *iter;
+//  Evas_Object *img;
   
   while (scale > 1.0) {
     /*iter = eina_matrixsparse_iterator_new(mat_cache->mats[layer]);
@@ -826,15 +704,6 @@ void mat_cache_obj_stack(Mat_Cache *mat_cache, Evas_Object *obj, int scale)
   mat_cache->high_of_layer[scale] = obj;
 }
 
-static Eina_Bool
-_ls_filter_cb(void *data, Eio_File *handler, Eina_File_Direct_Info *info)
-{  
-  if (info->type == EINA_FILE_REG || info->type == EINA_FILE_LNK || info->type == EINA_FILE_UNKNOWN || info->type == EINA_FILE_DIR)
-    return EINA_TRUE;
-    
-  return EINA_FALSE;
-}
-
 float actual_scale_get()
 {
   int x,y,w,h,grid_w,grid_h;
@@ -917,7 +786,7 @@ Eina_Bool idle_run_render(void *data)
   return ECORE_CALLBACK_CANCEL;
 }
 
-
+/*
 int wrap_files_idx(float idx)
 {
   if (idx < 0)
@@ -957,7 +826,7 @@ static void preread_filerange(int range)
 	ecore_thread_run(_fadvice_file, NULL, NULL, filename);
     }
   }
-}
+}*/
 
 Eina_Bool workerfinish_idle_run(void *data)
 {
@@ -973,7 +842,7 @@ Eina_Bool workerfinish_idle_run(void *data)
   
   if (hacky_idle_iter_pending) {
     hacky_idle_iter_pending--;
-    preread_filerange(PREREAD_RANGE);
+    //preread_filerange(PREREAD_RANGE);
     return ECORE_CALLBACK_RENEW;
   }
   
@@ -1002,7 +871,6 @@ void workerfinish_schedule(void (*func)(void *data, Evas_Object *obj), void *dat
   }
     
   if (!worker) {
-    assert(!mat_cache_old);
     
     if (workerfinish_idle) {
       printf("delete scheduled function\n");
@@ -1026,56 +894,6 @@ _process_tile(void *data, Ecore_Thread *th)
     
   eina_sched_prio_drop();
   lime_render_area(&tdata->area, sink, tdata->t_id);
-}
-
-int bench_do(void)
-{
-  int x, y, w, h;
-  Filter *f;
-  
-  if (bench_idx == 0)
-    mat_cache_flush(mat_cache);
-  
-  bench_delay_start();
-  
-  elm_scroller_region_get(scroller, &x, &y, &w, &h);
-
-  if (bench[bench_idx].x == -1) {
-    elm_exit_do(NULL, NULL);
-    return 1;
-  }
-  
-  if (bench[bench_idx].new_f_core) {
-    select_filter_func = bench[bench_idx].new_f_core->filter_new_f;
-    insert_before_do(NULL, NULL);
-  }
-  
-  if (bench[bench_idx].setting_float) {
-    f = eina_list_data_get(eina_list_nth(filter_chain, eina_list_count(filter_chain) - 1 - bench[bench_idx].filter));
-    lime_setting_float_set(f, bench[bench_idx].setting_float, *(float*)bench[bench_idx].val);
-    delgrid();
-  }
-  else if (bench[bench_idx].setting_int) {
-    f = eina_list_data_get(eina_list_nth(filter_chain, bench[bench_idx].filter));
-    lime_setting_int_set(f, bench[bench_idx].setting_float, *(float*)bench[bench_idx].val);
-    delgrid();
-  } 
-  
-  if (bench[bench_idx].scale == -1)
-    fit = 1;
-  else {
-    fit = 1;
-    scale_goal = bench[bench_idx].scale;
-  }
-  grid_setsize();
-  
-  elm_scroller_region_show(scroller, bench[bench_idx].x, bench[bench_idx].y, 1, 1);
-  
-  bench_idx++;
-
-  fprintf(stderr, "benchmark progress: %d\n", bench_idx);
-  
-  return 0;
 }
 
 void _insert_image(_Img_Thread_Data *tdata)
@@ -1137,11 +955,7 @@ Eina_Bool _display_preview(void *data)
 static void
 _finished_tile(void *data, Ecore_Thread *th)
 {
-  int i;
-  void (*pend_tmp_func)(void *data, Evas_Object *obj);
   _Img_Thread_Data *tdata = data;
-  Evas_Object *pend_tmp_obj;
-  void *pend_tmp_data;
   double delay = bench_delay_get();
   
   assert(tdata->t_id != -1);
@@ -1389,7 +1203,6 @@ void fc_del(void)
     //FIXME actually remove filters!
     if (fc->item) {
       elm_object_item_del(fc->item);
-      printf("del %p\n", fc->item);
     }
   }
   
@@ -1458,23 +1271,25 @@ on_done(void *data, Evas_Object *obj, void *event_info)
 
 void group_select_do(void *data, Evas_Object *obj)
 {
+  int group_idx;
   int failed;
   const char *filename;
+  Elm_Object_Item *it;
   
   delgrid();
     
-  File_Group *group = eina_inarray_nth(files, file_idx);
+  File_Group *group = tagfiles_get(files);
   
   group_idx = *(int*)data;
     
   failed = 1;
   
   while(failed) {
-    if (group_idx == eina_inarray_count(group->files)) {
+    if (group_idx == filegroup_count(group)) {
       group_idx = 0;
     }
     
-    filename = ((Tagged_File*)eina_inarray_nth(group->files, group_idx))->filename;
+    filename = filegroup_nth(group, group_idx);
     if (!filename) {
       group_idx++;
       continue;
@@ -1483,15 +1298,26 @@ void group_select_do(void *data, Evas_Object *obj)
     lime_setting_string_set(load, "filename", filename);
     
     failed = lime_config_test(sink);
-    if (failed)
+    if (failed) {
       group_idx++;
+      printf("could not configure: %s\n", filename);
+    }
   }
+  
+  it = elm_list_first_item_get(group_list);
+  while (group_idx) {
+    it = elm_list_item_next(it);
+    group_idx--;
+  }
+  elm_list_item_selected_set(it, EINA_TRUE);
+  
   size_recalc();
 
   fill_scroller_preview();
   fill_scroller();
 }
 
+/*
 void tags_select_do(void *data, Evas_Object *obj)
 {
   int failed;
@@ -1527,7 +1353,7 @@ void tags_select_do(void *data, Evas_Object *obj)
 
   fill_scroller_preview();
   fill_scroller();
-}
+}*/
 
 void delgrid(void)
 {  
@@ -1544,34 +1370,16 @@ void delgrid(void)
   finished_threads = eina_array_new(16);
 }
 
-int files_similar(const char *a, const char *b)
-{
-  int had_point = 0;
-  
-  if (!a || !b)
-    return 0;
-  
-  while (*a == *b && *a != '\0' && *b != '\0') {
-    if ((*a == '.') && (*b == '.'))
-      had_point = 1;
-    a++;
-    b++;
-    if (*a == '/' && *b == '/')
-      had_point = 0;
-  }
-  
-  if ((*a == '.') && (*b == '.'))
-      had_point = 1;
-  
-  return had_point;
-}
-
 void step_image_do(void *data, Evas_Object *obj);
 
 static void on_jump_image(void *data, Evas_Object *obj, void *event_info)
 {
-  if (file_idx == (int)elm_slider_value_get(file_slider))
+  if (!files)
     return;
+  
+  int idx = elm_slider_value_get(file_slider);
+  
+  tagfiles_idx_set(files, idx);
   
   if (mat_cache_old && !worker)
     _display_preview(NULL);
@@ -1582,8 +1390,9 @@ static void on_jump_image(void *data, Evas_Object *obj, void *event_info)
 static void
 on_group_select(void *data, Evas_Object *obj, void *event_info)
 { 
-  //FIXME reenable, avoid double call
-  //workerfinish_schedule(&group_select_do, data, obj);
+  //FIXME no double select!
+  if (!fixme_no_group_select)
+    workerfinish_schedule(&group_select_do, data, obj);
 }
 
 typedef struct {
@@ -1619,19 +1428,20 @@ typedef struct {
 
 Eina_Bool tag_filter_check_and_hash_func(const Eina_Hash *hash, const void *key, void *data, void *fdata)
 {
-  Filter_Check_Data *check = fdata;
+  abort();
+  /*Filter_Check_Data *check = fdata;
   
   if (!eina_hash_find(check->group->tags, data))
     check->valid = 0;
   
-  return 1;
+  return 1;*/
 }
 
 Eina_Bool tag_filter_check_or_hash_func(const Eina_Hash *hash, const void *key, void *data, void *fdata)
 {
   Filter_Check_Data *check = fdata;
   
-  if (eina_hash_find(check->group->tags, data))
+  if (eina_hash_find(filegroup_tags(check->group), data))
     check->valid = 1;
   
   return 1;
@@ -1641,26 +1451,66 @@ int group_in_filters(File_Group *group, Eina_Hash *filters)
 {
   Filter_Check_Data check;
   
-  if (group->tag_rating < tags_filter_rating)
+  if (!filegroup_tags_valid(group))
+    return 1;
+  
+  if (tags_filter_rating && filegroup_rating(group) < tags_filter_rating)
     return 0;
   
   //for or hash!
-  if (!eina_hash_population(filters))
+  if (!filters || !eina_hash_population(filters))
     check.valid = 1;
   else
     check.valid = 0;
   check.group = group;
   
-  eina_hash_foreach(filters, tag_filter_check_or_hash_func, &check);
+  if (filters && eina_hash_population(filters))
+    eina_hash_foreach(filters, tag_filter_check_or_hash_func, &check);
   
   return check.valid;
 }
 
+void on_known_tags_changed(Tagfiles *tagfiles, void *data, const char *new_tag)
+{  
+  Tags_List_Item_Data *tag;
+  
+  if (cur_group && filegroup_tags_valid(cur_group)) {
+    if (taglist_add) {
+      while (ea_count(taglist_add)) {
+	tag = malloc(sizeof(Tags_List_Item_Data));
+	tag->tag = eina_array_pop(taglist_add);
+	tag->group = cur_group;
+	elm_genlist_item_append(tags_list, tags_list_itc, tag, NULL, ELM_GENLIST_ITEM_NONE, NULL, NULL);
+      }
+      eina_array_free(taglist_add);
+      taglist_add = NULL;
+    }
+    
+    tag = malloc(sizeof(Tags_List_Item_Data));
+    tag->tag = new_tag;
+    tag->group = cur_group;
+    elm_genlist_item_append(tags_list, tags_list_itc, tag, NULL, ELM_GENLIST_ITEM_NONE, NULL, NULL);
+  }
+  else {
+    if (!taglist_add) taglist_add = eina_array_new(32);
+    eina_array_push(taglist_add, new_tag);
+  }
+  elm_genlist_item_append(tags_filter_list, tags_filter_itc, new_tag, NULL, ELM_GENLIST_ITEM_NONE, NULL, NULL);
+}
+
+void filegroup_changed_cb(File_Group *group)
+{
+  //FIXME do we have to schedule this even if something else is running?
+  workerfinish_schedule(step_image_do, NULL, NULL);
+}
+
+
 void step_image_do(void *data, Evas_Object *obj)
 {
   int i;
-  int *idx_cp;
   int start_idx;
+  int group_idx;
+  int *idx_cp;
   int failed;
   File_Group *group;
   const char *filename;
@@ -1669,15 +1519,13 @@ void step_image_do(void *data, Evas_Object *obj)
   
   printf("non-chancellation delay: %f\n", bench_delay_get());
   
-  file_idx = elm_slider_value_get(file_slider);
-  
   bench_delay_start();
   
   assert(!worker);
   
   assert(files);
   
-  if (!eina_inarray_count(files))
+  if (!tagfiles_count(files))
     return;
   
   delgrid();
@@ -1685,82 +1533,83 @@ void step_image_do(void *data, Evas_Object *obj)
   
   forbid_fill++;
   
-  start_idx = file_idx;
+  start_idx = tagfiles_idx(files);
   
-  group = eina_inarray_nth(files, file_idx);
+  group = tagfiles_get(files);
     
   failed = 1;
   
   while (failed) {
     group_idx = 0;
     
-    
     if (group_in_filters(group, tags_filter)) {
       while(failed) {
-	if (group_idx == eina_inarray_count(group->files))
+	if (group_idx == filegroup_count(group))
 	  break;
 	
-	filename = ((Tagged_File*)eina_inarray_nth(group->files, group_idx))->filename;
+	filename = filegroup_nth(group, group_idx);
 	//FIXME better file ending list (no static file endings!)
 	if (!filename || (!eina_str_has_extension(filename, ".jpg") 
-		       && !eina_str_has_extension(filename, ".JPG")
-		       && !eina_str_has_extension(filename, ".tif")
-		       && !eina_str_has_extension(filename, ".TIF")
-		       && !eina_str_has_extension(filename, ".tiff")
-		       && !eina_str_has_extension(filename, ".TIFF"))) {
+	  && !eina_str_has_extension(filename, ".JPG")
+	  && !eina_str_has_extension(filename, ".tif")
+	  && !eina_str_has_extension(filename, ".TIF")
+	  && !eina_str_has_extension(filename, ".tiff")
+	  && !eina_str_has_extension(filename, ".TIFF"))) {
 	  group_idx++;
-	  continue;
-	}
-	
-	if (group->last_fc) {
-    fc_del();
-    filters = lime_filter_chain_deserialize(group->last_fc);
-    
-    //FIXME select group according to load file 
-    load = eina_list_data_get(filters);
-    if (strcmp(load->fc->shortname, "load")) {
-      load = lime_filter_new("load");
-      filters = eina_list_prepend(filters, load);
-    }
-    sink = lime_filter_new("memsink");
-    lime_setting_int_set(sink, "add alpha", 1);
-    filters = eina_list_append(filters, sink);
-    
-    fc_new_from_filters(filters);
-  }
-  else {
-    fc_del();
-    
-    load = lime_filter_new("load");
-    filters = eina_list_append(NULL, load);
-    sink = lime_filter_new("memsink");
-    lime_setting_int_set(sink, "add alpha", 1);
-    filters = eina_list_append(filters, sink);
-    
-    fc_new_from_filters(filters);
-  } 
+	continue;
+	  }
 	  
-	//strcpy(image_file, filename);
-	lime_setting_string_set(load, "filename", filename);
-  
-	failed = lime_config_test(sink);
-	printf("configuration delay test: %f\n", bench_delay_get());
-	if (failed) {
-	  printf("failed to find valid configuration for %s\n", filename);
-	  group_idx++;
-	}
+	  if (filegroup_tags_valid(group) && filegroup_filterchain(group)) {
+	    fc_del();
+	    filters = lime_filter_chain_deserialize(filegroup_filterchain(group));
+	    
+	    //FIXME select group according to load file 
+	    load = eina_list_data_get(filters);
+	    if (strcmp(load->fc->shortname, "load")) {
+	      load = lime_filter_new("load");
+	      filters = eina_list_prepend(filters, load);
+	    }
+	    sink = eina_list_data_get(eina_list_last(filters));
+	    if (strcmp(sink->fc->shortname, "sink")) {
+	      sink = lime_filter_new("memsink");
+	      lime_setting_int_set(sink, "add alpha", 1);
+	      filters = eina_list_append(filters, sink);
+	    }
+	    fc_new_from_filters(filters);
+	  }
+	  else {
+	    fc_del();
+	    
+	    load = lime_filter_new("load");
+	    filters = eina_list_append(NULL, load);
+	    sink = lime_filter_new("memsink");
+	    lime_setting_int_set(sink, "add alpha", 1);
+	    filters = eina_list_append(filters, sink);
+	    
+	    fc_new_from_filters(filters);
+	  } 
+	  
+	  //strcpy(image_file, filename);
+	  lime_setting_string_set(load, "filename", filename);
+	  
+	  failed = lime_config_test(sink);
+	  printf("configuration delay test: %f\n", bench_delay_get());
+	  if (failed) {
+	    printf("failed to find valid configuration for %s\n", filename);
+	    group_idx++;
+	  }
       }
     }
-    else
-      failed = 1;
+    //else
+    //  failed = 1;
     
     if (!failed)
       break;
     
-    file_idx = wrap_files_idx(file_idx + file_step);
-    group = eina_inarray_nth(files, file_idx);
+    tagfiles_step(files, last_file_step);
+    group = tagfiles_get(files);
     
-    if (start_idx == file_idx){
+    if (start_idx == tagfiles_idx(files)){
       printf("no valid configuration found for any file!\n");
       if (mat_cache) {
 	mat_cache_del(mat_cache);
@@ -1774,48 +1623,49 @@ void step_image_do(void *data, Evas_Object *obj)
     }
   }
   
-  printf("configuration delay: %f\n", bench_delay_get());
+  cur_group = group;
+  
+  tagfiles_group_changed_cb_flush(files);
+  tagfiles_group_changed_cb_insert(files, group, filegroup_changed_cb);
+  
+  printf("early configuration delay: %f\n", bench_delay_get());
+  
   //we start as early as possible with rendering!
   forbid_fill--;
   size_recalc();
   first_preview = 1;
   fill_scroller_preview();
   fill_scroller();
-  
-  printf("configuration delay a: %f\n", bench_delay_get());
     
   elm_list_clear(group_list);
-  for(i=0;i<eina_inarray_count(group->files);i++)
-    if (((Tagged_File*)eina_inarray_nth(group->files, i))->filename) {
+  for(i=0;i<filegroup_count(group);i++)
+    if (filegroup_nth(group, i)) {
       idx_cp = malloc(sizeof(int));
       *idx_cp = i;
-      item = elm_list_item_append(group_list, ((Tagged_File*)eina_inarray_nth(group->files, i))->filename, NULL, NULL, &on_group_select, idx_cp);
+      item = elm_list_item_append(group_list, filegroup_nth(group, i), NULL, NULL, &on_group_select, idx_cp);
       if (group_idx == i) {
+	fixme_no_group_select = EINA_TRUE;
 	elm_list_item_selected_set(item, EINA_TRUE);
+	fixme_no_group_select = EINA_FALSE;
       }
     }
-    
-    
-  printf("configuration delay b: %f\n", bench_delay_get());
-
+  
   elm_list_go(group_list);
   
   //update tag list
-  elm_genlist_clear(tags_list);
+
+  if (filegroup_tags_valid(cur_group)) {
+    //FIXME update instead of clean
+    elm_genlist_clear(tags_list);
+    eina_hash_foreach(tagfiles_known_tags(files), tags_hash_func, cur_group);
   
-  printf("configuration delay b1: %f\n", bench_delay_get());
+    //update tag rating
+    elm_segment_control_item_selected_set(elm_segment_control_item_get(seg_rating, filegroup_rating(group)), EINA_TRUE);
+  }
   
-  //FIXME why is this so fucking slow?
-  eina_hash_foreach(known_tags, tags_hash_func, group);
+  printf("late configuration delay: %f\n", bench_delay_get());  
   
-  printf("configuration delay b2: %f\n", bench_delay_get());
-  
-  //update tag rating
-  elm_segment_control_item_selected_set(elm_segment_control_item_get(seg_rating, group->tag_rating), EINA_TRUE);
-  
-  printf("configuration delay c: %f\n", bench_delay_get());  
-  
-  elm_slider_value_set(file_slider, file_idx+0.1);
+  elm_slider_value_set(file_slider, tagfiles_idx(files));
 }
 
 void del_file_done(void *data, Eio_File *handler)
@@ -1828,14 +1678,15 @@ void del_file_error(void *data, Eio_File *handler, int error)
   printf("del failed with %s on %s!\n", strerror(error), (char*)data);
 }
 
-void file_group_del(File_Group *group)
+/*void file_group_del(File_Group *group)
 {
   //FIXME
-}
+}*/
 
 void delete_image_do(void *data, Evas_Object *obj)
 {
-  char dest[EINA_PATH_MAX];
+  abort();
+  /*char dest[EINA_PATH_MAX];
   char *filenem;
   
   Tagged_File *file;
@@ -1869,7 +1720,7 @@ void delete_image_do(void *data, Evas_Object *obj)
   
   step_image_do(NULL, NULL);
   
-  file_group_del(group);
+  file_group_del(group);*/
 }
 
 
@@ -1945,9 +1796,8 @@ typedef struct {
 
 void start_single_export(Export_Data *export, Export_Job *job)
 {
-  Eina_Array *dirs;
   char dst[2048];
-  char *filename;
+  const char *filename;
   
   
   if (!job) {
@@ -1961,9 +1811,9 @@ void start_single_export(Export_Data *export, Export_Job *job)
   filename = ecore_file_file_get(job->filename);
   
   if (job->filterchain)
-    sprintf(dst, "limedo \'%s,savejpeg:filename=%s/%s\' \'%s\'", job->filterchain, job->export->path, filename, job->filename);
+    sprintf(dst, "limedo \'%s,savejpeg:filename=%s/%s\' \'%s\'", job->filterchain, string_escape_colon(job->export->path), string_escape_colon(filename), job->filename);
   else
-    sprintf(dst, "limedo \'savejpeg:filename=%s/%s\' \'%s\'", job->export->path, filename, job->filename);
+    sprintf(dst, "limedo \'savejpeg:filename=%s/%s\' \'%s\'", string_escape_colon(job->export->path), string_escape_colon(filename), job->filename);
 
   printf("start export of: %s\n", dst);
   ecore_exe_run(dst, job);
@@ -1972,7 +1822,7 @@ void start_single_export(Export_Data *export, Export_Job *job)
 
 static Eina_Bool _rsync_term(void *data, int type, void *event)
 {
-  int i;
+//  int i;
   Ecore_Exe_Event_Del *del_event = event;
   Export_Job *job = ecore_exe_data_get(del_event->exe);
   
@@ -2012,6 +1862,8 @@ on_exe_images_rsync(void *data, Evas_Object *obj, void *event_info)
   Export_Data *export = calloc(sizeof(Export_Data), 1);
   Export_Job *job;
   
+  //FIXME check if we finished scanning?
+  
   export->extensions = elm_entry_entry_get(export_extensions);
   if (export->extensions && !strlen(export->extensions)) {
     export->extensions = NULL;
@@ -2027,17 +1879,17 @@ on_exe_images_rsync(void *data, Evas_Object *obj, void *event_info)
   
   elm_progressbar_value_set(export->eo_progress, 0.0);
   
-  for(i=0;i<eina_inarray_count(files);i++) {
-    group = eina_inarray_nth(files, i);
+  for(i=0;i<tagfiles_count(files);i++) {
+    group = tagfiles_nth(files, i);
     if (group_in_filters(group, tags_filter)) {
-      for(j=0;j<eina_inarray_count(group->files);j++) {
-	filename = ((Tagged_File*)eina_inarray_nth(group->files, j))->filename;
+      for(j=0;j<filegroup_count(group);j++) {
+	filename = filegroup_nth(group, j);
 	if (filename && (!export->extensions || (strstr(filename, export->extensions) && strlen(strstr(filename, export->extensions)) == strlen (export->extensions) ))) {
 	  if (!export->list)
 	    export->list = eina_array_new(32);
 	  job = malloc(sizeof(Export_Job));
 	  job->filename = filename;
-	  job->filterchain = group->last_fc;
+	  job->filterchain = filegroup_filterchain(group);
 	  job->export = export;
 	  eina_array_push(export->list, job);
 	}
@@ -2053,7 +1905,6 @@ on_exe_images_rsync(void *data, Evas_Object *obj, void *event_info)
   
   for(i=0;i<ecore_thread_max_get();i++)
     start_single_export(export, NULL);
-    
 }
 
 static void
@@ -2143,16 +1994,15 @@ on_origscale_image(void *data, Evas_Object *obj, void *event_info)
 static void
 on_next_image(void *data, Evas_Object *obj, void *event_info)
 {
-  file_step = 1;
+  last_file_step = 1;
   
   //already waiting for an action?
-  if (!pending_action) {
+  if (!pending_action && files) {
     hacky_idle_iter_pending = HACK_ITERS_FOR_REAL_IDLE;
+    
     bench_delay_start();
+    tagfiles_step(files, last_file_step);
 
-    elm_slider_value_set(file_slider, wrap_files_idx(elm_slider_value_get(file_slider)+1)+0.1);
-
-    //FIXME delay worker until we have shown the preview?
     if (mat_cache_old && !worker)
       _display_preview(NULL);
     workerfinish_schedule(&step_image_do, NULL, NULL);
@@ -2168,14 +2018,14 @@ on_delete_image(void *data, Evas_Object *obj, void *event_info)
 static void
 on_prev_image(void *data, Evas_Object *obj, void *event_info)
 {
-  file_step = -1;
+  last_file_step = -1;
   
   //already waiting for an action?
-  if (!pending_action) {
+  if (!pending_action && files) {
     hacky_idle_iter_pending = HACK_ITERS_FOR_REAL_IDLE;
     
     bench_delay_start();
-    elm_slider_value_set(file_slider, wrap_files_idx(elm_slider_value_get(file_slider)-0.9));
+    tagfiles_step(files, last_file_step);
     
     if (mat_cache_old && !worker)
       _display_preview(NULL);
@@ -2220,113 +2070,144 @@ on_zoom_in(void *data, Evas_Object *obj, void *event_info)
   zoom_in_do();
 }
 
-
-static void
-_ls_done_cb(void *data, Eio_File *handler)
+Eina_Bool _idle_progress_printer(void *data)
 {
-  Eina_List *l, *l_next;
-  const char *file;
-  Eina_Compare_Cb cmp_func = (Eina_Compare_Cb)strcmp;
+  Tagfiles *tagfiles = data;
+  char buf[64];
   
-  file_idx = 0;
-  group_idx = 0;
+  sprintf(buf, "scanned %d files in %d dirs", tagfiles_scanned_files(tagfiles), tagfiles_scanned_dirs(tagfiles));
   
+  elm_object_text_set(load_label, buf);
+  
+  if (files_new) {
+    if (files)
+      tagfiles_del(files);
+    files = files_new;
+    files_new = NULL;
+  
+    elm_slider_min_max_set(file_slider, 0, tagfiles_count(files)-1);
+    evas_object_smart_callback_add(file_slider, "changed", &on_jump_image, NULL);
+    elm_slider_value_set(file_slider, 0);
+    evas_object_size_hint_weight_set(file_slider, EVAS_HINT_EXPAND, 0);
+    evas_object_size_hint_align_set(file_slider, EVAS_HINT_FILL, 0);
+    elm_slider_unit_format_set(file_slider, "%.0f");
+    evas_object_show(file_slider);
+    
+    if (!gridbox) {
+      gridbox = elm_box_add(win);
+      elm_object_content_set(scroller, gridbox);
+      evas_object_size_hint_weight_set(gridbox, EVAS_HINT_EXPAND, EVAS_HINT_EXPAND);
+      evas_object_size_hint_align_set(gridbox, EVAS_HINT_FILL, EVAS_HINT_FILL);
+      evas_object_show(gridbox);
+      
+      grid = elm_grid_add(win);
+      clipper = evas_object_rectangle_add(evas_object_evas_get(win));
+      elm_grid_pack(grid, clipper, 0, 0, size.width, size.height);
+      evas_object_size_hint_min_set(grid,  200, 200);
+      elm_box_recalculate(gridbox);
+      elm_box_pack_start(gridbox, grid);
+      evas_object_show(grid);
+    }
+    
+    //grid_setsize();
+    
+    bench_delay_start();
+    
+    evas_object_show(scroller);
+  
+    //grid_setsize(); 
+    step_image_do(NULL, NULL);
+  }
+  else
+    elm_slider_min_max_set(file_slider, 0, tagfiles_count(files)-1);
+  
+  return ECORE_CALLBACK_PASS_ON;
+}
+
+static void _ls_progress_cb(Tagfiles *tagfiles, void *data)
+{
+  if (!idle_progress_print)
+    idle_progress_print = ecore_idle_enterer_add(&_idle_progress_printer, tagfiles);
+}
+
+static void _ls_done_cb(Tagfiles *tagfiles, void *data)
+{
   evas_object_del(load_notify);
   
-  //FIXME free and clean old stuff!
-  files = NULL;
-  files = eina_inarray_new(sizeof(File_Group), 32);
+  printf("ls done!\n");
   
-  files_unsorted = eina_list_sort(files_unsorted, 0, cmp_func);
-  EINA_LIST_FOREACH_SAFE(files_unsorted, l, l_next, file)
-    insert_file(file);
-  files_unsorted = NULL;
-
-  if (!eina_inarray_count(files)) {
-    printf("no files found!\n");
-    //workerfinish_schedule(&elm_exit_do, NULL, NULL);
-    return;
+  if (idle_progress_print) {
+    ecore_idle_enterer_del(idle_progress_print);
+    idle_progress_print = NULL;
   }
-	
-  elm_slider_min_max_set(file_slider, 0, eina_inarray_count(files)-1);
-  evas_object_smart_callback_add(file_slider, "changed", &on_jump_image, NULL);
-  elm_slider_value_set(file_slider, 0);
-  evas_object_size_hint_weight_set(file_slider, EVAS_HINT_EXPAND, 0);
-  evas_object_size_hint_align_set(file_slider, EVAS_HINT_FILL, 0);
-  elm_slider_unit_format_set(file_slider, "%.0f");
-  evas_object_show(file_slider);
   
+  if (files_new) {
+    if (files)
+      tagfiles_del(files);
+    files = files_new;
+    files_new = NULL;
   
-  if (!gridbox) {
-    gridbox = elm_box_add(win);
-    elm_object_content_set(scroller, gridbox);
-    evas_object_size_hint_weight_set(gridbox, EVAS_HINT_EXPAND, EVAS_HINT_EXPAND);
-    evas_object_size_hint_align_set(gridbox, EVAS_HINT_FILL, EVAS_HINT_FILL);
-    evas_object_show(gridbox);
+    elm_slider_min_max_set(file_slider, 0, tagfiles_count(files)-1);
+    evas_object_smart_callback_add(file_slider, "changed", &on_jump_image, NULL);
+    elm_slider_value_set(file_slider, 0);
+    evas_object_size_hint_weight_set(file_slider, EVAS_HINT_EXPAND, 0);
+    evas_object_size_hint_align_set(file_slider, EVAS_HINT_FILL, 0);
+    elm_slider_unit_format_set(file_slider, "%.0f");
+    evas_object_show(file_slider);
     
-    grid = elm_grid_add(win);
-    clipper = evas_object_rectangle_add(evas_object_evas_get(win));
-    elm_grid_pack(grid, clipper, 0, 0, size.width, size.height);
-    evas_object_size_hint_min_set(grid,  200, 200);
-    elm_box_recalculate(gridbox);
-    elm_box_pack_start(gridbox, grid);
-    evas_object_show(grid);
-  }
-  
-  elm_genlist_clear(tags_filter_list);
-  eina_hash_foreach(known_tags, tags_hash_filter_func, NULL);
-  
-  
-  //grid_setsize();
-  
-  bench_delay_start();
-  
-  evas_object_show(scroller);
- 
-  //grid_setsize(); 
-  step_image_do(NULL, NULL);
-}
-
-static void
-_ls_main_cb(void *data, Eio_File *handler, const Eina_File_Direct_Info *info)
-{
-  const char *file;
-  char buf[64];
-
-  if (info->type != EINA_FILE_DIR) {
-    file_count++;
-    file = eina_stringshare_add(info->path);
-    files_unsorted = eina_list_append(files_unsorted, file);
+    if (!gridbox) {
+      gridbox = elm_box_add(win);
+      elm_object_content_set(scroller, gridbox);
+      evas_object_size_hint_weight_set(gridbox, EVAS_HINT_EXPAND, EVAS_HINT_EXPAND);
+      evas_object_size_hint_align_set(gridbox, EVAS_HINT_FILL, EVAS_HINT_FILL);
+      evas_object_show(gridbox);
+      
+      grid = elm_grid_add(win);
+      clipper = evas_object_rectangle_add(evas_object_evas_get(win));
+      elm_grid_pack(grid, clipper, 0, 0, size.width, size.height);
+      evas_object_size_hint_min_set(grid,  200, 200);
+      elm_box_recalculate(gridbox);
+      elm_box_pack_start(gridbox, grid);
+      evas_object_show(grid);
+    }
     
-    sprintf(buf, "found %d files", file_count);
-    //FIXME this takes a lot of time when called with all files!
-    //if (file_count % 17 == 0)
-    elm_object_text_set(load_label, strdup(buf));
+    //elm_genlist_clear(tags_filter_list);
+    //eina_hash_foreach(known_tags, tags_hash_filter_func, NULL);
+    
+    
+    //grid_setsize();
+    
+    bench_delay_start();
+    
+    evas_object_show(scroller);
+  
+    //grid_setsize(); 
+    step_image_do(NULL, NULL);
   }
-}
-
-static void
-_ls_error_cb(void *data, Eio_File *handler, int error)
-{
-  fprintf(stderr, "error: [%s]\n", strerror(error));
-  workerfinish_schedule(&elm_exit_do, NULL, NULL);
+  else
+    elm_slider_min_max_set(file_slider, 0, tagfiles_count(files)-1);
 }
 
 void on_open_dir(char *path)
 { 
-  dir = path;
+  char *dir = path;
+
   if (dir) {
-    file_count = 0;
     printf("open dir %s\n", path);
-    elm_fileselector_button_path_set(fsb, dir);
-    eio_dir_direct_ls(dir, &_ls_filter_cb, &_ls_main_cb,&_ls_done_cb, &_ls_error_cb,NULL);
     
+    if (files_new) {
+      tagfiles_del(files_new);
+      files_new = NULL;
+    }
+    
+    elm_fileselector_button_path_set(fsb, dir);
     load_notify = elm_notify_add(win);
     load_label = elm_label_add(load_notify);
-    elm_object_text_set(load_label, "found 0 files");
+    elm_object_text_set(load_label, "found 0 files groups");
     elm_object_content_set(load_notify, load_label);
     evas_object_show(load_label);
     evas_object_show(load_notify);
+    files_new = tagfiles_new_from_dir(dir, _ls_progress_cb, _ls_done_cb, on_known_tags_changed);
   }
 }
 
@@ -2380,95 +2261,6 @@ static void on_insert_after(void *data, Evas_Object *obj, void *event_info)
   bench_delay_start();
   
   workerfinish_schedule(&insert_after_do, NULL, NULL);
-}
-
-Tagged_File tag_file_new(File_Group *group, const char *name)
-{
-  Tagged_File file = {NULL, NULL, NULL};
-  
-  if (eina_str_has_extension(name, ".xmp")) {
-    //FIXME only one sidecar per group for now
-    if (group->sidecar)
-      printf("FIXME multiple sidecar: %s\n", name);
-    else
-      group->sidecar = file.sidecar;
-    assert(!file.sidecar);
-    file.sidecar = name;
-    xmp_gettags(name, group);
-  }
-  else 
-    file.filename = name;
-
-  return file;
-}
-
-File_Group *file_group_new(const char *name)
-{
-  Tagged_File file_new;
-  File_Group *group = calloc(sizeof(File_Group), 1);
-  
-  group->files = eina_inarray_new(sizeof(Tagged_File), 2);
-  group->tags = eina_hash_string_superfast_new(NULL); //eina_hash_stringshared_new(NULL);
-  
-  file_new = tag_file_new(group, name);
-  eina_inarray_push(group->files, &file_new);
-  
-  return group;
-}
-
-void file_group_add(File_Group *group, const char *name)
-{
-  Tagged_File file_new;
-  //FIXME handel fitting sidecar and images
-  
-  file_new = tag_file_new(group, name);
-  eina_inarray_push(group->files, &file_new);
-}
-
-void insert_file(const char *file)
-{
-  const char *last_name;
-  File_Group *last_group;
-  
-  if (!eina_inarray_count(files)) {
-    eina_inarray_push(files, file_group_new(file));
-    return;
-  }
-  
-  last_group = eina_inarray_nth(files, eina_inarray_count(files)-1);
-  
-  last_name = ((Tagged_File*)eina_inarray_nth(last_group->files, 0))->filename;
-  if (!last_name)
-    last_name = ((Tagged_File*)eina_inarray_nth(last_group->files, 0))->sidecar;
-  
-  if (files_similar(last_name, file)) {
-    file_group_add(last_group, file);
-    return;
-  }
-  
-  eina_inarray_push(files, file_group_new(file));
-}
-
-int cmp_img_file(char *a, char *b)
-{
-	if (strlen(a) == 12 && strlen(b) == 12 && a[0] == 'P' && b[0] == 'P' && a[8] == '.' && b[8] == '.')
-		//cmp just file number not date
-		return strcmp(a+4, b+4);
-	
-	return strcmp(a, b);
-	
-}
-
-int cmp_tagged_files(Tagged_File *a, Tagged_File *b)
-{
-  int cmp;
-   
-  cmp = strcmp(a->dirname, b->dirname);
-  
-  if (!cmp)
-    cmp = strcmp(a->filename, b->filename);
-  
-  return cmp;
 }
 
 static void on_tab_select(void *data, Evas_Object *obj, void *event_info)
@@ -2729,190 +2521,12 @@ Evas_Object *settings_box_add(Evas_Object *parent)
   return box;
 }
 
-Eina_Bool xmp_add_tags_lr_func(const Eina_Hash *hash, const void *key, void *data, void *fdata)
-{
-  const char *tag = data;
-  XmpPtr xmp = fdata;
-  
-  xmp_append_array_item(xmp, "http://ns.adobe.com/lightroom/1.0/", "lr:hierarchicalSubject", XMP_PROP_ARRAY_IS_UNORDERED, tag, 0);
-  
-  return 1;
-}
 
-Eina_Bool xmp_add_tags_dc_func(const Eina_Hash *hash, const void *key, void *data, void *fdata)
-{
-  const char *tag = data;
-  XmpPtr xmp = fdata;
-  
-  xmp_append_array_item(xmp, "http://purl.org/dc/elements/1.1/", "dc:subject", XMP_PROP_ARRAY_IS_UNORDERED, tag, 0);
-  
-  return 1;
-}
-
-Eina_Bool xmp_add_tags_dk_func(const Eina_Hash *hash, const void *key, void *data, void *fdata)
-{
-  char *tag = data;
-  char *replace;
-  XmpPtr xmp = fdata;
-  
-  while ((replace = strchr(tag, '|')))
-    *replace = '/';
-  
-  xmp_append_array_item(xmp, "http://www.digikam.org/ns/1.0/", "digiKam:TagsList", XMP_PROP_ARRAY_IS_UNORDERED, tag, 0);
-  
-  //FIXME
-  //free(tag);
-  
-  return 1;
-}
-
-static void new_tag_file(File_Group *group)
-{
-  FILE *f;
-  const char *buf;
-  XmpPtr xmp;
-  XmpStringPtr xmp_buf = xmp_string_new();
-  
-  xmp = xmp_new_empty();
-  xmp_register_namespace("http://ns.adobe.com/lightroom/1.0/", "lr", NULL);
-  xmp_register_namespace("http://purl.org/dc/elements/1.1/", "dc", NULL);
-  xmp_register_namespace("http://www.digikam.org/ns/1.0/", "digiKam", NULL);
-  xmp_register_namespace("http://technik-stinkt.de/lime/0.1/", "lime", NULL);
-  
-  eina_hash_foreach(group->tags, xmp_add_tags_lr_func, xmp);
-  eina_hash_foreach(group->tags, xmp_add_tags_dc_func, xmp);
-  eina_hash_foreach(group->tags, xmp_add_tags_dk_func, xmp);
-  
-  if (group->tag_rating) {
-    if (!xmp_prefix_namespace_uri("xmp", NULL))
-      xmp_register_namespace("http://ns.adobe.com/xap/1.0/", "xmp", NULL);
-    xmp_set_property_int32(xmp, "http://ns.adobe.com/xap/1.0/", "xmp:Rating", group->tag_rating, 0);
-  }
-  
-  if (group->last_fc)
-    xmp_set_property(xmp, "http://technik-stinkt.de/lime/0.1/", "lime:lastFilterChain", group->last_fc, 0);
-  
-  xmp_serialize(xmp, xmp_buf, XMP_SERIAL_OMITPACKETWRAPPER | XMP_SERIAL_USECOMPACTFORMAT, 0);
-  
-  f = fopen(group->sidecar, "w");
-  assert(f);
-  buf = xmp_string_cstr(xmp_buf);
-  fprintf(f, "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n%s\n", buf);
-  fclose(f);
-  
-  xmp_string_free(xmp_buf);
-  xmp_free(xmp);
-  
-  printf("wrote new tag file!\n");
-}
-
-
-void add_group_sidecar(File_Group *group)
-{
-  char *buf;
-  Tagged_File *file;
-  
-  if (group->sidecar)
-    return;
-  
-  //FIXME find a better way to find a xmp filename!
-  EINA_INARRAY_FOREACH(group->files, file) {
-    assert(file->filename);
-    if (!strcmp(file->filename+strlen(file->filename)-4, ".jpg") || !strcmp(file->filename+strlen(file->filename)-4, ".JPG")) {
-      buf = malloc(strlen(file->filename)+5);
-      sprintf(buf, "%s.xmp", file->filename);
-      group->sidecar = buf;
-      file->sidecar = group->sidecar;
-      return;
-    }
-  }
-
-  file = eina_inarray_nth(group->files, 0);
-  buf = malloc(strlen(file->filename+5));
-  sprintf(buf, "%s.xmp", file->filename);
-  group->sidecar = buf;
-  file->sidecar = group->sidecar;
-}
-
-void save_sidecar(File_Group *group)
-{
-  int len;
-  FILE *f;
-  XmpStringPtr xmp_buf = xmp_string_new();
-  char *buf = malloc(MAX_XMP_FILE);
-  XmpPtr xmp;
-  
-  add_group_sidecar(group);
-    
-  f = fopen(group->sidecar, "r");
-  
-  if (!f) {
-    new_tag_file(group);
-    return;
-  }
-  
-  len = fread(buf, 1, MAX_XMP_FILE, f);
-  fclose(f);
-  
-  xmp = xmp_new(buf, len);
-  free(buf);
-  
-  if (!xmp) {
-    printf("xmp parse failed, overwriting with new!\n");
-    xmp_free(xmp);
-    new_tag_file(group);
-    return;
-  }
-  
-  if (!xmp_prefix_namespace_uri("lr", NULL))
-      xmp_register_namespace("http://ns.adobe.com/lightroom/1.0/", "lr", NULL);
-  
-  if (!xmp_prefix_namespace_uri("dc", NULL))
-    xmp_register_namespace("http://purl.org/dc/elements/1.1/", "dc", NULL);
-  
-  if (!xmp_prefix_namespace_uri("digiKam", NULL))
-    xmp_register_namespace("http://www.digikam.org/ns/1.0/", "digiKam", NULL);
-  
-  if (!xmp_prefix_namespace_uri("lime", NULL))
-    xmp_register_namespace("http://technik-stinkt.de/lime/0.1/", "lime", NULL);
-  
-  //delete all keyword tags 
-  xmp_delete_property(xmp, "http://ns.adobe.com/lightroom/1.0/", "lr:hierarchicalSubject");
-  xmp_delete_property(xmp, "http://www.digikam.org/ns/1.0/", "digiKam:TagsList");
-  xmp_delete_property(xmp, "http://ns.microsoft.com/photo/1.0/", "MicrosoftPhoto:LastKeywordXMP");
-  xmp_delete_property(xmp, "http://purl.org/dc/elements/1.1/", "dc:subject");
-  xmp_delete_property(xmp, "http://ns.adobe.com/xap/1.0/", "xmp:Rating");
-  xmp_delete_property(xmp, "http://technik-stinkt.de/lime/0.1/", "lime:lastFilterChain");
-
-  eina_hash_foreach(group->tags, xmp_add_tags_lr_func, xmp);
-  eina_hash_foreach(group->tags, xmp_add_tags_dc_func, xmp);
-  eina_hash_foreach(group->tags, xmp_add_tags_dk_func, xmp);
-
-  if (group->tag_rating) {
-    if (!xmp_prefix_namespace_uri("xmp", NULL))
-      xmp_register_namespace("http://ns.adobe.com/xap/1.0/", "xmp", NULL);
-    xmp_set_property_int32(xmp, "http://ns.adobe.com/xap/1.0/", "xmp:Rating", group->tag_rating, 0);
-  }
-
-  if (group->last_fc)
-    xmp_set_property(xmp, "http://technik-stinkt.de/lime/0.1/", "lime:lastFilterChain", group->last_fc, 0);
-      
-  xmp_serialize(xmp, xmp_buf, XMP_SERIAL_OMITPACKETWRAPPER | XMP_SERIAL_USECOMPACTFORMAT, 0);
-  
-  buf = (char*)xmp_string_cstr(xmp_buf);
-  
-  f = fopen(group->sidecar, "w");
-  assert(f);
-  buf = (char*)xmp_string_cstr(xmp_buf);
-  fprintf(f, "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n%s\n", buf);
-  fclose(f);
-  
-  xmp_string_free(xmp_buf);
-  xmp_free(xmp);
-}
 
 static void on_new_tag(void *data, Evas_Object *obj, void *event_info)
 {
+  abort();
+  /*
   const char *new = elm_entry_entry_get((Evas_Object*)data);
   
   if (eina_hash_find(known_tags, new))
@@ -2925,25 +2539,21 @@ static void on_new_tag(void *data, Evas_Object *obj, void *event_info)
   //update tag list
   //FIXME only clear needed!
   elm_genlist_clear(tags_list);
-  /*evas_object_del(tags_list);
-  
-  tags_list =  elm_genlist_add(win);
-  elm_object_tree_focus_allow_set(tags_list, EINA_FALSE);
-  elm_box_pack_start(tab_tags, tags_list);
-  elm_genlist_select_mode_set(tags_list, ELM_OBJECT_SELECT_MODE_NONE);
-  evas_object_size_hint_weight_set(tags_list, EVAS_HINT_EXPAND, EVAS_HINT_EXPAND);
-  evas_object_size_hint_align_set(tags_list, EVAS_HINT_FILL, EVAS_HINT_FILL);
-  evas_object_show(tags_list);*/
   
   eina_hash_foreach(known_tags, tags_hash_func, (File_Group*)eina_inarray_nth(files, file_idx));
   
   //update filter list
   elm_genlist_clear(tags_filter_list);
   eina_hash_foreach(known_tags, tags_hash_filter_func, NULL);
+  */
 }
 
 static void on_tag_changed(void *data, Evas_Object *obj, void *event_info)
 {
+  abort();
+  /*
+  assert(cur_group);
+  
   Tags_List_Item_Data *tag = data;
   File_Group *group = (File_Group*)eina_inarray_nth(files, file_idx);
   
@@ -2955,15 +2565,15 @@ static void on_tag_changed(void *data, Evas_Object *obj, void *event_info)
     eina_hash_del_by_key(tag->group->tags, tag->tag);
   }
   
-  save_sidecar(tag->group);
+  filegroup_filterchain_set(cur_group, lime_filter_chain_serialize(((Filter_Chain*)eina_list_data_get(eina_list_next(filter_chain)))->f));
   
   if (!group_in_filters(group, tags_filter))
-    step_image_do(NULL, NULL);
+    step_image_do(NULL, NULL);*/
 }
 
 static void on_tag_filter_changed(void *data, Evas_Object *obj, void *event_info)
 {
-  File_Group *group = (File_Group*)eina_inarray_nth(files, file_idx);
+  File_Group *group = cur_group;
   char *tag;
   
   tag = data;
@@ -2982,16 +2592,22 @@ static void on_tag_filter_changed(void *data, Evas_Object *obj, void *event_info
 
 static void on_rating_changed(void *data, Evas_Object *obj, void *event_info)
 {
+  abort();
+  /*
+  assert(cur_group);
+  
   File_Group *group = (File_Group*)eina_inarray_nth(files, file_idx);
   
   group->tag_rating = elm_segment_control_item_index_get(elm_segment_control_item_selected_get(obj));
   
-  save_sidecar(group);
+  filegroup_filterchain_set(cur_group, lime_filter_chain_serialize(((Filter_Chain*)eina_list_data_get(eina_list_next(filter_chain)))->f));
+  */
 }
 
 static void on_filter_rating_changed(void *data, Evas_Object *obj, void *event_info)
 {
-  File_Group *group = (File_Group*)eina_inarray_nth(files, file_idx);
+  abort();
+  File_Group *group = cur_group;
   
   tags_filter_rating = elm_segment_control_item_index_get(elm_segment_control_item_selected_get(obj));
   
@@ -3011,7 +2627,7 @@ static Evas_Object *_tag_gen_cont_get(void *data, Evas_Object *obj, const char *
   elm_object_focus_allow_set(check, EINA_FALSE);
 
   elm_object_part_text_set(check, "default", tag->tag);
-  if (eina_hash_find(tag->group->tags, tag->tag))
+  if (eina_hash_find(filegroup_tags(tag->group), tag->tag))
     elm_check_state_set(check, EINA_TRUE);
 
   evas_object_smart_callback_add(check, "changed", on_tag_changed, tag);
@@ -3045,7 +2661,7 @@ static Evas_Object *_tag_filter_cont_get(void *data, Evas_Object *obj, const cha
 
 static Evas_Object *export_box_add(Evas_Object *parent)
 {
-  Evas_Object *btn, *sel;
+  Evas_Object *btn;
   
   export_box = elm_box_add(parent);
   evas_object_size_hint_weight_set(export_box, EVAS_HINT_EXPAND, EVAS_HINT_EXPAND);
@@ -3126,6 +2742,7 @@ elm_main(int argc, char **argv)
   int help;
   int cache_strategy, cache_metric, cache_size;
   char *file;
+  char *dir;
   Evas_Object *hbox, *frame, *hpane, *seg_filter_rating, *entry, *btn;
   Eina_List *filters = NULL;
   select_filter_func = NULL;
@@ -3141,11 +2758,9 @@ elm_main(int argc, char **argv)
   eio_init();
   elm_init(argc, argv);
   
-  xmp_init();
+  tagfiles_init();
   
   elm_config_scroll_thumbscroll_enabled_set(EINA_TRUE);
-  files = NULL;
-  file_idx = -1;
   
   max_workers = ecore_thread_max_get();
   
@@ -3166,7 +2781,7 @@ elm_main(int argc, char **argv)
   
   //known_tags = eina_hash_stringshared_new(NULL);
   //tags_filter = eina_hash_stringshared_new(NULL);
-  known_tags = eina_hash_string_superfast_new(NULL);
+//  known_tags = eina_hash_string_superfast_new(NULL);
   tags_filter = eina_hash_string_superfast_new(NULL);
   
   //strcpy(image_path, dir);
@@ -3423,10 +3038,7 @@ elm_main(int argc, char **argv)
   evas_object_show(filter_list);
   
   fc_new_from_filters(filters);
-  
-  if (file)
-    eina_inarray_push(files, file_group_new(file));
-  
+   
   on_open_dir(dir);
   
   /*test_filter_config(load);
@@ -3464,7 +3076,7 @@ elm_main(int argc, char **argv)
     bench_report();
   lime_shutdown();
   
-  xmp_terminate();
+  tagfiles_shutdown();
   
   eio_shutdown();
   elm_shutdown();

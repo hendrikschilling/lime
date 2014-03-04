@@ -164,6 +164,10 @@ int _loadtiff_input_fixed(Filter *f)
     return -1;
   }
   
+  if (!twidth || !theight) {
+    printf("FIXME: TIFF unsupported tile configuration %dx%d\n", twidth, theight);
+  }
+  
   ((Dim*)data->dim)->width = width;
   ((Dim*)data->dim)->height = height;
   ((Dim*)data->dim)->scaledown_max = 0;
