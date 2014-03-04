@@ -92,24 +92,27 @@ int filegroup_cmp(File_Group **a, File_Group **b)
   return strcmp(fa->filename, fb->filename);
 }
 
+Eina_Bool filegroup_tags_valid(File_Group *group)
+{
+  //FIXME load tags and GROUP_COMPLETE handling
+  if (group->state != GROUP_LOADED)
+    return EINA_FALSE;
+  
+  return EINA_TRUE;
+}
+
 Eina_Hash *filegroup_tags(File_Group *group)
 {
-  if (group->state != GROUP_LOADED) {
-    //FIXME we have to check that this group is alrey scanned!
-    xmp_gettags(group);
-    group->state = GROUP_LOADED;
-  }
+  if (group->state != GROUP_LOADED)
+    abort();
   
   return group->tags;
 }
 
 int filegroup_rating(File_Group *group)
 {
-  if (group->state != GROUP_LOADED) {
-    //FIXME we have to check that this group is alrey scanned!
-    xmp_gettags(group);
-    group->state = GROUP_LOADED;
-  }
+  if (group->state != GROUP_LOADED)
+    abort();
   
   return (int)group->tag_rating;
 }
@@ -165,9 +168,7 @@ int tagfiles_scanned_dirs(Tagfiles *tagfiles)
 }
 
 Eina_Hash *tagfiles_known_tags(Tagfiles *tagfiles)
-{
-  filegroup_tags(tagfiles_get(tagfiles));
-  
+{  
   return tagfiles->known_tags;
 }
 
@@ -263,6 +264,8 @@ int filegroup_count(File_Group *g)
 
 char *filegroup_filterchain(File_Group *g)
 {
+  assert(g->state == GROUP_LOADED);
+  
   return g->last_fc;
 }
 
@@ -393,6 +396,8 @@ void xmp_gettags(File_Group *group)
   XmpIteratorPtr iter;
   XmpStringPtr propValue;
   
+  group->state = GROUP_LOADED;
+  
   if (!group->sidecar)
     return;
   
@@ -456,8 +461,6 @@ void xmp_gettags(File_Group *group)
   xmp_free(xmp);
   free(buf);
   
-  
-  group->state = GROUP_LOADED;
   return;
 }
 
@@ -514,7 +517,7 @@ static void _ls_done_cb(void *data, Eio_File *handler)
   tagfiles->cur_dir_files_count = 0;
   
   if (!tagfiles->xmp_thread)
-    tagfiles->xmp_thread = ecore_thread_feedback_run(_xmp_scanner, _xmp_notify, _xmp_finish, NULL, tagfiles, EINA_FALSE);
+    tagfiles->xmp_thread = ecore_thread_feedback_run(_xmp_scanner, _xmp_notify, _xmp_finish, NULL, tagfiles, EINA_TRUE);
     
   //have finished dir - next dir is guaranteed to come after all files already seen
   tagfiles->unsorted_insert = EINA_FALSE;
@@ -669,15 +672,14 @@ static void new_tag_file(File_Group *group)
 
 void add_group_sidecar(File_Group *group)
 {
-  abort();
+  Tagged_File *file;
+  char *buf;
   
   if (group->sidecar)
     return;
   
-  return;
-  
   //FIXME find a better way to find a xmp filename!
-  /*EINA_INARRAY_FOREACH(group->files, &file) {
+  EINA_INARRAY_FOREACH(group->files, file) {
     assert(file->filename);
     if (!strcmp(file->filename+strlen(file->filename)-4, ".jpg") || !strcmp(file->filename+strlen(file->filename)-4, ".JPG")) {
       buf = malloc(strlen(file->filename)+5);
@@ -686,13 +688,13 @@ void add_group_sidecar(File_Group *group)
       file->sidecar = group->sidecar;
       return;
     }
-  }*/
+  }
 
-  /*file = eina_inarray_nth(group->files, 0);
+  file = eina_inarray_nth(group->files, 0);
   buf = malloc(strlen(file->filename+5));
   sprintf(buf, "%s.xmp", file->filename);
   group->sidecar = buf;
-  file->sidecar = group->sidecar;*/
+  file->sidecar = group->sidecar;
 }
 
 void save_sidecar(File_Group *group)
@@ -772,14 +774,12 @@ void save_sidecar(File_Group *group)
   xmp_free(xmp);
 }
 
-void set_filterchain_save_sidecar(void)
-{
-  abort();
-  /*
-  File_Group *group = eina_inarray_nth(files, file_idx);
-  
-  group->last_fc = lime_filter_chain_serialize(((Filter_Chain*)eina_list_data_get(eina_list_next(filter_chain)))->f);
+//
+
+void filegroup_filterchain_set(File_Group *group, const char *fc)
+{  
+  group->last_fc = fc;
   if (strrchr(group->last_fc, ','))
     *strrchr(group->last_fc, ',') = '\0';
-  save_sidecar(group);*/
+  save_sidecar(group);
 }

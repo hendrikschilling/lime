@@ -59,6 +59,7 @@ Ecore_Idle_Enterer *workerfinish_idle = NULL;
 Ecore_Idle_Enterer *idle_render = NULL;
 Ecore_Idle_Enterer *idle_progress_print = NULL;
 Ecore_Timer *timer_render = NULL;
+Eina_Array *taglist_add = NULL;
 int hacky_idle_iter_pending = 0;
 int hacky_idle_iter_render = 0;
 int quick_preview_only = 0;
@@ -229,6 +230,7 @@ void int_changed_do(void *data, Evas_Object *obj)
   Meta *m = data;
   
   assert(!worker);
+  assert(cur_group);
 
   forbid_fill++;
   
@@ -238,7 +240,7 @@ void int_changed_do(void *data, Evas_Object *obj)
   
   lime_config_test(sink);
   
-  set_filterchain_save_sidecar();
+  filegroup_filterchain_set(cur_group, lime_filter_chain_serialize(((Filter_Chain*)eina_list_data_get(eina_list_next(filter_chain)))->f));
   
   delgrid();
   
@@ -255,6 +257,7 @@ void float_changed_do(void *data, Evas_Object *obj)
   Meta *m = data;
   
   assert(!worker);
+  assert(cur_group);
   
   forbid_fill++;
   
@@ -264,7 +267,7 @@ void float_changed_do(void *data, Evas_Object *obj)
   
   lime_config_test(sink);
   
-  set_filterchain_save_sidecar();
+  filegroup_filterchain_set(cur_group, lime_filter_chain_serialize(((Filter_Chain*)eina_list_data_get(eina_list_next(filter_chain)))->f));
   
   delgrid();
   
@@ -287,6 +290,7 @@ void remove_filter_do(void *data, Evas_Object *obj)
   File_Group *group = eina_inarray_nth(files, file_idx);
   
   assert(!worker);
+  assert(cur_group);
 
   forbid_fill++;
   
@@ -301,8 +305,8 @@ void remove_filter_do(void *data, Evas_Object *obj)
   filter_chain = eina_list_remove_list(filter_chain, chain_node);
   
   lime_config_test(sink);
-  
-  set_filterchain_save_sidecar();
+ 
+  filegroup_filterchain_set(cur_group, lime_filter_chain_serialize(((Filter_Chain*)eina_list_data_get(eina_list_next(filter_chain)))->f));
   
   delgrid();
   
@@ -327,9 +331,9 @@ void fc_insert_filter(Filter *f, Eina_List *src, Eina_List *sink)
   Filter_Chain *fc_src, *fc_sink;
   Filter_Chain *fc;
   fc = fc_new(f);
-  abort();
-  //File_Group *group = eina_inarray_nth(files, file_idx);
     
+  assert(cur_group);
+  
   //we always have src or sink, but those might not have an elm_item!
   assert(src);
   assert(sink);
@@ -352,7 +356,7 @@ void fc_insert_filter(Filter *f, Eina_List *src, Eina_List *sink)
   filter_connect(fc_src->f, 0, f, 0);
   filter_connect(f, 0, fc_sink->f, 0);
   
-  set_filterchain_save_sidecar();
+  filegroup_filterchain_set(cur_group, lime_filter_chain_serialize(((Filter_Chain*)eina_list_data_get(eina_list_next(filter_chain)))->f));
   
   delgrid();
   
@@ -1448,7 +1452,7 @@ int group_in_filters(File_Group *group, Eina_Hash *filters)
 {
   Filter_Check_Data check;
   
-  if (filegroup_rating(group) < tags_filter_rating)
+  if (tags_filter_rating && filegroup_rating(group) < tags_filter_rating)
     return 0;
   
   //for or hash!
@@ -1458,7 +1462,7 @@ int group_in_filters(File_Group *group, Eina_Hash *filters)
     check.valid = 0;
   check.group = group;
   
-  if (filters)
+  if (filters && eina_hash_population(filters))
     eina_hash_foreach(filters, tag_filter_check_or_hash_func, &check);
   
   return check.valid;
@@ -1468,13 +1472,26 @@ void on_known_tags_changed(Tagfiles *tagfiles, void *data, const char *new_tag)
 {  
   Tags_List_Item_Data *tag;
   
-  if (cur_group) {
+  if (cur_group && filegroup_tags_valid(cur_group)) {
+    if (taglist_add) {
+      while (ea_count(taglist_add)) {
+	tag = malloc(sizeof(Tags_List_Item_Data));
+	tag->tag = eina_array_pop(taglist_add);
+	tag->group = cur_group;
+	elm_genlist_item_append(tags_list, tags_list_itc, tag, NULL, ELM_GENLIST_ITEM_NONE, NULL, NULL);
+      }
+      eina_array_free(taglist_add);
+      taglist_add = NULL;
+    }
+    
     tag = malloc(sizeof(Tags_List_Item_Data));
- 
     tag->tag = new_tag;
     tag->group = cur_group;
-    
     elm_genlist_item_append(tags_list, tags_list_itc, tag, NULL, ELM_GENLIST_ITEM_NONE, NULL, NULL);
+  }
+  else {
+    if (!taglist_add) taglist_add = eina_array_new(32);
+    eina_array_push(taglist_add, new_tag);
   }
   elm_genlist_item_append(tags_filter_list, tags_filter_itc, new_tag, NULL, ELM_GENLIST_ITEM_NONE, NULL, NULL);
 }
@@ -1533,7 +1550,7 @@ void step_image_do(void *data, Evas_Object *obj)
 	continue;
 	  }
 	  
-	  /*if (filegroup_filterchain(group)) {
+	  if (filegroup_tags_valid(group) && filegroup_filterchain(group)) {
 	    fc_del();
 	    filters = lime_filter_chain_deserialize(filegroup_filterchain(group));
 	    
@@ -1549,7 +1566,7 @@ void step_image_do(void *data, Evas_Object *obj)
 	    
 	    fc_new_from_filters(filters);
 	  }
-	  else*/ {
+	  else {
 	    fc_del();
 	    
 	    load = lime_filter_new("load");
@@ -1623,16 +1640,14 @@ void step_image_do(void *data, Evas_Object *obj)
   
   //update tag list
 
-  //FIXME update instead of clean
-  elm_genlist_clear(tags_list);
-  eina_hash_foreach(tagfiles_known_tags(files), tags_hash_func, cur_group);
+  if (filegroup_tags_valid(cur_group)) {
+    //FIXME update instead of clean
+    elm_genlist_clear(tags_list);
+    eina_hash_foreach(tagfiles_known_tags(files), tags_hash_func, cur_group);
   
-  //FIXME update instead of clean  
-  elm_genlist_clear(tags_filter_list);
-  eina_hash_foreach(tagfiles_known_tags(files), tags_hash_filter_func, NULL);
-  
-  //update tag rating
-  elm_segment_control_item_selected_set(elm_segment_control_item_get(seg_rating, filegroup_rating(group)), EINA_TRUE);
+    //update tag rating
+    elm_segment_control_item_selected_set(elm_segment_control_item_get(seg_rating, filegroup_rating(group)), EINA_TRUE);
+  }
   
   printf("late configuration delay: %f\n", bench_delay_get());  
   
@@ -2523,6 +2538,8 @@ static void on_tag_changed(void *data, Evas_Object *obj, void *event_info)
 {
   abort();
   /*
+  assert(cur_group);
+  
   Tags_List_Item_Data *tag = data;
   File_Group *group = (File_Group*)eina_inarray_nth(files, file_idx);
   
@@ -2534,7 +2551,7 @@ static void on_tag_changed(void *data, Evas_Object *obj, void *event_info)
     eina_hash_del_by_key(tag->group->tags, tag->tag);
   }
   
-  save_sidecar(tag->group);
+  filegroup_filterchain_set(cur_group, lime_filter_chain_serialize(((Filter_Chain*)eina_list_data_get(eina_list_next(filter_chain)))->f));
   
   if (!group_in_filters(group, tags_filter))
     step_image_do(NULL, NULL);*/
@@ -2562,11 +2579,14 @@ static void on_tag_filter_changed(void *data, Evas_Object *obj, void *event_info
 static void on_rating_changed(void *data, Evas_Object *obj, void *event_info)
 {
   abort();
-  /*File_Group *group = (File_Group*)eina_inarray_nth(files, file_idx);
+  /*
+  assert(cur_group);
+  
+  File_Group *group = (File_Group*)eina_inarray_nth(files, file_idx);
   
   group->tag_rating = elm_segment_control_item_index_get(elm_segment_control_item_selected_get(obj));
   
-  save_sidecar(group);
+  filegroup_filterchain_set(cur_group, lime_filter_chain_serialize(((Filter_Chain*)eina_list_data_get(eina_list_next(filter_chain)))->f));
   */
 }
 
