@@ -283,11 +283,9 @@ void del_filter_settings(void);
 
 void remove_filter_do(void *data, Evas_Object *obj)
 {
-  abort();
-  /*Eina_List *chain_node = data;
+  Eina_List *chain_node = data;
   Filter_Chain *fc = eina_list_data_get(chain_node);
   Filter_Chain *prev, *next;
-  File_Group *group = eina_inarray_nth(files, file_idx);
   
   assert(!worker);
   assert(cur_group);
@@ -301,21 +299,19 @@ void remove_filter_do(void *data, Evas_Object *obj)
   prev = eina_list_data_get(eina_list_prev(chain_node));
   next = eina_list_data_get(eina_list_next(chain_node));
   
+  filter_connect(prev->f, 0, next->f, 0);
+  
   del_filter_settings(); 
+  elm_object_item_del(fc->item);
   filter_chain = eina_list_remove_list(filter_chain, chain_node);
   
   lime_config_test(sink);
  
   filegroup_filterchain_set(cur_group, lime_filter_chain_serialize(((Filter_Chain*)eina_list_data_get(eina_list_next(filter_chain)))->f));
   
-  delgrid();
-  
-  size_recalc();
-  
   forbid_fill--;
   
-  fill_scroller_preview();
-  fill_scroller();*/
+  step_image_do();
 }
 
 void _on_filter_select(void *data, Evas_Object *obj, void *event_info)
@@ -331,6 +327,7 @@ void fc_insert_filter(Filter *f, Eina_List *src, Eina_List *sink)
   Filter_Chain *fc_src, *fc_sink;
   Filter_Chain *fc;
   fc = fc_new(f);
+  Eina_List *chain_node = NULL;
     
   assert(cur_group);
   
@@ -342,13 +339,16 @@ void fc_insert_filter(Filter *f, Eina_List *src, Eina_List *sink)
   fc_sink = eina_list_data_get(sink);
   
   filter_chain = eina_list_append_relative_list(filter_chain, fc, src);
+  chain_node = filter_chain;
+  while (eina_list_data_get(chain_node) != fc)
+    chain_node = eina_list_next(chain_node);
 
   if (fc_src->item)
-    fc->item = elm_list_item_insert_after(filter_list, fc_src->item, f->fc->name, NULL, NULL, &_on_filter_select, eina_list_prev(sink));
+    fc->item = elm_list_item_insert_after(filter_list, fc_src->item, f->fc->name, NULL, NULL, &_on_filter_select, chain_node);
   else if (fc_sink->item)
-    fc->item = elm_list_item_insert_before(filter_list, fc_sink->item, f->fc->name, NULL, NULL, &_on_filter_select, eina_list_prev(sink));
+    fc->item = elm_list_item_insert_before(filter_list, fc_sink->item, f->fc->name, NULL, NULL, &_on_filter_select, chain_node);
   else
-    fc->item = elm_list_item_append(filter_list, f->fc->name, NULL, NULL, &_on_filter_select, eina_list_prev(sink));
+    fc->item = elm_list_item_append(filter_list, f->fc->name, NULL, NULL, &_on_filter_select, chain_node);
   
   elm_list_item_selected_set(fc->item, EINA_TRUE);
   elm_list_go(filter_list);
@@ -1203,7 +1203,6 @@ void fc_del(void)
     //FIXME actually remove filters!
     if (fc->item) {
       elm_object_item_del(fc->item);
-      printf("del %p\n", fc->item);
     }
   }
   
@@ -1570,10 +1569,12 @@ void step_image_do(void *data, Evas_Object *obj)
 	      load = lime_filter_new("load");
 	      filters = eina_list_prepend(filters, load);
 	    }
-	    sink = lime_filter_new("memsink");
-	    lime_setting_int_set(sink, "add alpha", 1);
-	    filters = eina_list_append(filters, sink);
-	    
+	    sink = eina_list_data_get(eina_list_last(filters));
+	    if (strcmp(sink->fc->shortname, "sink")) {
+	      sink = lime_filter_new("memsink");
+	      lime_setting_int_set(sink, "add alpha", 1);
+	      filters = eina_list_append(filters, sink);
+	    }
 	    fc_new_from_filters(filters);
 	  }
 	  else {

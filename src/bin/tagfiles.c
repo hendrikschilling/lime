@@ -833,9 +833,14 @@ void save_sidecar(File_Group *group)
 //
 
 void filegroup_filterchain_set(File_Group *group, const char *fc)
-{  
-  group->last_fc = fc;
-  if (strrchr(group->last_fc, ','))
-    *strrchr(group->last_fc, ',') = '\0';
+{    
+  group->last_fc = strdup(fc);
+  if (strstr(group->last_fc, ",memsink"))
+    *strstr(group->last_fc, ",memsink") = '\0';
+  else if (strstr(group->last_fc, "memsink") == group->last_fc) {
+    free(group->last_fc);
+    group->last_fc = NULL;
+  }
+  
   save_sidecar(group);
 }
