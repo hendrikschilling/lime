@@ -2550,25 +2550,21 @@ static void on_new_tag(void *data, Evas_Object *obj, void *event_info)
 
 static void on_tag_changed(void *data, Evas_Object *obj, void *event_info)
 {
-  abort();
-  /*
+  Tags_List_Item_Data *tag = data;
   assert(cur_group);
   
-  Tags_List_Item_Data *tag = data;
-  File_Group *group = (File_Group*)eina_inarray_nth(files, file_idx);
-  
   if (elm_check_state_get(obj)) {
-    eina_hash_add(tag->group->tags, tag->tag, tag->tag);
+    eina_hash_add(filegroup_tags(cur_group), tag->tag, tag->tag);
   }
   else {
-    assert(eina_hash_find(tag->group->tags, tag->tag));
-    eina_hash_del_by_key(tag->group->tags, tag->tag);
+    assert(eina_hash_find(filegroup_tags(cur_group), tag->tag));
+    eina_hash_del_by_key(filegroup_tags(cur_group), tag->tag);
   }
   
   filegroup_filterchain_set(cur_group, lime_filter_chain_serialize(((Filter_Chain*)eina_list_data_get(eina_list_next(filter_chain)))->f));
   
-  if (!group_in_filters(group, tags_filter))
-    step_image_do(NULL, NULL);*/
+  if (!group_in_filters(cur_group, tags_filter))
+    step_image_do(NULL, NULL);
 }
 
 static void on_tag_filter_changed(void *data, Evas_Object *obj, void *event_info)
