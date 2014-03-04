@@ -303,7 +303,7 @@ int tagfiles_count(Tagfiles *files)
 
 void tagfiles_del(Tagfiles *files)
 {
-  abort();
+  printf("FIXME del tagfiles!\n");
 }
 
 const char *filegroup_nth(File_Group *g, int n)

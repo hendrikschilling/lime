@@ -97,14 +97,15 @@ char *string_escape_colon(char *str)
     esc_ptr[0] = str_ptr[0];
     //create double colon
     if (str_ptr[0] == ':') {
-      esc_ptr[0] = ':';
       esc_ptr++;
+      esc_ptr[0] = ':';
     }
     esc_ptr++;
     str_ptr++;
   }
-  
-  return strdup(str);
+  esc_ptr[0] = '\0';
+ 
+  return strdup(esc);
 }
 
 char *string_unescape_colon(char *esc)
