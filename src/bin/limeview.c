@@ -58,7 +58,6 @@ int first_preview = 0;
 Ecore_Idle_Enterer *workerfinish_idle = NULL;
 Ecore_Idle_Enterer *idle_render = NULL;
 Ecore_Idle_Enterer *idle_progress_print = NULL;
-Ecore_Idle_Enterer *tag_list_update_idler = NULL;
 Ecore_Timer *timer_render = NULL;
 int hacky_idle_iter_pending = 0;
 int hacky_idle_iter_render = 0;
@@ -1465,31 +1464,19 @@ int group_in_filters(File_Group *group, Eina_Hash *filters)
   return check.valid;
 }
 
-Eina_Bool tag_list_update(void *data)
-{
-  if (!cur_group)
-    return;
+void on_known_tags_changed(Tagfiles *tagfiles, void *data, const char *new_tag)
+{  
+  Tags_List_Item_Data *tag;
   
-  if (!tagfiles_known_tags(files))
-    return;
-  
-  elm_genlist_clear(tags_list);
-  eina_hash_foreach(tagfiles_known_tags(files), tags_hash_func, cur_group);
-  
-  
-  elm_genlist_clear(tags_filter_list);
-  eina_hash_foreach(tagfiles_known_tags(files), tags_hash_filter_func, NULL);
-  
-  tag_list_update_idler = NULL;
-  return ECORE_CALLBACK_CANCEL;
-}
-
-void on_known_tags_changed(Tagfiles *tagfiles, void *data)
-{ 
-  if (tag_list_update_idler)
-    return;
-  
-  tag_list_update_idler = ecore_idle_enterer_add(tag_list_update, NULL);
+  if (cur_group) {
+    tag = malloc(sizeof(Tags_List_Item_Data));
+ 
+    tag->tag = new_tag;
+    tag->group = cur_group;
+    
+    elm_genlist_item_append(tags_list, tags_list_itc, tag, NULL, ELM_GENLIST_ITEM_NONE, NULL, NULL);
+  }
+  elm_genlist_item_append(tags_filter_list, tags_filter_itc, new_tag, NULL, ELM_GENLIST_ITEM_NONE, NULL, NULL);
 }
 
 void step_image_do(void *data, Evas_Object *obj)
@@ -1635,11 +1622,14 @@ void step_image_do(void *data, Evas_Object *obj)
   elm_list_go(group_list);
   
   //update tag list
+
+  //FIXME update instead of clean
   elm_genlist_clear(tags_list);
+  eina_hash_foreach(tagfiles_known_tags(files), tags_hash_func, cur_group);
   
-  //FIXME why is this so fucking slow?
-  if (tagfiles_known_tags(files) && !tag_list_update_idler)
-    tag_list_update_idler = ecore_idle_enterer_add(tag_list_update, NULL);
+  //FIXME update instead of clean  
+  elm_genlist_clear(tags_filter_list);
+  eina_hash_foreach(tagfiles_known_tags(files), tags_hash_filter_func, NULL);
   
   //update tag rating
   elm_segment_control_item_selected_set(elm_segment_control_item_get(seg_rating, filegroup_rating(group)), EINA_TRUE);

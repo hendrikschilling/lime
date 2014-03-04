@@ -65,7 +65,7 @@ struct _Tagfiles {
   Eina_Hash *files_hash;
   void (*progress_cb)(Tagfiles *files, void *data);
   void (*done_cb)(Tagfiles *files, void *data);
-  void (*known_tags_cb)(Tagfiles *files, void *data);
+  void (*known_tags_cb)(Tagfiles *files, void *data, const char *new_tag);
   Eina_Hash *known_tags;
   void *cb_data;
 };
@@ -132,7 +132,7 @@ static void _xmp_notify(void *data, Ecore_Thread *thread, void *msg_data)
   Tagfiles *tagfiles = data;
   
   if (tagfiles->known_tags_cb)
-    tagfiles->known_tags_cb(tagfiles, tagfiles->cb_data);
+    tagfiles->known_tags_cb(tagfiles, tagfiles->cb_data, msg_data);
 }
 
 static void _xmp_scanner(void *data, Ecore_Thread *th)
@@ -427,7 +427,8 @@ void xmp_gettags(File_Group *group)
 			eina_hash_add(group->tags, tag, tag);
       if (!eina_hash_find(group->tagfiles->known_tags, tag)) {
 			eina_hash_add(group->tagfiles->known_tags, tag, tag);
-	ecore_thread_feedback(group->tagfiles->xmp_thread, NULL);
+	assert(group->tagfiles->xmp_thread);
+	ecore_thread_feedback(group->tagfiles->xmp_thread, tag);
       }
     }
 
@@ -527,7 +528,7 @@ static void _ls_done_cb(void *data, Eio_File *handler)
 }
 
 
-Tagfiles *tagfiles_new_from_dir(const char *path, void (*progress_cb)(Tagfiles *files, void *data), void (*done_cb)(Tagfiles *files, void *data), void (*known_tags_cb)(Tagfiles *files, void *data))
+Tagfiles *tagfiles_new_from_dir(const char *path, void (*progress_cb)(Tagfiles *files, void *data), void (*done_cb)(Tagfiles *files, void *data), void (*known_tags_cb)(Tagfiles *files, void *data, const char *new_tag))
 {
   Tagfiles *files = calloc(sizeof(Tagfiles), 1);
   

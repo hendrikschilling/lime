@@ -29,7 +29,7 @@ typedef struct _File_Group File_Group;
 struct _Tagfiles;
 typedef struct _Tagfiles Tagfiles;
 
-Tagfiles *tagfiles_new_from_dir(const char *path, void (*progress_cb)(Tagfiles *files, void *data), void (*done_cb)(Tagfiles *files, void *data), void (*known_tags_cb)(Tagfiles *files, void *data));
+Tagfiles *tagfiles_new_from_dir(const char *path, void (*progress_cb)(Tagfiles *files, void *data), void (*done_cb)(Tagfiles *files, void *data), void (*known_tags_cb)(Tagfiles *files, void *data, const char *new_tag));
 int tagfiles_step(Tagfiles *files, int step);
 File_Group *tagfiles_get(Tagfiles *files);
 int tagfiles_count(Tagfiles *files);
@@ -43,6 +43,7 @@ int tagfiles_scanned_dirs(Tagfiles *tagfiles);
 int tagfiles_scanned_files(Tagfiles *tagfiles);
 Eina_Hash *tagfiles_known_tags(Tagfiles *tagfiles);
 int filegroup_rating(File_Group *group);
+Eina_Hash *filegroup_tags(File_Group *group);
 
 const char * filegroup_nth(File_Group *g, int n);
 int filegroup_count(File_Group *g);
