@@ -47,6 +47,7 @@ Eina_Hash *filegroup_tags(File_Group *group);
 void tagfiles_group_changed_cb_insert(Tagfiles *tagfiles, File_Group *group, void (*filegroup_changed_cb)(File_Group *group));
 void tagfiles_group_changed_cb_flush(Tagfiles *files);
 void call_group_changed_cb(Tagfiles *files, File_Group *group);
+void filegroup_rating_set(File_Group *group, int rating);
 
 const char * filegroup_nth(File_Group *g, int n);
 int filegroup_count(File_Group *g);

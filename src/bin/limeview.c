@@ -2126,8 +2126,8 @@ Eina_Bool _idle_progress_printer(void *data)
 
 static void _ls_progress_cb(Tagfiles *tagfiles, void *data)
 {
-  if (!idle_progress_print)
-    idle_progress_print = ecore_idle_enterer_add(&_idle_progress_printer, tagfiles);
+  //if (!idle_progress_print)
+  //  idle_progress_print = ecore_idle_enterer_add(&_idle_progress_printer, tagfiles);
 }
 
 static void _ls_done_cb(Tagfiles *tagfiles, void *data)
@@ -2592,16 +2592,14 @@ static void on_tag_filter_changed(void *data, Evas_Object *obj, void *event_info
 
 static void on_rating_changed(void *data, Evas_Object *obj, void *event_info)
 {
-  abort();
-  /*
   assert(cur_group);
   
-  File_Group *group = (File_Group*)eina_inarray_nth(files, file_idx);
+  if (filegroup_rating(cur_group) == elm_segment_control_item_index_get(elm_segment_control_item_selected_get(obj)))
+    return;
   
-  group->tag_rating = elm_segment_control_item_index_get(elm_segment_control_item_selected_get(obj));
+  filegroup_rating_set(cur_group, elm_segment_control_item_index_get(elm_segment_control_item_selected_get(obj)));
   
   filegroup_filterchain_set(cur_group, lime_filter_chain_serialize(((Filter_Chain*)eina_list_data_get(eina_list_next(filter_chain)))->f));
-  */
 }
 
 static void on_filter_rating_changed(void *data, Evas_Object *obj, void *event_info)

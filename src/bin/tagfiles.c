@@ -157,6 +157,17 @@ int filegroup_rating(File_Group *group)
   return (int)group->tag_rating;
 }
 
+void filegroup_rating_set(File_Group *group, int rating)
+{
+  assert(group->state == GROUP_LOADED);
+  
+  if (rating != group->tag_rating) {
+    group->tag_rating = rating;
+    
+    save_sidecar(group);
+  }
+}
+
 static void _xmp_scanner(void *data, Ecore_Thread *th);
 
 static void _xmp_finish(void *data, Ecore_Thread *th)
