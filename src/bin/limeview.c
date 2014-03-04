@@ -1401,19 +1401,6 @@ typedef struct {
 }
 Tags_List_Item_Data;
 
-Eina_Bool tags_hash_func(const Eina_Hash *hash, const void *key, void *data, void *fdata)
-{
-  Tags_List_Item_Data *tag = malloc(sizeof(Tags_List_Item_Data));
- 
-  tag->tag = data;
-  tag->group = fdata;
-  
-  elm_genlist_item_append(tags_list, tags_list_itc, tag, NULL, ELM_GENLIST_ITEM_NONE, NULL, NULL);
-
-  return 1;
-}
-
-
 Eina_Bool tags_hash_filter_func(const Eina_Hash *hash, const void *key, void *data, void *fdata)
 {
   elm_genlist_item_append(tags_filter_list, tags_filter_itc, data, NULL, ELM_GENLIST_ITEM_NONE, NULL, NULL);
@@ -1479,7 +1466,7 @@ void on_known_tags_changed(Tagfiles *tagfiles, void *data, const char *new_tag)
       while (ea_count(taglist_add)) {
 	tag = malloc(sizeof(Tags_List_Item_Data));
 	tag->tag = eina_array_pop(taglist_add);
-	tag->group = cur_group;
+	tag->group = NULL;
 	elm_genlist_item_append(tags_list, tags_list_itc, tag, NULL, ELM_GENLIST_ITEM_NONE, NULL, NULL);
       }
       eina_array_free(taglist_add);
@@ -1503,7 +1490,6 @@ void filegroup_changed_cb(File_Group *group)
   //FIXME do we have to schedule this even if something else is running?
   workerfinish_schedule(step_image_do, NULL, NULL);
 }
-
 
 void step_image_do(void *data, Evas_Object *obj)
 {
@@ -1655,9 +1641,7 @@ void step_image_do(void *data, Evas_Object *obj)
   //update tag list
 
   if (filegroup_tags_valid(cur_group)) {
-    //FIXME update instead of clean
-    elm_genlist_clear(tags_list);
-    eina_hash_foreach(tagfiles_known_tags(files), tags_hash_func, cur_group);
+    elm_genlist_realized_items_update(tags_list);
   
     //update tag rating
     elm_segment_control_item_selected_set(elm_segment_control_item_get(seg_rating, filegroup_rating(group)), EINA_TRUE);
@@ -2621,7 +2605,7 @@ static Evas_Object *_tag_gen_cont_get(void *data, Evas_Object *obj, const char *
   elm_object_focus_allow_set(check, EINA_FALSE);
 
   elm_object_part_text_set(check, "default", tag->tag);
-  if (eina_hash_find(filegroup_tags(tag->group), tag->tag))
+  if (eina_hash_find(filegroup_tags(cur_group), tag->tag))
     elm_check_state_set(check, EINA_TRUE);
 
   evas_object_smart_callback_add(check, "changed", on_tag_changed, tag);
