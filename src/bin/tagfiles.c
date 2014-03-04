@@ -49,6 +49,16 @@ struct _File_Group {
   //Eina_Array *group_tags; //tags that are assigned specifically to the group
 };
 
+typedef struct {
+  File_Group *group;
+  void (*cb)(File_Group *group);
+} Group_Changed_Cb_Data;
+
+typedef struct {
+  Eina_Array *tags;
+  File_Group *group;
+} Scanner_Feedback_Data;
+
 struct _Tagfiles {
   int scanned_files;
   int scanned_dirs;
@@ -68,9 +78,39 @@ struct _Tagfiles {
   void (*known_tags_cb)(Tagfiles *files, void *data, const char *new_tag);
   Eina_Hash *known_tags;
   void *cb_data;
+  Eina_Array *group_changed_cb;
 };
 
-void xmp_gettags(File_Group *group);
+void xmp_gettags(File_Group *group, Ecore_Thread *thread);
+
+void tagfiles_group_changed_cb_insert(Tagfiles *tagfiles, File_Group *group, void (*filegroup_changed_cb)(File_Group *group))
+{
+  Group_Changed_Cb_Data *data = malloc(sizeof(Group_Changed_Cb_Data));
+  
+  data->cb = filegroup_changed_cb;
+  data->group = group;
+  
+  eina_array_push(tagfiles->group_changed_cb, data);
+}
+
+void tagfiles_group_changed_cb_flush(Tagfiles *files)
+{
+  //FIXME free data (use inarray?)
+  eina_array_flush(files->group_changed_cb);
+}
+
+void call_group_changed_cb(Tagfiles *files, File_Group *group)
+{
+  int i;
+  Group_Changed_Cb_Data *data;
+  
+  for(i=0;i<eina_array_count(files->group_changed_cb);i++) {
+    data = eina_array_data_get(files->group_changed_cb, i);
+    
+    if (group == data->group)
+      data->cb(group);
+  }
+}
 
 int filegroup_cmp(File_Group **a, File_Group **b)
 {
@@ -133,9 +173,18 @@ static void _xmp_finish(void *data, Ecore_Thread *th)
 static void _xmp_notify(void *data, Ecore_Thread *thread, void *msg_data)
 {
   Tagfiles *tagfiles = data;
+  Scanner_Feedback_Data *changed = msg_data;
   
-  if (tagfiles->known_tags_cb)
-    tagfiles->known_tags_cb(tagfiles, tagfiles->cb_data, msg_data);
+  if (tagfiles->known_tags_cb && changed->tags) {
+    while (eina_array_count(changed->tags))
+      tagfiles->known_tags_cb(tagfiles, tagfiles->cb_data, eina_array_pop(changed->tags));
+  }
+  
+  call_group_changed_cb(tagfiles, changed->group);
+  
+  if (changed->tags)
+    eina_array_free(changed->tags);
+  free(changed);
 }
 
 static void _xmp_scanner(void *data, Ecore_Thread *th)
@@ -143,7 +192,7 @@ static void _xmp_scanner(void *data, Ecore_Thread *th)
   Tagfiles *tagfiles = data;
   
   while (tagfiles->xmp_scanned_idx < eina_inarray_count(tagfiles->files)) {
-    xmp_gettags(*(File_Group**)eina_inarray_nth(tagfiles->files, tagfiles->xmp_scanned_idx));
+    xmp_gettags(*(File_Group**)eina_inarray_nth(tagfiles->files, tagfiles->xmp_scanned_idx),  th);
     tagfiles->xmp_scanned_idx++;
   }
 }
@@ -351,6 +400,8 @@ void insert_file(Tagfiles *tagfiles, const char *file)
   else
     file_group_add(tagfiles, group, file);
   
+  call_group_changed_cb(tagfiles, group);
+  
   return;
 }
 
@@ -386,7 +437,7 @@ void tagfiles_shutdown(void)
   xmp_terminate();
 }
 
-void xmp_gettags(File_Group *group)
+void xmp_gettags(File_Group *group, Ecore_Thread *thread)
 {
   int len;
   FILE *f;
@@ -395,6 +446,7 @@ void xmp_gettags(File_Group *group)
   const char *tag;
   XmpIteratorPtr iter;
   XmpStringPtr propValue;
+  Scanner_Feedback_Data *feedback_data = calloc(sizeof(Scanner_Feedback_Data), 1);
   
   group->state = GROUP_LOADED;
   
@@ -432,8 +484,8 @@ void xmp_gettags(File_Group *group)
 			eina_hash_add(group->tags, tag, tag);
       if (!eina_hash_find(group->tagfiles->known_tags, tag)) {
 			eina_hash_add(group->tagfiles->known_tags, tag, tag);
-	assert(group->tagfiles->xmp_thread);
-	ecore_thread_feedback(group->tagfiles->xmp_thread, tag);
+	if (feedback_data->tags) feedback_data->tags = eina_array_new(8);
+	eina_array_push(feedback_data->tags, tag);
       }
     }
 
@@ -460,6 +512,9 @@ void xmp_gettags(File_Group *group)
   
   xmp_free(xmp);
   free(buf);
+  
+  feedback_data->group = group;
+  ecore_thread_feedback(thread, feedback_data);
   
   return;
 }
@@ -544,6 +599,7 @@ Tagfiles *tagfiles_new_from_dir(const char *path, void (*progress_cb)(Tagfiles *
   files->files_ls = eina_inarray_new(sizeof(File_Group*), 128);
   files->dirs_ls = eina_inarray_new(sizeof(char *), 32);
   files->files_sorted = EINA_TRUE;
+  files->group_changed_cb = eina_array_new(1);
   
   eio_file_direct_ls(path, &_ls_filter_cb, &_ls_main_cb,&_ls_done_cb, &_ls_error_cb, files);
   

@@ -1452,6 +1452,9 @@ int group_in_filters(File_Group *group, Eina_Hash *filters)
 {
   Filter_Check_Data check;
   
+  if (!filegroup_tags_valid(group))
+    return 1;
+  
   if (tags_filter_rating && filegroup_rating(group) < tags_filter_rating)
     return 0;
   
@@ -1495,6 +1498,13 @@ void on_known_tags_changed(Tagfiles *tagfiles, void *data, const char *new_tag)
   }
   elm_genlist_item_append(tags_filter_list, tags_filter_itc, new_tag, NULL, ELM_GENLIST_ITEM_NONE, NULL, NULL);
 }
+
+void filegroup_changed_cb(File_Group *group)
+{
+  //FIXME do we have to schedule this even if something else is running?
+  workerfinish_schedule(step_image_do, NULL, NULL);
+}
+
 
 void step_image_do(void *data, Evas_Object *obj)
 {
@@ -1613,6 +1623,9 @@ void step_image_do(void *data, Evas_Object *obj)
   }
   
   cur_group = group;
+  
+  tagfiles_group_changed_cb_flush(files);
+  tagfiles_group_changed_cb_insert(files, group, filegroup_changed_cb);
   
   printf("early configuration delay: %f\n", bench_delay_get());
   
