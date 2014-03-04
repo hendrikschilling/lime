@@ -1811,9 +1811,9 @@ void start_single_export(Export_Data *export, Export_Job *job)
   filename = ecore_file_file_get(job->filename);
   
   if (job->filterchain)
-    sprintf(dst, "limedo \'%s,savejpeg:filename=%s/%s\' \'%s\'", job->filterchain, job->export->path, filename, job->filename);
+    sprintf(dst, "limedo \'%s,savejpeg:filename=%s/%s\' \'%s\'", job->filterchain, string_escape_colon(job->export->path), string_escape_colon(filename), job->filename);
   else
-    sprintf(dst, "limedo \'savejpeg:filename=%s/%s\' \'%s\'", job->export->path, filename, job->filename);
+    sprintf(dst, "limedo \'savejpeg:filename=%s/%s\' \'%s\'", string_escape_colon(job->export->path), string_escape_colon(filename), job->filename);
 
   printf("start export of: %s\n", dst);
   ecore_exe_run(dst, job);
@@ -1854,14 +1854,15 @@ static Eina_Bool _rsync_term(void *data, int type, void *event)
 static void
 on_exe_images_rsync(void *data, Evas_Object *obj, void *event_info)
 {
-  abort();
-  /*int i, j;
+  int i, j;
   File_Group *group;
   const char *filename;
   char dst[2048];
   Eina_Array *dirs;
   Export_Data *export = calloc(sizeof(Export_Data), 1);
   Export_Job *job;
+  
+  //FIXME check if we finished scanning?
   
   export->extensions = elm_entry_entry_get(export_extensions);
   if (export->extensions && !strlen(export->extensions)) {
@@ -1878,17 +1879,17 @@ on_exe_images_rsync(void *data, Evas_Object *obj, void *event_info)
   
   elm_progressbar_value_set(export->eo_progress, 0.0);
   
-  for(i=0;i<eina_inarray_count(files);i++) {
-    group = eina_inarray_nth(files, i);
+  for(i=0;i<tagfiles_count(files);i++) {
+    group = tagfiles_nth(files, i);
     if (group_in_filters(group, tags_filter)) {
-      for(j=0;j<eina_inarray_count(group->files);j++) {
-	filename = ((Tagged_File*)eina_inarray_nth(group->files, j))->filename;
+      for(j=0;j<filegroup_count(group);j++) {
+	filename = filegroup_nth(group, j);
 	if (filename && (!export->extensions || (strstr(filename, export->extensions) && strlen(strstr(filename, export->extensions)) == strlen (export->extensions) ))) {
 	  if (!export->list)
 	    export->list = eina_array_new(32);
 	  job = malloc(sizeof(Export_Job));
 	  job->filename = filename;
-	  job->filterchain = group->last_fc;
+	  job->filterchain = filegroup_filterchain(group);
 	  job->export = export;
 	  eina_array_push(export->list, job);
 	}
@@ -1904,7 +1905,6 @@ on_exe_images_rsync(void *data, Evas_Object *obj, void *event_info)
   
   for(i=0;i<ecore_thread_max_get();i++)
     start_single_export(export, NULL);
-    */
 }
 
 static void

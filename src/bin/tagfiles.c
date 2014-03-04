@@ -226,17 +226,18 @@ int tagfiles_scanned_files(Tagfiles *tagfiles)
   return tagfiles->scanned_files;
 }
 
-File_Group *tagfiles_get(Tagfiles *tagfiles)
+File_Group *tagfiles_nth(Tagfiles *tagfiles, int idx)
 {
   File_Group *group;
   
-  if (tagfiles->idx < eina_inarray_count(tagfiles->files)) {
+  assert(idx < tagfiles_count(tagfiles));
+  
+  if (idx < eina_inarray_count(tagfiles->files)) {
     _files_check_sort(tagfiles);
-    return *(File_Group**)eina_inarray_nth(tagfiles->files, tagfiles->idx);
+    return *(File_Group**)eina_inarray_nth(tagfiles->files, idx);
   }
   else {
     //we have to take files from files_ls
-    assert(tagfiles->idx < eina_inarray_count(tagfiles->files) + eina_inarray_count(tagfiles->files_ls));
     
     //we have already inserte files from this dir: always need to sort after insert
     if (tagfiles->unsorted_insert) {
@@ -260,9 +261,15 @@ File_Group *tagfiles_get(Tagfiles *tagfiles)
     tagfiles->unsorted_insert = EINA_TRUE;
     
     _files_check_sort(tagfiles);
-    assert(tagfiles->idx < eina_inarray_count(tagfiles->files));
-    return *(File_Group**)eina_inarray_nth(tagfiles->files, tagfiles->idx);
+    assert(idx < eina_inarray_count(tagfiles->files));
+    return *(File_Group**)eina_inarray_nth(tagfiles->files, idx);
   }
+}
+
+
+File_Group *tagfiles_get(Tagfiles *tagfiles)
+{
+  return tagfiles_nth(tagfiles, tagfiles->idx);
 }
 
 int tagfiles_idx(Tagfiles *files)
@@ -484,7 +491,7 @@ void xmp_gettags(File_Group *group, Ecore_Thread *thread)
 			eina_hash_add(group->tags, tag, tag);
       if (!eina_hash_find(group->tagfiles->known_tags, tag)) {
 			eina_hash_add(group->tagfiles->known_tags, tag, tag);
-	if (feedback_data->tags) feedback_data->tags = eina_array_new(8);
+	if (!feedback_data->tags) feedback_data->tags = eina_array_new(8);
 	eina_array_push(feedback_data->tags, tag);
       }
     }
