@@ -43,6 +43,7 @@ struct _File_Group {
   Tagfiles *tagfiles;
   Eina_Inarray *files; //tagged files
   const char *sidecar; //sidecar file used for the image group
+  const char *basename;
   char *last_fc; //serialization of the last filter chain
   Eina_Hash *tags; //all tags of the group or a file in the group
   int32_t tag_rating;
@@ -114,22 +115,7 @@ void call_group_changed_cb(Tagfiles *files, File_Group *group)
 
 int filegroup_cmp(File_Group **a, File_Group **b)
 {
-  Tagged_File *fa = NULL, *fb = NULL;
-  
-  if (eina_inarray_count((*a)->files))
-    fa = eina_inarray_nth((*a)->files, 0);
-  if (eina_inarray_count((*b)->files))
-    fb = eina_inarray_nth((*b)->files, 0);
-  
-  if (!fa->filename)
-    fa = NULL;
-  if (!fb->filename)
-    fb = NULL;
-  
-  if (!fa) return -1;
-  else if (!fb) return 1;
-  
-  return strcmp(fa->filename, fb->filename);
+  return strcmp((*a)->basename, (*b)->basename);
 }
 
 Eina_Bool filegroup_tags_valid(File_Group *group)
@@ -355,7 +341,7 @@ Tagged_File tag_file_new(Tagfiles *tagfiles, File_Group *group, const char *name
     if (group->sidecar)
       printf("FIXME multiple sidecar: %s\n", name);
     else
-      group->sidecar = file.sidecar;
+      group->sidecar = name;
     assert(!file.sidecar);
     file.sidecar = name;
     //xmp_gettags(tagfiles, name, group);
@@ -374,6 +360,7 @@ File_Group *file_group_new(Tagfiles *tagfiles, const char *name, const char *bas
   group->files = eina_inarray_new(sizeof(Tagged_File), 2);
   group->tags = eina_hash_string_superfast_new(NULL);
   group->tagfiles = tagfiles;
+  group->basename = basename;
   
   eina_hash_add(tagfiles->files_hash, basename, group);
   
