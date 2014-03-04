@@ -2110,8 +2110,8 @@ Eina_Bool _idle_progress_printer(void *data)
 
 static void _ls_progress_cb(Tagfiles *tagfiles, void *data)
 {
-  //if (!idle_progress_print)
-  //  idle_progress_print = ecore_idle_enterer_add(&_idle_progress_printer, tagfiles);
+  if (!idle_progress_print)
+    idle_progress_print = ecore_idle_enterer_add(&_idle_progress_printer, tagfiles);
 }
 
 static void _ls_done_cb(Tagfiles *tagfiles, void *data)
