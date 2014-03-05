@@ -87,9 +87,9 @@ Filter_Core *lime_filtercore_find(const char *name)
   return eina_hash_find(lime_filters, name);
 }
 
-char *string_escape_colon(char *str)
+char *string_escape_colon(const char *str)
 {
-  char *str_ptr = str;
+  const char *str_ptr = str;
   char esc[EINA_PATH_MAX];
   char *esc_ptr = esc;
   
@@ -108,9 +108,9 @@ char *string_escape_colon(char *str)
   return strdup(esc);
 }
 
-char *string_unescape_colon(char *esc)
+char *string_unescape_colon(const char *esc)
 {
-  char *esc_ptr = esc;
+  const char *esc_ptr = esc;
   char str[EINA_PATH_MAX];
   char *str_ptr = str;
   
@@ -192,7 +192,6 @@ Eina_List *lime_filter_chain_deserialize(char *str)
 {
   int i;
   Meta *m;
-  Filter_Core *fc;
   Filter *f, *last_f = NULL;
   Eina_List *filters = NULL;
   
@@ -201,7 +200,7 @@ Eina_List *lime_filter_chain_deserialize(char *str)
   char *last = str + strlen(str);
   char *next = str;
   char *cur = str;
-  char *setting;
+  const char *setting;
   char *tmp;
   while (cur) {
     next = next_single_colon(cur);

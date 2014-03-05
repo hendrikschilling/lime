@@ -25,8 +25,8 @@
 void lime_filters_init(void);
 void lime_filter_add(Filter_Core *fc);
 Filter_Core *lime_filtercore_find(const char *name);
-char *string_escape_colon(char *str);
-char *string_unescape_colon(char *esc);
+char *string_escape_colon(const char *str);
+char *string_unescape_colon(const char *esc);
 char *lime_filter_chain_serialize(Filter *f);
 Eina_List *lime_filter_chain_deserialize(char *str);
 

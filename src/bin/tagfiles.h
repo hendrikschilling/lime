@@ -48,10 +48,11 @@ void tagfiles_group_changed_cb_insert(Tagfiles *tagfiles, File_Group *group, voi
 void tagfiles_group_changed_cb_flush(Tagfiles *files);
 void call_group_changed_cb(Tagfiles *files, File_Group *group);
 void filegroup_rating_set(File_Group *group, int rating);
-
 const char * filegroup_nth(File_Group *g, int n);
 int filegroup_count(File_Group *g);
 char *filegroup_filterchain(File_Group *g);
+void filegroup_filterchain_set(File_Group *group, const char *fc);
+Eina_Bool filegroup_tags_valid(File_Group *group);
 
 
 void set_filterchain_save_sidecar(void);

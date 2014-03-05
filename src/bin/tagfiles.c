@@ -83,6 +83,7 @@ struct _Tagfiles {
 };
 
 void xmp_gettags(File_Group *group, Ecore_Thread *thread);
+void save_sidecar(File_Group *group);
 
 void tagfiles_group_changed_cb_insert(Tagfiles *tagfiles, File_Group *group, void (*filegroup_changed_cb)(File_Group *group))
 {
@@ -204,7 +205,7 @@ static void _files_check_sort(Tagfiles *files)
   if (files->files_sorted)
     return;
   
-  eina_inarray_sort(files->files, filegroup_cmp);
+  eina_inarray_sort(files->files, (Eina_Compare_Cb)filegroup_cmp);
   files->files_sorted = EINA_TRUE;
 }
 
@@ -249,7 +250,7 @@ File_Group *tagfiles_nth(Tagfiles *tagfiles, int idx)
     else {
       assert(tagfiles->files_sorted == EINA_TRUE);
       
-      eina_inarray_sort(tagfiles->files_ls, filegroup_cmp_neg);
+      eina_inarray_sort(tagfiles->files_ls, (Eina_Compare_Cb)filegroup_cmp_neg);
       while (eina_inarray_count(tagfiles->files_ls)) {
 	group = *(File_Group**)eina_inarray_pop(tagfiles->files_ls);
 	eina_inarray_push(tagfiles->files, &group);
@@ -544,7 +545,7 @@ Eina_Bool _idle_ls_continue(void *data)
   Tagfiles *tagfiles = data;
   
   //FIXME do sort in extra thread instead of when idle?
-  eina_inarray_sort(tagfiles->dirs_ls, dir_strcmp_neg);
+  eina_inarray_sort(tagfiles->dirs_ls, (Eina_Compare_Cb)dir_strcmp_neg);
   eio_file_direct_ls(*(char**)eina_inarray_pop(tagfiles->dirs_ls), &_ls_filter_cb, &_ls_main_cb,&_ls_done_cb, &_ls_error_cb, tagfiles);
     
   return ECORE_CALLBACK_CANCEL;
@@ -566,7 +567,7 @@ static void _ls_done_cb(void *data, Eio_File *handler)
   //we have not yet inserted any files from the dir - can sort before!
   else {
     if (tagfiles->files_sorted)
-      eina_inarray_sort(tagfiles->files_ls, filegroup_cmp_neg);
+      eina_inarray_sort(tagfiles->files_ls, (Eina_Compare_Cb)filegroup_cmp_neg);
     while (eina_inarray_count(tagfiles->files_ls)) {
       group = *(File_Group**)eina_inarray_pop(tagfiles->files_ls);
       eina_inarray_push(tagfiles->files, &group);
@@ -610,9 +611,6 @@ Tagfiles *tagfiles_new_from_dir(const char *path, void (*progress_cb)(Tagfiles *
   
   return files;
 }
-
-void save_sidecar(File_Group *group);
-
 
 Tagged_File *tagged_file_new_from_path(const char *path)
 {

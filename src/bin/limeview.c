@@ -141,6 +141,7 @@ static void fill_scroller(void);
 void workerfinish_schedule(void (*func)(void *data, Evas_Object *obj), void *data, Evas_Object *obj);
 void filter_settings_create_gui(Eina_List *chain_node, Evas_Object *box);
 void fill_scroller_preview();
+void step_image_do(void *data, Evas_Object *obj);
 
 Filter_Chain *fc_new(Filter *f)
 {
@@ -311,7 +312,7 @@ void remove_filter_do(void *data, Evas_Object *obj)
   
   forbid_fill--;
   
-  step_image_do();
+  step_image_do(NULL, NULL);
 }
 
 void _on_filter_select(void *data, Evas_Object *obj, void *event_info)
@@ -1047,7 +1048,6 @@ int fill_area(int xm, int ym, int wm, int hm, int minscale, int preview)
   int scalediv;
   Rect area;
   float actual_scalediv;
-  Evas_Object *img;
   int minx, miny, maxx, maxy;
   int scale_start;
   int actual_scale;
@@ -1118,9 +1118,7 @@ int fill_area(int xm, int ym, int wm, int hm, int minscale, int preview)
 	  continue;
 	  }
 		
-	if (!cell) {
-	  img = evas_object_image_add(evas_object_evas_get(win));
-	  
+	if (!cell) {	  
 	  minx = i*TILE_SIZE*scalediv;
 	  miny = j*TILE_SIZE*scalediv;
 	  maxx = minx + TILE_SIZE*scalediv;
@@ -1369,8 +1367,6 @@ void delgrid(void)
   
   finished_threads = eina_array_new(16);
 }
-
-void step_image_do(void *data, Evas_Object *obj);
 
 static void on_jump_image(void *data, Evas_Object *obj, void *event_info)
 {
