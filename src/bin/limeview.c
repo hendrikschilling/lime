@@ -48,7 +48,7 @@
 #define HACK_ITERS_FOR_REAL_IDLE 0
 #define PREREAD_SIZE 4096*16
 #define PREREAD_RANGE 5
-#define FAST_SKIP_RENDER_DELAY 0.1
+#define FAST_SKIP_RENDER_DELAY 0.01
 
 int high_quality_delay =  300;
 int max_reaction_delay =  1000;
@@ -835,8 +835,6 @@ Eina_Bool workerfinish_idle_run(void *data)
   Evas_Object *pend_tmp_obj;
   void *pend_tmp_data;
   
-  printf("execute idle\n");
-  
   workerfinish_idle = NULL;
   
   assert(!worker);
@@ -872,20 +870,14 @@ void workerfinish_schedule(void (*func)(void *data, Evas_Object *obj), void *dat
   }
     
   if (!worker) {
-    
     if (workerfinish_idle) {
-      printf("delete scheduled function\n");
       ecore_idle_enterer_del(workerfinish_idle);
       workerfinish_idle = NULL;
     }
     workerfinish_idle = ecore_idle_enterer_add(workerfinish_idle_run, NULL);
-    printf("scheduling function\n");
-    printf("quick_preview_only %d\n", quick_preview_only);
   }
-  else {
+  else
     quick_preview_only = 1;
-    printf("not scheduling function\n");
-  }
 }
 
 static void
@@ -920,9 +912,7 @@ void _insert_image(_Img_Thread_Data *tdata)
 Eina_Bool _display_preview(void *data)
 {
   int i;
-  
-  printf("display preview %p\n", mat_cache_old);
-  
+
   if (!mat_cache_old)
     return ECORE_CALLBACK_CANCEL;
   
@@ -932,8 +922,6 @@ Eina_Bool _display_preview(void *data)
   }
   
   grid_setsize();  
-  //fill_scroller_preview();
-  //fill_scroller();
   
   evas_object_show(clipper);
   mat_cache_del(mat_cache_old);
@@ -1009,10 +997,12 @@ _finished_tile(void *data, Ecore_Thread *th)
       _display_preview(NULL);
     }
   }
+  else 
+    
+  if (!worker)
+    printf("final delay: %f\n", bench_delay_get());
   
   _insert_image(tdata);
-  printf("delay for %d: %f\n", tdata->scale, bench_delay_get());
-
   
   first_preview = 0;
   
@@ -1501,8 +1491,6 @@ void step_image_do(void *data, Evas_Object *obj)
   
   printf("non-chancellation delay: %f\n", bench_delay_get());
   
-  bench_delay_start();
-  
   assert(!worker);
   
   assert(files);
@@ -1575,7 +1563,6 @@ void step_image_do(void *data, Evas_Object *obj)
 	  lime_setting_string_set(load, "filename", filename);
 	  
 	  failed = lime_config_test(sink);
-	  printf("configuration delay test: %f\n", bench_delay_get());
 	  if (failed) {
 	    printf("failed to find valid configuration for %s\n", filename);
 	    group_idx++;
@@ -1609,13 +1596,13 @@ void step_image_do(void *data, Evas_Object *obj)
   
   tagfiles_group_changed_cb_flush(files);
   tagfiles_group_changed_cb_insert(files, group, filegroup_changed_cb);
-  
-  printf("early configuration delay: %f\n", bench_delay_get());
-  
+    
   //we start as early as possible with rendering!
   forbid_fill--;
   size_recalc();
-  first_preview = 1;
+  if (quick_preview_only)
+    first_preview = 1;
+  printf("configuration delay: %f\n", bench_delay_get()); 
   fill_scroller_preview();
   fill_scroller();
     
@@ -1641,9 +1628,7 @@ void step_image_do(void *data, Evas_Object *obj)
   
     //update tag rating
     elm_segment_control_item_selected_set(elm_segment_control_item_get(seg_rating, filegroup_rating(group)), EINA_TRUE);
-  }
-  
-  printf("late configuration delay: %f\n", bench_delay_get());  
+  } 
   
   elm_slider_value_set(file_slider, tagfiles_idx(files));
 }
@@ -2113,8 +2098,6 @@ static void _ls_progress_cb(Tagfiles *tagfiles, void *data)
 static void _ls_done_cb(Tagfiles *tagfiles, void *data)
 {
   evas_object_del(load_notify);
-  
-  printf("ls done!\n");
   
   if (idle_progress_print) {
     ecore_idle_enterer_del(idle_progress_print);

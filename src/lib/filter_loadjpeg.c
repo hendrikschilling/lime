@@ -203,25 +203,21 @@ int jpeg_read_infos(FILE *f, _Data *data)
     
   while (1) {
     if (pos[0] != 0xFF) {
-      printf("expected 0xFF!\n");
       return -1;
     }
     switch (pos[1]) {
       case 0xC0:
         ATLEAST_BUF(9)
        //FIXME get lengths and quit
-        printf("get lengths! %d %d\n",file_pos, remain);
         *data->size_pos = file_pos - remain + 5;
         if (pos[4] != 8) {
           printf("jpg Syntax error!\n");
           return -1;
         }
-        printf("original image size: %dx%d %x\n", pos[7]*256+pos[8],pos[5]*256+pos[6], pos[8]);
         len = pos[2] * 256 + pos[3];
         SKIP_BUF(len+2);
         break;
       case 0xDA:
-        printf("here lies the actual image!\nbuilding index!\n");
 	index = calloc(sizeof(int)*data->iw*data->ih, 1);
         //2B Marker + 2B Length + 1B comp_count (FIXME compare/use) + 2B*comp_count+ marker length
         len = pos[2] * 256 + pos[3];
@@ -261,7 +257,6 @@ int jpeg_read_infos(FILE *f, _Data *data)
             next_restart = (next_restart+1) % 8;
             
             if (iy == data->ih-1 && ix == data->iw-1) {
-              printf("built index!\n");
               break;
             }
             
@@ -293,12 +288,10 @@ int jpeg_read_infos(FILE *f, _Data *data)
       case 0xFE:
       case 0xE1: //FIXME get exif info!
         len = pos[2] * 256 + pos[3];
-	printf("exif is at %d len %d\n", file_pos - remain + 1, len);
         SKIP_BUF(len+2);
         break;
       default :
         if ((pos[1] & 0xF0) != 0xE0) {
-          printf("unknown marker %x file pos %d\n", pos[1], file_pos - remain + 1);
           len = (pos[2] << 8) | pos[3];
           SKIP_BUF(len+2);
           break;
@@ -677,6 +670,7 @@ void _loadjpeg_worker_ijg(Filter *f, Eina_Array *in, Eina_Array *out, Rect *area
   cinfo.scale_num = 1;
   cinfo.scale_denom = 1u << area->corner.scale;
   
+  assert(cinfo.jpeg_color_space == JCS_YCbCr);
   cinfo.out_color_space   = JCS_YCbCr;
   cinfo.dct_method = JDCT_IFAST;
   cinfo.do_fancy_upsampling = FALSE;
@@ -769,15 +763,12 @@ void _loadjpeg_worker_ijg_original(Filter *f, Eina_Array *in, Eina_Array *out, R
 
   cinfo.scale_num = 1;
   cinfo.scale_denom = 1u << area->corner.scale;
-  //assert(cinfo.jpeg_color_space == JCS_YCbCr);
-  //cinfo.out_color_space = cinfo.jpeg_color_space;
   
+  assert(cinfo.jpeg_color_space == JCS_YCbCr);
   cinfo.out_color_space   = JCS_YCbCr;
   cinfo.dct_method = JDCT_IFAST;
   cinfo.do_fancy_upsampling = FALSE;
   jpeg_start_decompress(&cinfo);
-   
-  printf("restart every %d mcus, mcus per row: %d \n", cinfo.restart_interval, cinfo.MCUs_per_row);
   
   row_stride = cinfo.output_width * cinfo.output_components;
   buffer = (*cinfo.mem->alloc_sarray)
@@ -856,6 +847,7 @@ void _loadjpeg_worker_ijg_thumb(Filter *f, Eina_Array *in, Eina_Array *out, Rect
 
   (void)jpeg_read_header(&cinfo, TRUE);
   
+  assert(cinfo.jpeg_color_space == JCS_YCbCr);
   cinfo.out_color_space   = JCS_YCbCr;
   cinfo.dct_method = JDCT_IFAST;
   cinfo.do_fancy_upsampling = FALSE;

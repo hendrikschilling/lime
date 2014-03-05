@@ -65,14 +65,10 @@ Filter *lime_filter_new(const char *shortname)
 {
   Filter_Core *f = eina_hash_find(lime_filters, shortname);
   
-  if (!f) {
-    printf("%d -%s--%s-\n",strcmp(shortname, filter_core_load.shortname), shortname, filter_core_load.shortname);
+  if (!f)
     return NULL;
-  }
   
   assert(f->filter_new_f);
-  
-  printf("have filter %s\n", shortname);
   
   return f->filter_new_f();
 }

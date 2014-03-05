@@ -182,10 +182,7 @@ static int _tunes_fixed(Filter *f)
       else if (sws_isSupportedOutput(PIX_FMT_RGB24)) {
 	data->common->lav_fmt_out = PIX_FMT_RGB24;
 	data->common->packed_output = EINA_TRUE;
-	printf("packed output only :-(\n");
       }
-      else
-	printf("no rgb output for swscale!\n");
       break;
     case CS_YUV : 
       data->common->lav_fmt_out = PIX_FMT_YUV444P;
