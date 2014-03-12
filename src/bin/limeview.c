@@ -876,8 +876,16 @@ void workerfinish_schedule(void (*func)(void *data, Evas_Object *obj), void *dat
     }
     workerfinish_idle = ecore_idle_enterer_add(workerfinish_idle_run, NULL);
   }
-  else
+  else {
+    if (pending_action)
+      printf("FIXME skipping a pending action\n");
+    
+    pending_action = func;
+    pending_data = data;
+    pending_obj = obj;
+  
     quick_preview_only = 1;
+  }
 }
 
 static void

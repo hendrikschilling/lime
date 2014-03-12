@@ -477,15 +477,23 @@ void xmp_gettags(File_Group *group, Ecore_Thread *thread)
   
   group->state = GROUP_LOADED;
   
-  if (!group->sidecar)
+  if (!group->sidecar) {
+    //FIXME check in thread if we have to do any call!
+    feedback_data->group = group;
+    ecore_thread_feedback(thread, feedback_data);
     return;
+  }
   
   buf = malloc(MAX_XMP_FILE);
   
   f = fopen(group->sidecar, "r");
   
-  if (!f)
+  if (!f) {
+    //FIXME check in thread if we have to do any call!
+    feedback_data->group = group;
+    ecore_thread_feedback(thread, feedback_data);
     return;
+  }
   
   len = fread(buf, 1, MAX_XMP_FILE, f);
     
@@ -497,6 +505,9 @@ void xmp_gettags(File_Group *group, Ecore_Thread *thread)
     printf("parse failed\n");
     xmp_free(xmp);
     free(buf);
+    //FIXME check in thread if we have to do any call!
+    feedback_data->group = group;
+    ecore_thread_feedback(thread, feedback_data);
     return;
   }
   
@@ -539,10 +550,9 @@ void xmp_gettags(File_Group *group, Ecore_Thread *thread)
   
   xmp_free(xmp);
   free(buf);
-  
+
   feedback_data->group = group;
-  ecore_thread_feedback(thread, feedback_data);
-  
+  ecore_thread_feedback(thread, feedback_data);  
   return;
 }
 
