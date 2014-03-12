@@ -392,8 +392,14 @@ void insert_file(Tagfiles *tagfiles, const char *file)
   const char *basename;
   File_Group *group;
   
-  if (strchr(file, '.'))
-    basename = eina_stringshare_add_length(file, strchr(file, '.')-file);
+  basename = strrchr(file, '/');
+  if (!basename)
+    basename = file;
+  
+  basename = strchr(basename, '.');
+  
+  if (basename)
+    basename = eina_stringshare_add_length(file, basename-file);
   else
     basename = eina_stringshare_add(file);
   
