@@ -380,7 +380,7 @@ void filter_render_tile(Render_Node *job, int thread_id)
   job->tile->time = t_stop.tv_sec*1000000000 - t_start.tv_sec*1000000000
   +  t_stop.tv_nsec - t_start.tv_nsec;
   
-  cache_stats_update(job->f, 0, 0, job->tile->time, 0);
+  cache_stats_update(job->f->fc, 0, 0, job->tile->time, 0);
   
   job->tile->channels = channels;
   
@@ -453,7 +453,7 @@ Render_Node *render_state_getjob( Render_State *state)
          
       if ((tile = cache_tile_get(&hash))) {
 	
-	cache_stats_update(filter_get_input_filter(node->f, node->channel), 1, 0, 0, 0);
+	cache_stats_update(filter_get_input_filter(node->f, node->channel)->fc, 1, 0, 0, 0);
 	  
 	assert(node->mode);
 	  
@@ -496,7 +496,7 @@ Render_Node *render_state_getjob( Render_State *state)
       }
       //this node does not need any input tiles
       else if (!ea_count(node->f_source_curr->node->con_ch_in)) {
-	cache_stats_update(node->f_source_curr, 0, 1, 0, 0);
+	cache_stats_update(node->f_source_curr->fc, 0, 1, 0, 0);
 	
 	jobnode = render_node_new(node->f_source_curr, tile_new(&area, hash, node->f_source_curr, node->f), state);
 	assert(jobnode->f->fixme_outcount);
@@ -509,7 +509,7 @@ Render_Node *render_state_getjob( Render_State *state)
       }
       //node needs input tiles
       else {
-	cache_stats_update(node->f_source_curr, 0, 1, 0, 0);
+	cache_stats_update(node->f_source_curr->fc, 0, 1, 0, 0);
 		
 	tile = tile_new(&area, hash, node->f_source_curr, node->f);
 	if (node->f->fixme_outcount);
@@ -664,7 +664,8 @@ void lime_render_area(Rect *area, Filter *f, int thread_id)
       while(ea_count(job->tile->want)) {
 	waiter = ea_pop(job->tile->want);
 	for(j=0;j<ea_count(waiter->f_source);j++)
-	  if (ea_data(waiter->f_source, j) == job->tile->f)
+	  //FIXME is it enough to check for filter-core? what if same fc but different filter is multiple times sourced?...
+	  if (((Filter*)ea_data(waiter->f_source, j))->fc == job->tile->fc)
 	    //FIXME channel selection, use paired channels not blindly the same number!
 	    clobbertile_add(ea_data(waiter->inputs, j), ea_data(job->tile->channels, j));
 	waiter->need--;

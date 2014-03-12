@@ -44,7 +44,7 @@ static Cache *cache = NULL;
 typedef struct {
   uint64_t hits;
   uint64_t misses;
-  Filter *f;
+  Filter_Core *fc;
   uint64_t tiles;
   uint64_t time;
   uint64_t time_count;
@@ -142,7 +142,7 @@ float tile_score_hitrate_norm(Tile *tile, Tile *newtile)
 {
   Cache_Stat *stat;
   
-  stat = (Cache_Stat*)eina_hash_find(cache->stats, tile->f);
+  stat = (Cache_Stat*)eina_hash_find(cache->stats, tile->fc);
   
   if (!stat || !stat->tiles)
     return 1000000000.0;
@@ -235,14 +235,14 @@ void select_rand_prob(Tile *newtile, Eina_Array *metrics, int *delpos, Tile **de
   *delpos = cand_pos[tries];
 }
 
-void cache_stats_update(Filter *f, int hit, int miss, int time, int count)
+void cache_stats_update(Filter_Core *fc, int hit, int miss, int time, int count)
 {
   Cache_Stat *stat;
   
   if (!cache)
     lime_cache_set(100, 0);
 
-  stat = (Cache_Stat*)eina_hash_find(cache->stats, f);
+  stat = (Cache_Stat*)eina_hash_find(cache->stats, fc);
   
   if (stat) {
       stat->hits += hit;
@@ -255,7 +255,7 @@ void cache_stats_update(Filter *f, int hit, int miss, int time, int count)
   }
   else {
     stat = calloc(sizeof(Cache_Stat), 1);
-    stat->f = f;
+    stat->fc = fc;
     stat->hits += hit;
     stat->misses += miss;
     if (time) {
@@ -263,7 +263,7 @@ void cache_stats_update(Filter *f, int hit, int miss, int time, int count)
       stat->time_count++;
     }
     stat->tiles += count;
-    eina_hash_direct_add(cache->stats, f, stat);
+    eina_hash_direct_add(cache->stats, fc, stat);
   }
 }
 
@@ -278,7 +278,7 @@ void cache_stats_print(void)
   
   EINA_ITERATOR_FOREACH(iter, stat) {
     printf("       req to %12.12s hr: %4.1f%% (%llu/%llu) tiles: %4llu time: %4.3fms per tile from %llu iters\n",
-	   stat->f->fc->name, 100.0*stat->hits/(stat->misses+stat->hits), stat->hits, stat->misses, stat->tiles, 0.000001*stat->time/stat->time_count, stat->time_count);
+	   stat->fc->name, 100.0*stat->hits/(stat->misses+stat->hits), stat->hits, stat->misses, stat->tiles, 0.000001*stat->time/stat->time_count, stat->time_count);
   }
 }
 
@@ -311,8 +311,8 @@ void chache_tile_cleanone(Tile *tile)
     cache->mem -= del->area.width*del->area.height*ea_count(del->channels);
   cache->count--;
   eina_hash_del(cache->table, &del->hash, del);
-  assert(del->f);
-  cache_stats_update(del->f, 0, 0, 0, -1);
+  assert(del->fc);
+  cache_stats_update(del->fc, 0, 0, 0, -1);
   tile_del(del);
   cache->tiles[pos] = NULL;
   eina_array_free(metrics);
@@ -334,8 +334,8 @@ void cache_tile_add(Tile *tile)
   
   tile->generation = cache->generation++;
   
-  assert(tile->f);
-  cache_stats_update(tile->f, 0, 0, 0, 1);
+  assert(tile->fc);
+  cache_stats_update(tile->fc, 0, 0, 0, 1);
   
   eina_hash_direct_add(cache->table, &tile->hash, tile);
   if (tile->channels) {

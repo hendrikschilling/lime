@@ -64,9 +64,9 @@ static int _del(Filter *f)
     data = ea_data(f->data, i);
     common = data->common;
     free(data->buf);
-    free(data);
     if (common->initialized == INIT_SWS)
       sws_freeContext(data->sws);
+    free(data);
   }
   
   if (common->initialized == INIT_LMCS)

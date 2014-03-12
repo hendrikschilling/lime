@@ -102,8 +102,9 @@ Tile *tile_new(Rect *area, Tilehash hash, Filter *f, Filter *f_req)
   
   tile->area = *area;
   tile->hash = hash;
-  tile->f = f;
-  tile->f_req = f_req;
+  tile->fc = f->fc;
+  if (f_req)
+    tile->fc_req = f_req->fc;
   tile->refs = 1;
   
   return tile;

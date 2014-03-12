@@ -996,7 +996,7 @@ void ea_insert(Eina_Array *ar, int idx, void *data)
   ea_push(ar, data);
 }
 
-void _filter_insert_connect(int *tried_f, int tried_len, Eina_Array *insert_f, Eina_Array *insert_cons, Eina_Array *f, Filter *source, Filter *sink)
+void _filter_insert_connect(int *tried_f, int tried_len, Eina_Array *insert_f, Eina_Array *insert_cons, Eina_Array *new_fs, Filter *source, Filter *sink)
 {
   int i;
   Filter *sel_filter;
