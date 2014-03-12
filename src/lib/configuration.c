@@ -31,6 +31,7 @@
 static int configured = 0;
 static Eina_Array *applied_metas = NULL;
 static Eina_Array *global_nodes_list = NULL;
+Eina_Array *new_fs = NULL;
 
 typedef struct {
   Meta *tune;
@@ -949,14 +950,23 @@ void fg_undo_tunings(void)
 	meta_undo_tunings_rec(ea_data(f->out, j));
     }
   }
-    
+  
+  eina_array_flush(applied_metas);
 }
 
 void lime_config_node_add(Fg_Node *node)
 {
+  int i;
+  
   if (!global_nodes_list)
     global_nodes_list = eina_array_new(8);
   
+  for(i=0;i<ea_count(global_nodes_list);i++)
+    if (ea_data(global_nodes_list, i) == NULL) {
+      ea_set(global_nodes_list, i, node);
+      return;
+    }
+    
   ea_push(global_nodes_list, node);
 }
 
@@ -986,7 +996,7 @@ void ea_insert(Eina_Array *ar, int idx, void *data)
   ea_push(ar, data);
 }
 
-void _filter_insert_connect(int *tried_f, int tried_len, Eina_Array *insert_f, Eina_Array *insert_cons, Eina_Array *new_fs, Filter *source, Filter *sink)
+void _filter_insert_connect(int *tried_f, int tried_len, Eina_Array *insert_f, Eina_Array *insert_cons, Eina_Array *f, Filter *source, Filter *sink)
 {
   int i;
   Filter *sel_filter;
@@ -1052,7 +1062,6 @@ int _cons_fix_err(Filter *start_f, Eina_Array *cons, Eina_Array *insert_f, int e
   int err_pos;
   Filter *source_f, *sink_f;
   int failed = 0;
-  Eina_Array *new_fs = eina_array_new(4);
   
   ea_metas_data_zero(applied_metas);
   fg_undo_tunings();
@@ -1079,10 +1088,6 @@ int _cons_fix_err(Filter *start_f, Eina_Array *cons, Eina_Array *insert_f, int e
     for(i=0;i<ea_count(insert_cons);i++)
       con_del_real(ea_data(insert_cons, i));
     eina_array_flush(insert_cons);
-    
-    for(i=0;i<ea_count(new_fs);i++)
-      filter_del(ea_data(new_fs, i));
-    eina_array_flush(new_fs);
     
     if (_filter_count_up(tried_f, &tried_len, insert_f, err_pos, MAX_CONS_TRIES))
       failed = 1;
@@ -1140,6 +1145,12 @@ int lime_config_test(Filter *f_sink)
   
   if (configured)
     return 0;
+  
+  if (!new_fs)
+    new_fs = eina_array_new(8);
+  
+  while(ea_count(new_fs))
+    filter_del(ea_pop(new_fs));
 
   insert_f =  eina_array_new(4);
   cons = eina_array_new(8);

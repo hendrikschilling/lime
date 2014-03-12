@@ -302,6 +302,8 @@ void remove_filter_do(void *data, Evas_Object *obj)
   
   filter_connect(prev->f, 0, next->f, 0);
   
+  filter_del(fc->f);
+  
   del_filter_settings(); 
   elm_object_item_del(fc->item);
   filter_chain = eina_list_remove_list(filter_chain, chain_node);
@@ -1200,6 +1202,7 @@ void fc_del(void)
     if (fc->item) {
       elm_object_item_del(fc->item);
     }
+    filter_del(fc->f);
   }
   
   filter_chain = NULL;
