@@ -126,11 +126,11 @@ Eina_Bool filegroup_tags_valid(File_Group *group)
 {
   //FIXME load tags and GROUP_COMPLETE handling
   if (group->state != GROUP_LOADED) {
-    return EINA_FALSE;
-    
     //start scanning so info will be available soon
     if (!group->tagfiles->xmp_thread)
       group->tagfiles->xmp_thread = ecore_thread_feedback_run(_xmp_scanner, _xmp_notify, _xmp_finish, NULL, group->tagfiles, EINA_TRUE);
+    
+    return EINA_FALSE;
   }
   
   return EINA_TRUE;
