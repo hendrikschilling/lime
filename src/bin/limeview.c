@@ -1498,7 +1498,6 @@ void step_image_do(void *data, Evas_Object *obj)
   if (!tagfiles_count(files))
     return;
   
-  delgrid();
   del_filter_settings();  
   
   forbid_fill++;
@@ -1580,19 +1579,14 @@ void step_image_do(void *data, Evas_Object *obj)
     
     if (start_idx == tagfiles_idx(files)){
       printf("no valid configuration found for any file!\n");
-      if (mat_cache) {
-	mat_cache_del(mat_cache);
-	mat_cache = NULL;
-      }
-      if (mat_cache_old) {
-	mat_cache_del(mat_cache_old);
-	mat_cache_old = NULL;
-      }
+      forbid_fill--;
       return;
     }
   }
   
+  
   cur_group = group;
+  delgrid();
   
   tagfiles_group_changed_cb_flush(files);
   tagfiles_group_changed_cb_insert(files, group, filegroup_changed_cb);
@@ -2079,12 +2073,12 @@ Eina_Bool _idle_progress_printer(void *data)
     bench_delay_start();
     
     evas_object_show(scroller);
-  
-    //grid_setsize(); 
-    step_image_do(NULL, NULL);
   }
   else
     elm_slider_min_max_set(file_slider, 0, tagfiles_count(files)-1);
+  
+  if (!cur_group)
+    step_image_do(NULL, NULL);
   
   return ECORE_CALLBACK_PASS_ON;
 }
@@ -2143,12 +2137,12 @@ static void _ls_done_cb(Tagfiles *tagfiles, void *data)
     bench_delay_start();
     
     evas_object_show(scroller);
-  
-    //grid_setsize(); 
-    step_image_do(NULL, NULL);
   }
   else
     elm_slider_min_max_set(file_slider, 0, tagfiles_count(files)-1);
+  
+  if (!cur_group)
+    step_image_do(NULL, NULL);
 }
 
 void on_open_dir(char *path)
