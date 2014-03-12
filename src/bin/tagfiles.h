@@ -53,6 +53,7 @@ int filegroup_count(File_Group *g);
 char *filegroup_filterchain(File_Group *g);
 void filegroup_filterchain_set(File_Group *group, const char *fc);
 Eina_Bool filegroup_tags_valid(File_Group *group);
+File_Group *tagfiles_nth(Tagfiles *tagfiles, int idx);
 
 
 void set_filterchain_save_sidecar(void);
