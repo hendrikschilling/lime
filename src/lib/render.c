@@ -301,6 +301,18 @@ void incnode(Render_Node *node)
 	  node->f_source_curr = ea_data(node->f_source, node->channel);
 	  node->tw = tw_get(node->f_source_curr, node->area.corner.scale);
 	  node->th = th_get(node->f_source_curr, node->area.corner.scale);
+	  
+	  filter_calc_valid_req_area(node->f, &node->tile->area, &node->area);
+	  
+	  if (node->area.corner.x >= 0)
+	    node->pos.x = (node->area.corner.x/node->tw)*node->tw;
+	  else
+	    node->pos.x = ((node->area.corner.x-node->tw+1)/node->tw)*node->tw;
+	  if (node->area.corner.y >= 0)
+	    node->pos.y = (node->area.corner.y/node->th)*node->th;
+	  else
+	    node->pos.y = ((node->area.corner.y-node->th+1)/node->th)*node->th;
+	  node->pos.scale = node->area.corner.scale;
 	}
       }
     }
