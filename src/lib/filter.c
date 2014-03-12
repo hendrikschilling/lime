@@ -162,6 +162,8 @@ void filter_del(Filter *f)
 {
   Eina_Hash *metas;
   
+  filter_deconfigure(f);
+  
   if (f->del)
     f->del(f);
   else
@@ -263,6 +265,9 @@ Con *filter_connect(Filter *source, int out, Filter *sink, int in)
   assert(source->in);
   assert(sink->out);
   
+  filter_deconfigure(sink);
+  filter_deconfigure(source);
+  
   lime_config_reset();
   
   con->source = eina_array_data_get(source->out, out);
@@ -282,7 +287,7 @@ Con *filter_connect(Filter *source, int out, Filter *sink, int in)
   if (!ea_count(sink->node_orig->con_trees_in))
     eina_array_push(sink->node_orig->con_trees_in, con);
   else
-    eina_array_data_set(source->node_orig->con_trees_out, 0, con);
+    eina_array_data_set(sink->node_orig->con_trees_in, 0, con);
   
   filter_hash_recalc(source);
   

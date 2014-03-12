@@ -25,7 +25,7 @@ FIND_PACKAGE(JPEG REQUIRED)
 
 find_package (Threads)
 
-set(CMAKE_C_FLAGS "-Wall -g")
+set(CMAKE_C_FLAGS "-Wall -g -O0")
 
 add_subdirectory(src/lib)
 add_subdirectory(src/bin)

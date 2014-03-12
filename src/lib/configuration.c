@@ -702,6 +702,9 @@ void apply_sink_souce_matches(Eina_Array *match_source, Eina_Array *match_sink, 
 
 void ea_metas_data_zero(Eina_Array *metas)
 {
+  if (!metas)
+    return;
+  
   while(ea_count(metas))
     ((Meta*)ea_pop(metas))->data = NULL;
 }
@@ -951,6 +954,7 @@ void fg_undo_tunings(void)
     }
   }
   
+  
   eina_array_flush(applied_metas);
 }
 
@@ -1113,9 +1117,10 @@ void filter_deconfigure(Filter *f)
   Con *con;
   Filter *sink_f;
   
+  ea_metas_data_zero(applied_metas);
   fg_undo_tunings();
   
-  if (!f->node->con_trees_out)
+  if (!f->node->con_trees_out || ! ea_count(f->node->con_trees_out))
     return;
  
   con = ea_data(f->node->con_trees_out, 0);
