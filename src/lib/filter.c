@@ -162,7 +162,10 @@ void filter_del(Filter *f)
 {
   Eina_Hash *metas;
   
-  filter_deconfigure(f);
+  lime_config_reset();
+  
+  if (f->node->con_trees_in && ea_count(f->node->con_trees_in))
+    filter_deconfigure(((Con*)ea_data(f->node->con_trees_in, 0))->source->filter);
   
   if (f->del)
     f->del(f);
@@ -281,13 +284,19 @@ Con *filter_connect(Filter *source, int out, Filter *sink, int in)
   
   if (!ea_count(source->node_orig->con_trees_out))
     eina_array_push(source->node_orig->con_trees_out, con);
-  else
-    eina_array_data_set(source->node_orig->con_trees_out, 0, con);
+  else {
+    while (ea_count(source->node_orig->con_trees_out))
+      con_del_real(ea_pop(source->node_orig->con_trees_out));
+    eina_array_push(source->node_orig->con_trees_out, con);
+  }
   
   if (!ea_count(sink->node_orig->con_trees_in))
     eina_array_push(sink->node_orig->con_trees_in, con);
-  else
-    eina_array_data_set(sink->node_orig->con_trees_in, 0, con);
+  else {
+    while (ea_count(sink->node_orig->con_trees_in))
+      con_del_real(ea_pop(sink->node_orig->con_trees_in));
+    eina_array_push(sink->node_orig->con_trees_in, con);
+  }
   
   filter_hash_recalc(source);
   
@@ -296,10 +305,15 @@ Con *filter_connect(Filter *source, int out, Filter *sink, int in)
 
 void con_del_real(Con *con)
 {
-  assert(con->source->filter->node->con_trees_out 
-	  && ea_count(con->source->filter->node->con_trees_out) == 1);
-  assert(con->sink->filter->node->con_trees_in 
-	  && ea_count(con->sink->filter->node->con_trees_in) == 1);
+  if (!con->source->filter->node->con_trees_out 
+	  || !ea_count(con->source->filter->node->con_trees_out))
+    return;
+  if (!con->sink->filter->node->con_trees_in 
+	  || !ea_count(con->sink->filter->node->con_trees_in))
+    return;
+  
+  assert(ea_count(con->source->filter->node->con_trees_out) == 1);
+  assert(ea_count(con->sink->filter->node->con_trees_in) == 1);
   
   ea_pop(con->source->filter->node->con_trees_out);
   ea_pop(con->sink->filter->node->con_trees_in);
@@ -320,6 +334,9 @@ Con *filter_connect_real(Filter *source, int out, Filter *sink, int in)
   
   if (!sink->node->con_trees_in)
     sink->node->con_trees_in = eina_array_new(1);
+  
+  assert(!ea_count(source->node->con_trees_out));
+  assert(!ea_count(sink->node->con_trees_in));
   
   eina_array_push(source->node->con_trees_out, con);
   eina_array_push(sink->node->con_trees_in, con);
