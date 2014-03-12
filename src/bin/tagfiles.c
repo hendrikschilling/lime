@@ -84,6 +84,9 @@ struct _Tagfiles {
 
 void xmp_gettags(File_Group *group, Ecore_Thread *thread);
 void save_sidecar(File_Group *group);
+static void _xmp_scanner(void *data, Ecore_Thread *th);
+static void _xmp_finish(void *data, Ecore_Thread *th);
+static void _xmp_notify(void *data, Ecore_Thread *thread, void *msg_data);
 
 void tagfiles_group_changed_cb_insert(Tagfiles *tagfiles, File_Group *group, void (*filegroup_changed_cb)(File_Group *group))
 {
@@ -122,8 +125,13 @@ int filegroup_cmp(File_Group **a, File_Group **b)
 Eina_Bool filegroup_tags_valid(File_Group *group)
 {
   //FIXME load tags and GROUP_COMPLETE handling
-  if (group->state != GROUP_LOADED)
+  if (group->state != GROUP_LOADED) {
     return EINA_FALSE;
+    
+    //start scanning so info will be available soon
+    if (!group->tagfiles->xmp_thread)
+      group->tagfiles->xmp_thread = ecore_thread_feedback_run(_xmp_scanner, _xmp_notify, _xmp_finish, NULL, group->tagfiles, EINA_TRUE);
+  }
   
   return EINA_TRUE;
 }
@@ -131,6 +139,7 @@ Eina_Bool filegroup_tags_valid(File_Group *group)
 Eina_Hash *filegroup_tags(File_Group *group)
 {
   if (group->state != GROUP_LOADED)
+    //"undefined"
     abort();
   
   return group->tags;
@@ -155,8 +164,6 @@ void filegroup_rating_set(File_Group *group, int rating)
   }
 }
 
-static void _xmp_scanner(void *data, Ecore_Thread *th);
-
 static void _xmp_finish(void *data, Ecore_Thread *th)
 {
   Tagfiles *tagfiles = data;
@@ -164,8 +171,16 @@ static void _xmp_finish(void *data, Ecore_Thread *th)
   tagfiles->xmp_thread = NULL;
   
   //ls_done was called between _xmp_scanner exited and before finish was called
-  if (tagfiles->xmp_scanned_idx < eina_inarray_count(tagfiles->files))
-    tagfiles->xmp_thread = ecore_thread_run(_xmp_scanner, _xmp_finish, NULL, tagfiles);
+  //if we are over the current index and still scanning dirs stop scanning xmp files (do that later) 
+  //FIXME multiple threads!
+  if (!eina_inarray_count(tagfiles->dirs_ls)) {
+    if (tagfiles->xmp_scanned_idx < eina_inarray_count(tagfiles->files))
+      tagfiles->xmp_thread = ecore_thread_run(_xmp_scanner, _xmp_finish, NULL, tagfiles);
+  }
+  else {
+    if (tagfiles->xmp_scanned_idx < tagfiles_idx(tagfiles))
+      tagfiles->xmp_thread = ecore_thread_run(_xmp_scanner, _xmp_finish, NULL, tagfiles);
+  }
 }
 
 static void _xmp_notify(void *data, Ecore_Thread *thread, void *msg_data)
@@ -582,9 +597,6 @@ static void _ls_done_cb(void *data, Eio_File *handler)
   _files_check_sort(tagfiles);
   tagfiles->full_dir_inserted_idx += tagfiles->cur_dir_files_count;
   tagfiles->cur_dir_files_count = 0;
-  
-  if (!tagfiles->xmp_thread)
-    tagfiles->xmp_thread = ecore_thread_feedback_run(_xmp_scanner, _xmp_notify, _xmp_finish, NULL, tagfiles, EINA_TRUE);
     
   //have finished dir - next dir is guaranteed to come after all files already seen
   tagfiles->unsorted_insert = EINA_FALSE;
@@ -593,8 +605,12 @@ static void _ls_done_cb(void *data, Eio_File *handler)
     //dirs are sorted before scanning so we do not need to sort all files at once!
     ecore_idle_enterer_add(_idle_ls_continue, tagfiles);
   }
-  else
+  else {
+    if (!tagfiles->xmp_thread)
+      tagfiles->xmp_thread = ecore_thread_feedback_run(_xmp_scanner, _xmp_notify, _xmp_finish, NULL, tagfiles, EINA_TRUE);
+    
     tagfiles->done_cb(tagfiles, tagfiles->cb_data);
+  }
 }
 
 
