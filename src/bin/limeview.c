@@ -45,10 +45,14 @@
 #include "filter_savejpeg.h"
 
 #define TILE_SIZE DEFAULT_TILE_SIZE
-//FIXME adjust depending on speed!
-#define PREREAD_RANGE 16
+
 #define PENDING_ACTIONS_BEFORE_SKIP_STEP 3
 #define REPEATS_ON_STEP_HOLD 2
+
+//FIXME adjust depending on speed!
+#define PREREAD_RANGE 64
+#define PREREAD_SIZE_HEADER 1024*16
+#define PREREAD_SIZE_FULL 1024*1024*4
 
 int high_quality_delay =  300;
 int max_reaction_delay =  1000;
@@ -57,6 +61,7 @@ int max_fast_scaledown = 5;
 int first_preview = 0;
 Ecore_Job *workerfinish_idle = NULL;
 Ecore_Idler *idle_render = NULL;
+Ecore_Idler *idle_preload = NULL;
 Ecore_Idler *idle_progress_print = NULL;
 Ecore_Timer *timer_render = NULL;
 Eina_Array *taglist_add = NULL;
@@ -930,6 +935,13 @@ Eina_Bool _display_preview(void *data)
   return ECORE_CALLBACK_CANCEL;
 }
 
+Eina_Bool idle_preload_run(void *data)
+{
+  tagfiles_preload_headers(files, last_file_step, 1, PREREAD_SIZE_FULL);
+  
+  return ECORE_CALLBACK_CANCEL;
+}
+
 static void
 _finished_tile(void *data, Ecore_Thread *th)
 {
@@ -986,8 +998,12 @@ _finished_tile(void *data, Ecore_Thread *th)
   }
   else 
     
-  if (!worker)
+  if (!worker) {
     printf("final delay: %f\n", bench_delay_get());
+    
+    if (!key_repeat)
+      idle_preload = ecore_idler_add(idle_preload_run, NULL);
+  }
   
   _insert_image(tdata);
   
@@ -1621,10 +1637,7 @@ void step_image_do(void *data, Evas_Object *obj)
   
   elm_slider_value_set(file_slider, tagfiles_idx(files));
   
-  if (key_repeat)
-    tagfiles_preload_headers(files, last_file_step, PREREAD_RANGE);
-  else
-    tagfiles_preload_headers(files, last_file_step, 1);
+  tagfiles_preload_headers(files, last_file_step, PREREAD_RANGE, PREREAD_SIZE_HEADER);
 }
 
 void del_file_done(void *data, Eio_File *handler)
@@ -2022,6 +2035,7 @@ on_zoom_in(void *data, Evas_Object *obj, void *event_info)
 {
   zoom_in_do();
 }
+
 
 Eina_Bool _idle_progress_printer(void *data)
 {

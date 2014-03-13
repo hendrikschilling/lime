@@ -244,8 +244,11 @@ int tagfiles_scanned_files(Tagfiles *tagfiles)
 File_Group *tagfiles_nth(Tagfiles *tagfiles, int idx)
 {
   File_Group *group;
+
+  while (idx < 0)
+    idx += tagfiles_count(tagfiles);
   
-  assert(idx < tagfiles_count(tagfiles));
+  idx = idx % tagfiles_count(tagfiles);
   
   if (idx < eina_inarray_count(tagfiles->files)) {
     _files_check_sort(tagfiles);
@@ -573,34 +576,43 @@ int dir_strcmp_neg(const char **a, const char **b)
 
 static void _ls_done_cb(void *data, Eio_File *handler);
 
+typedef struct {
+  const char *filename;
+  int size;
+} Preload_Data;
+
 static void _fadvice_file(void *data, Ecore_Thread *th)
 {
   int fd;
+  Preload_Data *preload = data;
   
   eina_sched_prio_drop();
-  eina_sched_prio_drop();
-  eina_sched_prio_drop();
   
-  fd = open(data, O_RDONLY);
-  posix_fadvise(fd, 0,PREREAD_SIZE,POSIX_FADV_WILLNEED);
+  fd = open(preload->filename, O_RDONLY);
+  posix_fadvise(fd, 0,preload->size, POSIX_FADV_WILLNEED);
   close(fd);
   
   return 0;
 }
 
 //FIXME check tag filter?
-void tagfiles_preload_headers(Tagfiles *tagfiles, int direction, int range)
+void tagfiles_preload_headers(Tagfiles *tagfiles, int direction, int range, int size)
 {
   int i, j;
   File_Group *group;
   const char *filename;
+  Preload_Data *preload;
   
   //for(j=tagfiles_idx(tagfiles);j<tagfiles_idx(tagfiles)+range*direction;j+=direction) {
     group = tagfiles_nth(tagfiles, tagfiles_idx(tagfiles)+range*direction);
     for(i=0;i<filegroup_count(group);i++) {
       filename = filegroup_nth(group, i);
-      if (filename)
-	ecore_thread_run(_fadvice_file, NULL, NULL, filename);
+      if (filename) {
+	preload = malloc(sizeof(Preload_Data));
+	preload->size = size;
+	preload->filename = filename;
+	ecore_thread_run(_fadvice_file, NULL, NULL, preload);
+      }
     }
   //}
 }
