@@ -45,24 +45,23 @@
 #include "filter_savejpeg.h"
 
 #define TILE_SIZE DEFAULT_TILE_SIZE
-#define HACK_ITERS_FOR_REAL_IDLE 0
 #define PREREAD_SIZE 4096*16
 #define PREREAD_RANGE 5
-#define FAST_SKIP_RENDER_DELAY 0.01
+#define PENDING_ACTIONS_BEFORE_SKIP_STEP 3
+#define REPEATS_ON_STEP_HOLD 2
 
 int high_quality_delay =  300;
 int max_reaction_delay =  1000;
 int fullscreen = 0;
 int max_fast_scaledown = 5;
 int first_preview = 0;
-Ecore_Idle_Enterer *workerfinish_idle = NULL;
-Ecore_Idle_Enterer *idle_render = NULL;
+Ecore_Job *workerfinish_idle = NULL;
+Ecore_Idler *idle_render = NULL;
 Ecore_Idle_Enterer *idle_progress_print = NULL;
 Ecore_Timer *timer_render = NULL;
 Eina_Array *taglist_add = NULL;
-int hacky_idle_iter_pending = 0;
-int hacky_idle_iter_render = 0;
 int quick_preview_only = 0;
+int cur_key_down = 0;
 
 Tagfiles *files = NULL;
 Tagfiles *files_new = NULL;
@@ -128,9 +127,14 @@ Bench_Step *bench;
 int fit;
 
 int worker;
-void (*pending_action)(void *data, Evas_Object *obj);
-void *pending_data;
-Evas_Object *pending_obj;
+
+typedef struct {
+  void (*action)(void *data, Evas_Object *obj);
+  void *data;
+  Evas_Object *obj;
+} _Pending_Action;
+
+Eina_List *pending_actions = NULL;
 
 Eina_Hash *tags_filter = NULL;
 int tags_filter_rating = 0;
@@ -138,10 +142,41 @@ char *dir;
 
 static void on_scroller_move(void *data, Evas_Object *obj, void *event_info);
 static void fill_scroller(void);
-void workerfinish_schedule(void (*func)(void *data, Evas_Object *obj), void *data, Evas_Object *obj);
+void workerfinish_schedule(void (*func)(void *data, Evas_Object *obj), void *data, Evas_Object *obj, Eina_Bool append);
 void filter_settings_create_gui(Eina_List *chain_node, Evas_Object *box);
 void fill_scroller_preview();
 void step_image_do(void *data, Evas_Object *obj);
+
+int pending_action(void)
+{
+  if (pending_actions)
+    return eina_list_count(pending_actions);
+  
+  return EINA_FALSE;
+}
+
+void pending_exe(void)
+{
+  _Pending_Action *action;
+  
+  while (pending_action() && !worker) {
+    action = eina_list_data_get(pending_actions);
+    pending_actions = eina_list_remove_list(pending_actions, pending_actions);
+
+    action->action(action->data, action->obj);
+  }
+}
+
+void pending_add(void (*action)(void *data, Evas_Object *obj), void *data, Evas_Object *obj)
+{
+  _Pending_Action *pending = malloc(sizeof(_Pending_Action));
+  
+  pending->action = action;
+  pending->data = data;
+  pending->obj = obj;
+  
+  pending_actions = eina_list_append(pending_actions, pending);
+}
 
 Filter_Chain *fc_new(Filter *f)
 {
@@ -431,7 +466,7 @@ void insert_after_do(void *data, Evas_Object *obj)
 static void
 on_int_changed(void *data, Evas_Object *obj, void *event_info)
 {
-  workerfinish_schedule(&int_changed_do, data, obj);
+  workerfinish_schedule(&int_changed_do, data, obj, EINA_TRUE);
   
 }
 
@@ -449,13 +484,13 @@ on_remove_filter(void *data, Evas_Object *obj, void *event_info)
 {
   bench_delay_start();
   
-  workerfinish_schedule(&remove_filter_do, data, obj);
+  workerfinish_schedule(&remove_filter_do, data, obj, EINA_TRUE);
 }
 
 static void
 on_float_changed(void *data, Evas_Object *obj, void *event_info)
 { 
-  workerfinish_schedule(&float_changed_do, data, obj);
+  workerfinish_schedule(&float_changed_do, data, obj, EINA_TRUE);
 }
 
 void setting_spinner_insert(Evas_Object *vbox, Meta *setting)
@@ -760,7 +795,9 @@ void elm_exit_do(void *data, Evas_Object *obj)
 
 Eina_Bool timer_run_render(void *data)
 {
-  if (pending_action && worker)
+  timer_render = NULL;
+  
+  if (pending_action() && worker)
     return ECORE_CALLBACK_CANCEL;
   
   quick_preview_only = 0;
@@ -773,15 +810,21 @@ Eina_Bool timer_run_render(void *data)
 
 Eina_Bool idle_run_render(void *data)
 {
-  if (!pending_action) {
-    if (quick_preview_only)
+  printf("idle run render\n");
+  
+  if (!pending_action()) {
+    if (quick_preview_only) {
       //FIXME what time is good?
-      timer_render = ecore_timer_add(FAST_SKIP_RENDER_DELAY, &timer_run_render, NULL);
+      //timer_run_render(NULL);
+      quick_preview_only = 0;
+      fill_scroller_preview();
+      fill_scroller();
+      //timer_render = ecore_timer_add(FAST_SKIP_RENDER_DELAY, &timer_run_render, NULL);
+  }
     else {
       fill_scroller_preview();
       fill_scroller();
     }
-      
   }
   
   idle_render = NULL;
@@ -831,64 +874,40 @@ static void preread_filerange(int range)
   }
 }*/
 
-Eina_Bool workerfinish_idle_run(void *data)
+void workerfinish_idle_run(void *data)
 {  
-  void (*pend_tmp_func)(void *data, Evas_Object *obj);
-  Evas_Object *pend_tmp_obj;
-  void *pend_tmp_data;
-  
   workerfinish_idle = NULL;
   
   assert(!worker);
   
-  if (hacky_idle_iter_pending) {
-    hacky_idle_iter_pending--;
-    //preread_filerange(PREREAD_RANGE);
-    return ECORE_CALLBACK_RENEW;
-  }
-  
-  pend_tmp_func = pending_action;
-  pend_tmp_data = pending_data;
-  pend_tmp_obj = pending_obj;
-  pending_action = NULL;
-  pending_data = NULL;
-  pending_obj = NULL;
-  pend_tmp_func(pend_tmp_data, pend_tmp_obj);
-  
-  workerfinish_idle = NULL;
+  pending_exe();
   
   return ECORE_CALLBACK_CANCEL;
 }
 
-void workerfinish_schedule(void (*func)(void *data, Evas_Object *obj), void *data, Evas_Object *obj)
+void workerfinish_schedule(void (*func)(void *data, Evas_Object *obj), void *data, Evas_Object *obj, Eina_Bool append)
 {
   
-  if (idle_render) {
-    ecore_idle_enterer_del(idle_render);
+  if (idle_render) {    
+    ecore_idler_del(idle_render);
     idle_render = NULL;
   }
-    
-  if (!worker) {
-    if (workerfinish_idle) {
-      //ecore_idle_enterer_del(workerfinish_idle);
-      //workerfinish_idle = NULL;
-    }
-    else {
-      workerfinish_idle = ecore_idle_enterer_add(workerfinish_idle_run, NULL);
-	  
-      pending_action = func;
-      pending_data = data;
-      pending_obj = obj;
-    }
-  }
-  else {
-    if (pending_action)
-      printf("FIXME skipping because of pending action\n");
-    
-    /*pending_action = func;
-    pending_data = data;
-    pending_obj = obj;*/
   
+  if (timer_render) {
+    ecore_timer_del(timer_render);
+    timer_render = NULL;
+  }
+  
+  if (append || !pending_action())
+    pending_add(func, data, obj);
+  
+  if (!worker) {
+    if (!workerfinish_idle) {
+      workerfinish_idle = ecore_job_add(workerfinish_idle_run, NULL);
+    }
+    //pending_exe();
+  }
+  else {  
     quick_preview_only = 1;
   }
 }
@@ -970,9 +989,10 @@ _finished_tile(void *data, Ecore_Thread *th)
   
   worker--;
   
-  if (!pending_action) {
+  if (!pending_action()) {
     if (first_preview) {
-      idle_render = ecore_idle_enterer_add(idle_run_render, NULL);
+      printf("noting pending!\n\n");
+      idle_render = ecore_idler_add(idle_run_render, NULL);
     }
     else {
       fill_scroller_preview();
@@ -981,7 +1001,7 @@ _finished_tile(void *data, Ecore_Thread *th)
   }
   
   if (mat_cache_old) {
-    if (preview_tiles || (!pending_action && delay < (1-quick_preview_only)*high_quality_delay && (worker || first_preview))) {
+    if (preview_tiles || (!pending_action() && delay < (1-quick_preview_only)*high_quality_delay && (worker || first_preview))) {
       //printf("delay for now: %f (%d)\n", delay, tdata->scale);
       eina_array_push(finished_threads, data);
       
@@ -999,9 +1019,7 @@ _finished_tile(void *data, Ecore_Thread *th)
       return;
     }
     else {
-      
-      
-      if (!first_preview && !pending_action) {
+      if (!first_preview && !pending_action()) {
         grid_setsize();
         fill_scroller_preview();
         fill_scroller();
@@ -1019,11 +1037,12 @@ _finished_tile(void *data, Ecore_Thread *th)
   
   first_preview = 0;
   
-  if (!worker && pending_action) {
+  if (!worker && pending_action()) {
     if (mat_cache_old)
       _display_preview(NULL);
     //this will schedule an idle enterer to only process func after we are finished with rendering
-    workerfinish_schedule(pending_action, pending_data, pending_obj);
+    //workerfinish_schedule(pending_action, pending_data, pending_obj, EINA_TRUE);
+    pending_exe();
   }
   
 }
@@ -1067,8 +1086,8 @@ int fill_area(int xm, int ym, int wm, int hm, int minscale, int preview)
   if (worker >= max_workers)
     return 0;
   
-  if (pending_action)
-    return 0;
+  /*if (pending_action())
+    return 0;*/
   
   if (!grid)
     return 0;
@@ -1267,7 +1286,7 @@ static void
 on_done(void *data, Evas_Object *obj, void *event_info)
 {
   // quit the mainloop (elm_run function will return)
-  workerfinish_schedule(&elm_exit_do, NULL, NULL);
+  workerfinish_schedule(&elm_exit_do, NULL, NULL, EINA_TRUE);
 }
 
 
@@ -1383,7 +1402,8 @@ static void on_jump_image(void *data, Evas_Object *obj, void *event_info)
   
   if (mat_cache_old && !worker)
     _display_preview(NULL);
-  workerfinish_schedule(&step_image_do, NULL, NULL);
+  //FIXME detect if same actions come behind each other and skip?
+  workerfinish_schedule(&step_image_do, NULL, NULL, EINA_FALSE);
 }
 
 
@@ -1392,7 +1412,7 @@ on_group_select(void *data, Evas_Object *obj, void *event_info)
 { 
   //FIXME no double select!
   if (!fixme_no_group_select)
-    workerfinish_schedule(&group_select_do, data, obj);
+    workerfinish_schedule(&group_select_do, data, obj, EINA_TRUE);
 }
 
 typedef struct {
@@ -1488,7 +1508,7 @@ void on_known_tags_changed(Tagfiles *tagfiles, void *data, const char *new_tag)
 void filegroup_changed_cb(File_Group *group)
 {
   //FIXME do we have to schedule this even if something else is running?
-  workerfinish_schedule(step_image_do, NULL, NULL);
+  workerfinish_schedule(step_image_do, NULL, NULL, EINA_TRUE);
 }
 
 void step_image_do(void *data, Evas_Object *obj)
@@ -1511,6 +1531,9 @@ void step_image_do(void *data, Evas_Object *obj)
   
   if (!tagfiles_count(files))
     return;
+  
+  if (data)
+    tagfiles_step(files, (intptr_t)data);
   
   del_filter_settings();  
   
@@ -1967,42 +1990,36 @@ on_origscale_image(void *data, Evas_Object *obj, void *event_info)
 static void
 on_next_image(void *data, Evas_Object *obj, void *event_info)
 {
-  last_file_step = 1;
-  
   //already waiting for an action?
-  if (!pending_action && files) {
-    hacky_idle_iter_pending = HACK_ITERS_FOR_REAL_IDLE;
+  if (pending_action() <= PENDING_ACTIONS_BEFORE_SKIP_STEP && files) {
     
     bench_delay_start();
-    tagfiles_step(files, last_file_step);
+    //tagfiles_step(files, last_file_step);
 
     if (mat_cache_old && !worker)
       _display_preview(NULL);
-    workerfinish_schedule(&step_image_do, NULL, NULL);
+    //doesnt matter if true or false
+    workerfinish_schedule(&step_image_do, (void*)(intptr_t)1, NULL, EINA_TRUE);
   }
 }
 
 static void
 on_delete_image(void *data, Evas_Object *obj, void *event_info)
 {
-  workerfinish_schedule(&delete_image_do, NULL, NULL);
+  workerfinish_schedule(&delete_image_do, NULL, NULL, EINA_TRUE);
 }
 
 static void
 on_prev_image(void *data, Evas_Object *obj, void *event_info)
-{
-  last_file_step = -1;
-  
-  //already waiting for an action?
-  if (!pending_action && files) {
-    hacky_idle_iter_pending = HACK_ITERS_FOR_REAL_IDLE;
+{//already waiting for an action?
+  if (pending_action() <= PENDING_ACTIONS_BEFORE_SKIP_STEP && files) {
     
     bench_delay_start();
-    tagfiles_step(files, last_file_step);
     
     if (mat_cache_old && !worker)
       _display_preview(NULL);
-    workerfinish_schedule(&step_image_do, NULL, NULL);
+    //FIXME doesnt matter if true or false
+    workerfinish_schedule(&step_image_do, (void*)(intptr_t)-1, NULL, EINA_TRUE);
   }
 }
 
@@ -2224,14 +2241,14 @@ static void on_insert_before(void *data, Evas_Object *obj, void *event_info)
 {
   bench_delay_start();
   
-  workerfinish_schedule(&insert_before_do, NULL, NULL);
+  workerfinish_schedule(&insert_before_do, NULL, NULL, EINA_TRUE);
 }
 
 static void on_insert_after(void *data, Evas_Object *obj, void *event_info)
 {
   bench_delay_start();
   
-  workerfinish_schedule(&insert_after_do, NULL, NULL);
+  workerfinish_schedule(&insert_after_do, NULL, NULL, EINA_TRUE);
 }
 
 static void on_tab_select(void *data, Evas_Object *obj, void *event_info)
@@ -2289,18 +2306,34 @@ void shortcut(void *data, Evas *e, Evas_Object *obj, void *event_info)
 
 Eina_Bool shortcut_elm(void *data, Evas_Object *obj, Evas_Object *src, Evas_Callback_Type type, void *event_info)
 {
+  int i;
   struct _Evas_Event_Key_Down *key;
+  
+  if (type == EVAS_CALLBACK_KEY_UP)
+    cur_key_down = 0;
   
   if (type ==  EVAS_CALLBACK_KEY_DOWN) {
     key = event_info;
-    if (!strcmp(key->keyname, "space"))
-      on_next_image(NULL, NULL, NULL);
+    if (!strcmp(key->keyname, "space")) {
+      if (cur_key_down == 1)
+	for(i=0;i<REPEATS_ON_STEP_HOLD;i++)
+	  on_next_image(NULL, NULL, NULL);
+      else
+	on_next_image(NULL, NULL, NULL);
+      cur_key_down = 1;
+    }
     else if (!strcmp(key->keyname, "plus"))
       zoom_in_do();
     else if (!strcmp(key->keyname, "minus"))
       zoom_out_do();
-    else if (!strcmp(key->keyname, "BackSpace"))
-      on_prev_image(NULL, NULL, NULL);
+    else if (!strcmp(key->keyname, "BackSpace")) {
+      if (cur_key_down == 2)
+	for(i=0;i<REPEATS_ON_STEP_HOLD;i++)
+	  on_prev_image(NULL, NULL, NULL);
+      else
+	on_prev_image(NULL, NULL, NULL);
+      cur_key_down = 2;
+    }
     else if (!strcmp(key->keyname, "Delete"))
       on_delete_image(NULL, NULL, NULL);
     else if (!strcmp(key->keyname, "Escape"))
@@ -2308,9 +2341,9 @@ Eina_Bool shortcut_elm(void *data, Evas_Object *obj, Evas_Object *src, Evas_Call
     else if (!strcmp(key->keyname, "o"))
       on_origscale_image(NULL, NULL, NULL);
     else if (!strcmp(key->keyname, "r"))
-      workerfinish_schedule(&insert_rotation_do, (void*)(intptr_t)90, NULL);
+	  workerfinish_schedule(&insert_rotation_do, (void*)(intptr_t)90, NULL, EINA_TRUE);
     else if (!strcmp(key->keyname, "l"))
-      workerfinish_schedule(&insert_rotation_do, (void*)(intptr_t)270, NULL);
+      workerfinish_schedule(&insert_rotation_do, (void*)(intptr_t)270, NULL, EINA_TRUE);
     else if (!strcmp(key->keyname, "f"))
       on_fit_image(NULL, NULL, NULL);
     else if (!strcmp(key->keyname, "a"))
