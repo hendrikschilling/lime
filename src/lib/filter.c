@@ -164,8 +164,22 @@ void filter_del(Filter *f)
   
   lime_config_reset();
   
+  /*if (f->node->con_trees_in && ea_count(f->node->con_trees_in))
+    filter_deconfigure(((Con*)ea_data(f->node->con_trees_in, 0))->source->filter);*/
+  
   if (f->node->con_trees_in && ea_count(f->node->con_trees_in))
-    filter_deconfigure(((Con*)ea_data(f->node->con_trees_in, 0))->source->filter);
+    con_del_real(ea_pop(f->node->con_trees_in));
+  
+  if (f->node->con_trees_out && ea_count(f->node->con_trees_out))
+    con_del_real(ea_pop(f->node->con_trees_out));
+  
+  if (f->node_orig->con_trees_in && ea_count(f->node_orig->con_trees_in))
+    con_del(ea_pop(f->node_orig->con_trees_in));
+  
+  if (f->node_orig->con_trees_out && ea_count(f->node_orig->con_trees_out))
+    con_del(ea_pop(f->node_orig->con_trees_out));
+  
+  filter_deconfigure(f);
   
   if (f->del)
     f->del(f);
@@ -286,7 +300,7 @@ Con *filter_connect(Filter *source, int out, Filter *sink, int in)
     eina_array_push(source->node_orig->con_trees_out, con);
   else {
     while (ea_count(source->node_orig->con_trees_out))
-      con_del_real(ea_pop(source->node_orig->con_trees_out));
+      con_del(ea_pop(source->node_orig->con_trees_out));
     eina_array_push(source->node_orig->con_trees_out, con);
   }
   
@@ -294,7 +308,7 @@ Con *filter_connect(Filter *source, int out, Filter *sink, int in)
     eina_array_push(sink->node_orig->con_trees_in, con);
   else {
     while (ea_count(sink->node_orig->con_trees_in))
-      con_del_real(ea_pop(sink->node_orig->con_trees_in));
+      con_del(ea_pop(sink->node_orig->con_trees_in));
     eina_array_push(sink->node_orig->con_trees_in, con);
   }
   
@@ -303,20 +317,33 @@ Con *filter_connect(Filter *source, int out, Filter *sink, int in)
   return con;
 }
 
+void con_del(Con *con)
+{
+  //FIXME als del real?
+    if (con->source->filter->node_orig->con_trees_out 
+	  && ea_count(con->source->filter->node_orig->con_trees_out))
+    ea_pop(con->source->filter->node_orig->con_trees_out);
+  if (con->sink->filter->node_orig->con_trees_in 
+	  && ea_count(con->sink->filter->node_orig->con_trees_in))
+    ea_pop(con->sink->filter->node_orig->con_trees_in);
+  
+  assert(!ea_count(con->source->filter->node_orig->con_trees_out));
+  assert(!ea_count(con->sink->filter->node_orig->con_trees_in));
+  
+  free(con);
+}
+
 void con_del_real(Con *con)
 {
-  if (!con->source->filter->node->con_trees_out 
-	  || !ea_count(con->source->filter->node->con_trees_out))
-    return;
-  if (!con->sink->filter->node->con_trees_in 
-	  || !ea_count(con->sink->filter->node->con_trees_in))
-    return;
+  if (con->source->filter->node->con_trees_out 
+	  && ea_count(con->source->filter->node->con_trees_out))
+    ea_pop(con->source->filter->node->con_trees_out);
+  if (con->sink->filter->node->con_trees_in 
+	  && ea_count(con->sink->filter->node->con_trees_in))
+    ea_pop(con->sink->filter->node->con_trees_in);
   
-  assert(ea_count(con->source->filter->node->con_trees_out) == 1);
-  assert(ea_count(con->sink->filter->node->con_trees_in) == 1);
-  
-  ea_pop(con->source->filter->node->con_trees_out);
-  ea_pop(con->sink->filter->node->con_trees_in);
+  assert(!ea_count(con->source->filter->node->con_trees_out));
+  assert(!ea_count(con->sink->filter->node->con_trees_in));
   
   free(con);
 }

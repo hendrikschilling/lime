@@ -45,8 +45,7 @@ static void *_data_new(Filter *f, void *data)
   _Data *newdata = calloc(sizeof(_Data), 1);
   
   *newdata = *(_Data*)data;
-  if (newdata->common->packed_input || newdata->common->packed_output)
-    newdata->buf = malloc(DEFAULT_TILE_AREA*3);
+  newdata->buf = malloc(DEFAULT_TILE_AREA*3);
   
   if (newdata->common->initialized == INIT_SWS)
     newdata->sws = sws_getContext(DEFAULT_TILE_SIZE, DEFAULT_TILE_SIZE, newdata->common->lav_fmt_in, DEFAULT_TILE_SIZE, DEFAULT_TILE_SIZE, newdata->common->lav_fmt_out, SWS_POINT, NULL, NULL, NULL);

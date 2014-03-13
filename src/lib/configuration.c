@@ -1124,6 +1124,7 @@ void filter_deconfigure(Filter *f)
     return;
  
   con = ea_data(f->node->con_trees_out, 0);
+  assert(!con || con->source->filter == f);
   
   while (con) {
      sink_f = con->sink->filter;
