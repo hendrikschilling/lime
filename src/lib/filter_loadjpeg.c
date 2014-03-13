@@ -817,6 +817,7 @@ void _loadjpeg_worker_ijg_thumb(Filter *f, Eina_Array *in, Eina_Array *out, Rect
   int row_stride;   /* physical row width in output buffer */
   int lines_read;
   uint8_t *rt, *gt, *bt;
+  int mul = 1u << area->corner.scale;
   
   struct jpeg_decompress_struct cinfo;
   struct my_error_mgr jerr;
@@ -875,9 +876,9 @@ void _loadjpeg_worker_ijg_thumb(Filter *f, Eina_Array *in, Eina_Array *out, Rect
       }
   }
 
-  simple_scale(cinfo.output_width, cinfo.output_height, data->w/16, data->h/16, rt, r);
-  simple_scale(cinfo.output_width, cinfo.output_height, data->w/16, data->h/16, gt, g);
-  simple_scale(cinfo.output_width, cinfo.output_height, data->w/16, data->h/16, bt, b);
+  simple_scale(cinfo.output_width, cinfo.output_height, data->w/mul, data->h/mul, rt, r);
+  simple_scale(cinfo.output_width, cinfo.output_height, data->w/mul, data->h/mul, gt, g);
+  simple_scale(cinfo.output_width, cinfo.output_height, data->w/mul, data->h/mul, bt, b);
   
   free(rt);
   free(gt);
@@ -894,9 +895,10 @@ void _loadjpeg_worker(Filter *f, Eina_Array *in, Eina_Array *out, Rect *area, in
   if (data->common->error)
     return;
   
+  //FIXME use thumb only on smallest scale
   if (area->corner.scale < data->seekable)
     _loadjpeg_worker_ijg(f, in, out, area, thread_id);
-  else if (area->corner.scale == 4)
+  else if (area->corner.scale >= 4)
     _loadjpeg_worker_ijg_thumb(f, in, out, area, thread_id);
   else
     _loadjpeg_worker_ijg_original(f, in, out, area, thread_id);  
@@ -974,16 +976,19 @@ int _loadjpeg_input_fixed(Filter *f)
     && JPEG_TILE_WIDTH % (data->rst_int * data->mcu_w) == 0)
     data->seekable = 3;
   
+  ((Dim*)data->dim)->scaledown_max = 3;
+  
   //FIXME check wether thumbnail image is larger than image/16!
-  if (data->thumb_len)
-    ((Dim*)data->dim)->scaledown_max = 4;
-  else
-    ((Dim*)data->dim)->scaledown_max = 3;
+  if (data->thumb_len) {
+    //FIXME do not assume thumbnail size
+    while (160 < data->w / (1u << ((Dim*)data->dim)->scaledown_max))
+      ((Dim*)data->dim)->scaledown_max++;
+  }
   ((Dim*)data->dim)->width = cinfo.output_width;
   ((Dim*)data->dim)->height = cinfo.output_height;
-
-  f->tw_s = malloc(sizeof(int)*5);
-  f->th_s = malloc(sizeof(int)*5);
+  
+  f->tw_s = malloc(sizeof(int)*((Dim*)data->dim)->scaledown_max);
+  f->th_s = malloc(sizeof(int)*((Dim*)data->dim)->scaledown_max);
   
   for(i=0;i<data->seekable;i++) {
     cinfo.scale_num = 1;
@@ -999,8 +1004,12 @@ int _loadjpeg_input_fixed(Filter *f)
     f->tw_s[i] = cinfo.output_width;
     f->th_s[i] = cinfo.output_height;
   }
-  f->tw_s[4] = data->w/16;
-  f->th_s[4] = data->h/16;
+  for(i=4;i<=((Dim*)data->dim)->scaledown_max;i++) {
+    cinfo.scale_num = 1;
+    cinfo.scale_denom = 1u << i;
+    f->tw_s[i] = data->w/cinfo.scale_denom;
+    f->th_s[i] = data->h/cinfo.scale_denom;
+  }
   
   jpeg_destroy_decompress(&cinfo);
   
