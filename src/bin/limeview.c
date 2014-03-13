@@ -49,7 +49,7 @@
 #define PENDING_ACTIONS_BEFORE_SKIP_STEP 3
 #define REPEATS_ON_STEP_HOLD 2
 
-//#define BENCHMARK
+#define BENCHMARK
 
 //FIXME adjust depending on speed!
 #define PREREAD_RANGE 64
