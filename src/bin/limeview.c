@@ -283,9 +283,7 @@ void float_changed_do(void *data, Evas_Object *obj)
 void del_filter_settings(void);
 
 void remove_filter_do(void *data, Evas_Object *obj)
-{
-  printf("remove filter %p\n", data);
-  
+{ 
   Eina_List *chain_node = data;
   Filter_Chain *fc = eina_list_data_get(chain_node);
   Filter_Chain *prev, *next;
@@ -317,8 +315,6 @@ void remove_filter_do(void *data, Evas_Object *obj)
   forbid_fill--;
   
   step_image_do(NULL, NULL);
-  
-  printf("remove filter done %p\n", data);
 }
 
 void _on_filter_select(void *data, Evas_Object *obj, void *event_info)
@@ -837,8 +833,6 @@ static void preread_filerange(int range)
 
 Eina_Bool workerfinish_idle_run(void *data)
 {  
-  printf("run idle %p/%p/%p\n", pending_action, pending_data, pending_obj); 
-  
   void (*pend_tmp_func)(void *data, Evas_Object *obj);
   Evas_Object *pend_tmp_obj;
   void *pend_tmp_data;
