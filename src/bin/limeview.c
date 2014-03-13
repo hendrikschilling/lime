@@ -57,7 +57,7 @@ int max_fast_scaledown = 5;
 int first_preview = 0;
 Ecore_Job *workerfinish_idle = NULL;
 Ecore_Idler *idle_render = NULL;
-Ecore_Idle_Enterer *idle_progress_print = NULL;
+Ecore_Idler *idle_progress_print = NULL;
 Ecore_Timer *timer_render = NULL;
 Eina_Array *taglist_add = NULL;
 int quick_preview_only = 0;
@@ -876,6 +876,8 @@ static void preread_filerange(int range)
 
 void workerfinish_idle_run(void *data)
 {  
+  printf("run idle\n");
+  
   workerfinish_idle = NULL;
   
   assert(!worker);
@@ -2117,7 +2119,7 @@ Eina_Bool _idle_progress_printer(void *data)
 static void _ls_progress_cb(Tagfiles *tagfiles, void *data)
 {
   if (!idle_progress_print)
-    idle_progress_print = ecore_idle_enterer_add(&_idle_progress_printer, tagfiles);
+    idle_progress_print = ecore_idler_add(&_idle_progress_printer, tagfiles);
 }
 
 static void _ls_done_cb(Tagfiles *tagfiles, void *data)
@@ -2125,7 +2127,7 @@ static void _ls_done_cb(Tagfiles *tagfiles, void *data)
   evas_object_del(load_notify);
   
   if (idle_progress_print) {
-    ecore_idle_enterer_del(idle_progress_print);
+    ecore_idler_del(idle_progress_print);
     idle_progress_print = NULL;
   }
   

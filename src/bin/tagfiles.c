@@ -613,7 +613,7 @@ static void _ls_done_cb(void *data, Eio_File *handler)
   
   if (eina_inarray_count(tagfiles->dirs_ls)) {
     //dirs are sorted before scanning so we do not need to sort all files at once!
-    ecore_idle_enterer_add(_idle_ls_continue, tagfiles);
+    ecore_idler_add(_idle_ls_continue, tagfiles);
   }
   else {
     if (!tagfiles->xmp_thread)
