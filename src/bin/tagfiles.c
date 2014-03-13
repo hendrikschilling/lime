@@ -23,6 +23,8 @@
 #include <exempi/xmpconsts.h>
 #include <assert.h>
 #include <Ecore.h>
+#include <fcntl.h>
+
 #include "tagfiles.h"
 
 #define MAX_XMP_FILE 1024*1024
@@ -570,6 +572,38 @@ int dir_strcmp_neg(const char **a, const char **b)
 
 
 static void _ls_done_cb(void *data, Eio_File *handler);
+
+static void _fadvice_file(void *data, Ecore_Thread *th)
+{
+  int fd;
+  
+  eina_sched_prio_drop();
+  eina_sched_prio_drop();
+  eina_sched_prio_drop();
+  
+  fd = open(data, O_RDONLY);
+  posix_fadvise(fd, 0,PREREAD_SIZE,POSIX_FADV_WILLNEED);
+  close(fd);
+  
+  return 0;
+}
+
+//FIXME check tag filter?
+void tagfiles_preload_headers(Tagfiles *tagfiles, int direction, int range)
+{
+  int i, j;
+  File_Group *group;
+  const char *filename;
+  
+  //for(j=tagfiles_idx(tagfiles);j<tagfiles_idx(tagfiles)+range*direction;j+=direction) {
+    group = tagfiles_nth(tagfiles, tagfiles_idx(tagfiles)+range*direction);
+    for(i=0;i<filegroup_count(group);i++) {
+      filename = filegroup_nth(group, i);
+      if (filename)
+	ecore_thread_run(_fadvice_file, NULL, NULL, filename);
+    }
+  //}
+}
 
 Eina_Bool _idle_ls_continue(void *data) 
 {

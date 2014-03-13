@@ -45,8 +45,8 @@
 #include "filter_savejpeg.h"
 
 #define TILE_SIZE DEFAULT_TILE_SIZE
-#define PREREAD_SIZE 4096*16
-#define PREREAD_RANGE 5
+//FIXME adjust depending on speed!
+#define PREREAD_RANGE 16
 #define PENDING_ACTIONS_BEFORE_SKIP_STEP 3
 #define REPEATS_ON_STEP_HOLD 2
 
@@ -62,6 +62,7 @@ Ecore_Timer *timer_render = NULL;
 Eina_Array *taglist_add = NULL;
 int quick_preview_only = 0;
 int cur_key_down = 0;
+int key_repeat = 0;
 
 Tagfiles *files = NULL;
 Tagfiles *files_new = NULL;
@@ -810,8 +811,6 @@ Eina_Bool timer_run_render(void *data)
 
 Eina_Bool idle_run_render(void *data)
 {
-  printf("idle run render\n");
-  
   if (!pending_action()) {
     if (quick_preview_only) {
       //FIXME what time is good?
@@ -832,52 +831,8 @@ Eina_Bool idle_run_render(void *data)
   return ECORE_CALLBACK_CANCEL;
 }
 
-/*
-int wrap_files_idx(float idx)
-{
-  if (idx < 0)
-    return eina_inarray_count(files)-1;
-  if (idx >= eina_inarray_count(files))
-    return 0;
-  return idx;
-}
-
-static void _fadvice_file(void *data, Ecore_Thread *th)
-{
-  int fd;
-  
-  eina_sched_prio_drop();
-  
-  fd = open(data, O_RDONLY);
-  posix_fadvise(fd, 0,PREREAD_SIZE,POSIX_FADV_WILLNEED);
-  close(fd);
-  
-  return 0;
-}
-
-//FIXME check tag filter?
-static void preread_filerange(int range)
-{
-  int i, j;
-  File_Group *group;
-  const char *filename;
-  //start_idx = file_idx;
-  
-  for(j=file_idx;j<file_idx+range*file_step;j+=file_step) {
-    
-    group = eina_inarray_nth(files, wrap_files_idx(j));
-    for(i=0;i<eina_inarray_count(group->files);i++) {
-      filename = ((Tagged_File*)eina_inarray_nth(group->files, i))->filename;
-      if (filename)
-	ecore_thread_run(_fadvice_file, NULL, NULL, filename);
-    }
-  }
-}*/
-
 void workerfinish_idle_run(void *data)
-{  
-  printf("run idle\n");
-  
+{ 
   workerfinish_idle = NULL;
   
   assert(!worker);
@@ -993,7 +948,6 @@ _finished_tile(void *data, Ecore_Thread *th)
   
   if (!pending_action()) {
     if (first_preview) {
-      printf("noting pending!\n\n");
       idle_render = ecore_idler_add(idle_run_render, NULL);
     }
     else {
@@ -1534,8 +1488,10 @@ void step_image_do(void *data, Evas_Object *obj)
   if (!tagfiles_count(files))
     return;
   
-  if (data)
+  if (data) {
     tagfiles_step(files, (intptr_t)data);
+    last_file_step = (intptr_t)data;
+  }
   
   del_filter_settings();  
   
@@ -1664,6 +1620,11 @@ void step_image_do(void *data, Evas_Object *obj)
   } 
   
   elm_slider_value_set(file_slider, tagfiles_idx(files));
+  
+  if (key_repeat)
+    tagfiles_preload_headers(files, last_file_step, PREREAD_RANGE);
+  else
+    tagfiles_preload_headers(files, last_file_step, 1);
 }
 
 void del_file_done(void *data, Eio_File *handler)
@@ -2311,8 +2272,10 @@ Eina_Bool shortcut_elm(void *data, Evas_Object *obj, Evas_Object *src, Evas_Call
   int i;
   struct _Evas_Event_Key_Down *key;
   
-  if (type == EVAS_CALLBACK_KEY_UP)
+  if (type == EVAS_CALLBACK_KEY_UP) {
     cur_key_down = 0;
+    key_repeat = 0;
+  }
   
   if (type ==  EVAS_CALLBACK_KEY_DOWN) {
     key = event_info;
@@ -2323,6 +2286,7 @@ Eina_Bool shortcut_elm(void *data, Evas_Object *obj, Evas_Object *src, Evas_Call
       else
 	on_next_image(NULL, NULL, NULL);
       cur_key_down = 1;
+      key_repeat = 1;
     }
     else if (!strcmp(key->keyname, "plus"))
       zoom_in_do();
@@ -2335,6 +2299,7 @@ Eina_Bool shortcut_elm(void *data, Evas_Object *obj, Evas_Object *src, Evas_Call
       else
 	on_prev_image(NULL, NULL, NULL);
       cur_key_down = 2;
+      key_repeat = 1;
     }
     else if (!strcmp(key->keyname, "Delete"))
       on_delete_image(NULL, NULL, NULL);
