@@ -25,6 +25,8 @@ typedef struct {
   int initialized;
   int packed_output;
   int packed_input;
+  int in_shuffle[3];
+  int out_shuffle[3];
   cmsHTRANSFORM transform;
   int lav_fmt_in, lav_fmt_out;
 } _Common;
@@ -105,9 +107,9 @@ static void _worker(Filter *f, Eina_Array *in, Eina_Array *out, Rect *area, int 
       abort();
     }
     else {
-      in_planes[0] = ((Tiledata*)ea_data(in, 0))->data;
-      in_planes[1] = ((Tiledata*)ea_data(in, 1))->data;
-      in_planes[2] = ((Tiledata*)ea_data(in, 2))->data;
+      in_planes[0] = ((Tiledata*)ea_data(in, data->common->in_shuffle[0]))->data;
+      in_planes[1] = ((Tiledata*)ea_data(in, data->common->in_shuffle[1]))->data;
+      in_planes[2] = ((Tiledata*)ea_data(in, data->common->in_shuffle[2]))->data;
     }
     
     if (data->common->packed_output) {
@@ -119,13 +121,12 @@ static void _worker(Filter *f, Eina_Array *in, Eina_Array *out, Rect *area, int 
       out_strides[2] = DEFAULT_TILE_SIZE*3;
     }
     else {
-      out_planes[0] = ((Tiledata*)ea_data(out, 1))->data;
-      out_planes[1] = ((Tiledata*)ea_data(out, 2))->data;
-      out_planes[2] = ((Tiledata*)ea_data(out, 0))->data;
+      out_planes[0] = ((Tiledata*)ea_data(out, data->common->out_shuffle[0]))->data;
+      out_planes[1] = ((Tiledata*)ea_data(out, data->common->out_shuffle[1]))->data;
+      out_planes[2] = ((Tiledata*)ea_data(out, data->common->out_shuffle[2]))->data;
     }
     
     sws_scale(data->sws, in_planes, in_strides, 0, DEFAULT_TILE_SIZE, out_planes, out_strides);
-    
     
     if (data->common->packed_output)
       for(j=0;j<DEFAULT_TILE_SIZE;j++)
@@ -164,10 +165,25 @@ static int _tunes_fixed(Filter *f)
   data->common->lav_fmt_out = PIX_FMT_NONE;
   data->common->packed_output = EINA_FALSE;
   data->common->packed_input = EINA_FALSE;
+  data->common->in_shuffle[0] = 0;
+  data->common->in_shuffle[1] = 1;
+  data->common->in_shuffle[2] = 2;
+  data->common->out_shuffle[0] = 0;
+  data->common->out_shuffle[1] = 1;
+  data->common->out_shuffle[2] = 2;
   
   switch (*((Colorspace*)data->in_color->data)) {
     case CS_RGB :
-      data->common->lav_fmt_in = PIX_FMT_GBRP; 
+      if (sws_isSupportedInput(PIX_FMT_GBRP)) {
+	data->common->lav_fmt_in = PIX_FMT_GBRP;
+	data->common->in_shuffle[0] = 1;
+	data->common->in_shuffle[1] = 2;
+	data->common->in_shuffle[2] = 0;
+      }
+      else if (sws_isSupportedInput(PIX_FMT_RGB24)) {
+	data->common->lav_fmt_in = PIX_FMT_RGB24;
+	data->common->packed_input = EINA_TRUE;
+      }
       break;
     case CS_YUV : 
       data->common->lav_fmt_in = PIX_FMT_YUV444P;
@@ -176,8 +192,12 @@ static int _tunes_fixed(Filter *f)
   
   switch (*((Colorspace*)data->out_color->data)) {
     case CS_RGB :
-      if (sws_isSupportedOutput(PIX_FMT_GBRP))
+      if (sws_isSupportedOutput(PIX_FMT_GBRP)) {
 	data->common->lav_fmt_out = PIX_FMT_GBRP;
+	data->common->out_shuffle[0] = 1;
+	data->common->out_shuffle[1] = 2;
+	data->common->out_shuffle[2] = 0;
+      }
       else if (sws_isSupportedOutput(PIX_FMT_RGB24)) {
 	data->common->lav_fmt_out = PIX_FMT_RGB24;
 	data->common->packed_output = EINA_TRUE;
