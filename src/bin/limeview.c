@@ -49,9 +49,11 @@
 #define PENDING_ACTIONS_BEFORE_SKIP_STEP 3
 #define REPEATS_ON_STEP_HOLD 2
 
+//#define BENCHMARK
+
 //FIXME adjust depending on speed!
 #define PREREAD_RANGE 64
-#define PREREAD_SIZE_HEADER 1024*16
+#define PREREAD_SIZE_HEADER 1024*64
 #define PREREAD_SIZE_FULL 1024*1024*4
 
 int high_quality_delay =  300;
@@ -955,6 +957,13 @@ _finished_tile(void *data, Ecore_Thread *th)
     
   if (tdata->scaled_preview)
     preview_tiles--;
+  
+#ifdef BENCHMARK
+  if (tagfiles_idx(files) >= 100)
+    workerfinish_schedule(&elm_exit_do, NULL, NULL, EINA_TRUE);
+  else
+    workerfinish_schedule(&step_image_do, (void*)(intptr_t)1, NULL, EINA_TRUE);
+#endif
   
   worker--;
   
