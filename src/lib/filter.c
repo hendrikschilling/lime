@@ -362,8 +362,16 @@ Con *filter_connect_real(Filter *source, int out, Filter *sink, int in)
   if (!sink->node->con_trees_in)
     sink->node->con_trees_in = eina_array_new(1);
   
-  assert(!ea_count(source->node->con_trees_out));
-  assert(!ea_count(sink->node->con_trees_in));
+  if (ea_count(source->node->con_trees_out)) {
+    printf("WARNING: have con_trees_out\n");
+    while (ea_count(source->node->con_trees_out))
+      ea_pop(source->node->con_trees_out);
+  }
+  if (ea_count(sink->node->con_trees_in)) {
+    printf("WARNING: have con_trees_in\n");
+    while (ea_count(source->node->con_trees_in))
+      ea_pop(source->node->con_trees_in);
+  }
   
   eina_array_push(source->node->con_trees_out, con);
   eina_array_push(sink->node->con_trees_in, con);
