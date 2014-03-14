@@ -1379,12 +1379,15 @@ static void on_jump_image(void *data, Evas_Object *obj, void *event_info)
   
   int idx = elm_slider_value_get(file_slider);
 
+  if (idx == tagfiles_idx(files))
+    return;
+  
   tagfiles_idx_set(files, idx);
   
   if (mat_cache_old && !worker)
     _display_preview(NULL);
   //FIXME detect if same actions come behind each other and skip?
-  //workerfinish_schedule(&step_image_do, NULL, NULL, EINA_FALSE);
+  workerfinish_schedule(&step_image_do, NULL, NULL, EINA_FALSE);
 }
 
 
@@ -2115,6 +2118,7 @@ static void _ls_progress_cb(Tagfiles *tagfiles, void *data)
 
 static void _ls_done_cb(Tagfiles *tagfiles, void *data)
 {
+  printf("ls done\n");
   evas_object_del(load_notify);
   
   if (idle_progress_print) {

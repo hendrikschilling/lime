@@ -90,6 +90,17 @@ static void _xmp_scanner(void *data, Ecore_Thread *th);
 static void _xmp_finish(void *data, Ecore_Thread *th);
 static void _xmp_notify(void *data, Ecore_Thread *thread, void *msg_data);
 
+/* eina_inarray_pop was returning wrong elements - higher thatn actually inserted! */
+void *eina_inarray_custom_pop(Eina_Inarray *ar)
+{
+  void *data;
+  
+  data = eina_inarray_nth(ar, eina_inarray_count(ar)-1);
+  eina_inarray_pop(ar);
+  
+  return data;
+}
+
 void tagfiles_group_changed_cb_insert(Tagfiles *tagfiles, File_Group *group, void (*filegroup_changed_cb)(File_Group *group))
 {
   Group_Changed_Cb_Data *data = malloc(sizeof(Group_Changed_Cb_Data));
@@ -261,7 +272,7 @@ File_Group *tagfiles_nth(Tagfiles *tagfiles, int idx)
     //we have already inserte files from this dir: always need to sort after insert
     if (tagfiles->unsorted_insert) {
       while (eina_inarray_count(tagfiles->files_ls)) {
-	group = *(File_Group**)eina_inarray_pop(tagfiles->files_ls);
+	group = *(File_Group**)eina_inarray_custom_pop(tagfiles->files_ls);
 	assert(group);
 	eina_inarray_push(tagfiles->files, &group);
       }
@@ -274,7 +285,7 @@ File_Group *tagfiles_nth(Tagfiles *tagfiles, int idx)
       
       eina_inarray_sort(tagfiles->files_ls, (Eina_Compare_Cb)filegroup_cmp_neg);
       while (eina_inarray_count(tagfiles->files_ls)) {
-	group = *(File_Group**)eina_inarray_pop(tagfiles->files_ls);
+	group = *(File_Group**)eina_inarray_custom_pop(tagfiles->files_ls);
 	assert(group);
 	eina_inarray_push(tagfiles->files, &group);
       }
@@ -628,7 +639,7 @@ Eina_Bool _idle_ls_continue(void *data)
   
   //FIXME do sort in extra thread instead of when idle?
   eina_inarray_sort(tagfiles->dirs_ls, (Eina_Compare_Cb)dir_strcmp_neg);
-  eio_file_direct_ls(*(char**)eina_inarray_pop(tagfiles->dirs_ls), &_ls_filter_cb, &_ls_main_cb,&_ls_done_cb, &_ls_error_cb, tagfiles);
+  eio_file_direct_ls(*(char**)eina_inarray_custom_pop(tagfiles->dirs_ls), &_ls_filter_cb, &_ls_main_cb,&_ls_done_cb, &_ls_error_cb, tagfiles);
     
   return ECORE_CALLBACK_CANCEL;
 }
@@ -641,7 +652,7 @@ static void _ls_done_cb(void *data, Eio_File *handler)
   //we have already inserted files from this dir: always need to sort after insert
   if (tagfiles->unsorted_insert) {
     while (eina_inarray_count(tagfiles->files_ls)) {
-      group = *(File_Group**)eina_inarray_pop(tagfiles->files_ls);
+      group = *(File_Group**)eina_inarray_custom_pop(tagfiles->files_ls);
       assert(group);
       eina_inarray_push(tagfiles->files, &group);
     }
@@ -652,7 +663,7 @@ static void _ls_done_cb(void *data, Eio_File *handler)
     if (tagfiles->files_sorted)
       eina_inarray_sort(tagfiles->files_ls, (Eina_Compare_Cb)filegroup_cmp_neg);
     while (eina_inarray_count(tagfiles->files_ls)) {
-      group = *(File_Group**)eina_inarray_pop(tagfiles->files_ls);
+      group = *(File_Group**)eina_inarray_custom_pop(tagfiles->files_ls);
       //assert(group);
       //FIXME
       if (group)
