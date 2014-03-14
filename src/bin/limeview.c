@@ -49,7 +49,7 @@
 #define PENDING_ACTIONS_BEFORE_SKIP_STEP 3
 #define REPEATS_ON_STEP_HOLD 2
 
-#define BENCHMARK
+//#define BENCHMARK
 
 //FIXME adjust depending on speed!
 #define PREREAD_RANGE 64
@@ -887,7 +887,7 @@ _process_tile(void *data, Ecore_Thread *th)
 
 void _insert_image(_Img_Thread_Data *tdata)
 {
-  tdata->img = evas_object_image_filled_add(win);
+  tdata->img = evas_object_image_filled_add(evas_object_evas_get(win));
   evas_object_image_colorspace_set(tdata->img, EVAS_COLORSPACE_ARGB8888);
   evas_object_image_alpha_set(tdata->img, EINA_FALSE);
   evas_object_image_size_set(tdata->img, TILE_SIZE, TILE_SIZE);
@@ -959,7 +959,7 @@ _finished_tile(void *data, Ecore_Thread *th)
     preview_tiles--;
   
 #ifdef BENCHMARK
-  if (tagfiles_idx(files) >= 100)
+  if (tagfiles_idx(files) >= 98)
     workerfinish_schedule(&elm_exit_do, NULL, NULL, EINA_TRUE);
   else
     workerfinish_schedule(&step_image_do, (void*)(intptr_t)1, NULL, EINA_TRUE);
@@ -1378,13 +1378,13 @@ static void on_jump_image(void *data, Evas_Object *obj, void *event_info)
     return;
   
   int idx = elm_slider_value_get(file_slider);
-  
+
   tagfiles_idx_set(files, idx);
   
   if (mat_cache_old && !worker)
     _display_preview(NULL);
   //FIXME detect if same actions come behind each other and skip?
-  workerfinish_schedule(&step_image_do, NULL, NULL, EINA_FALSE);
+  //workerfinish_schedule(&step_image_do, NULL, NULL, EINA_FALSE);
 }
 
 
@@ -1514,8 +1514,10 @@ void step_image_do(void *data, Evas_Object *obj)
     return;
   
   if (data) {
+    printf("tagfiles old: %d\n", tagfiles_idx(files));
     tagfiles_step(files, (intptr_t)data);
     last_file_step = (intptr_t)data;
+    printf("tagfiles new: %d\n", tagfiles_idx(files));
   }
   
   del_filter_settings();  
@@ -1620,7 +1622,7 @@ void step_image_do(void *data, Evas_Object *obj)
   fill_scroller_preview();
   fill_scroller();
     
-  elm_list_clear(group_list);
+  /*elm_list_clear(group_list);
   for(i=0;i<filegroup_count(group);i++)
     if (filegroup_nth(group, i)) {
       idx_cp = malloc(sizeof(int));
@@ -1633,7 +1635,7 @@ void step_image_do(void *data, Evas_Object *obj)
       }
     }
   
-  elm_list_go(group_list);
+  elm_list_go(group_list);*/
   
   //update tag list
 
@@ -1644,7 +1646,7 @@ void step_image_do(void *data, Evas_Object *obj)
     elm_segment_control_item_selected_set(elm_segment_control_item_get(seg_rating, filegroup_rating(group)), EINA_TRUE);
   } 
   
-  elm_slider_value_set(file_slider, tagfiles_idx(files));
+  elm_slider_value_set(file_slider, tagfiles_idx(files)+0.1);
   
   tagfiles_preload_headers(files, last_file_step, PREREAD_RANGE, PREREAD_SIZE_HEADER);
 }
@@ -2050,6 +2052,7 @@ Eina_Bool _idle_progress_printer(void *data)
 {
   Tagfiles *tagfiles = data;
   char buf[64];
+  printf("progress %d\n", tagfiles_count(tagfiles));
   
   sprintf(buf, "scanned %d files in %d dirs", tagfiles_scanned_files(tagfiles), tagfiles_scanned_dirs(tagfiles));
   
@@ -2091,13 +2094,17 @@ Eina_Bool _idle_progress_printer(void *data)
     
     evas_object_show(scroller);
   }
-  else
+  else {
+    printf("elm slider min-max set\n");
     elm_slider_min_max_set(file_slider, 0, tagfiles_count(files)-1);
+  }
   
   if (!cur_group)
     step_image_do(NULL, NULL);
   
-  return ECORE_CALLBACK_PASS_ON;
+  //FIXME can't we leave this?
+  idle_progress_print = NULL;
+  return ECORE_CALLBACK_CANCEL;
 }
 
 static void _ls_progress_cb(Tagfiles *tagfiles, void *data)
@@ -2753,6 +2760,7 @@ elm_main(int argc, char **argv)
   max_workers = ecore_thread_max_get();
   
   lime_init();
+  eina_log_abort_on_critical_set(EINA_TRUE);
   
   mat_cache = mat_cache_new();
   delgrid();

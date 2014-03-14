@@ -252,6 +252,7 @@ File_Group *tagfiles_nth(Tagfiles *tagfiles, int idx)
   
   if (idx < eina_inarray_count(tagfiles->files)) {
     _files_check_sort(tagfiles);
+    assert(*(File_Group**)eina_inarray_nth(tagfiles->files, idx));
     return *(File_Group**)eina_inarray_nth(tagfiles->files, idx);
   }
   else {
@@ -261,6 +262,7 @@ File_Group *tagfiles_nth(Tagfiles *tagfiles, int idx)
     if (tagfiles->unsorted_insert) {
       while (eina_inarray_count(tagfiles->files_ls)) {
 	group = *(File_Group**)eina_inarray_pop(tagfiles->files_ls);
+	assert(group);
 	eina_inarray_push(tagfiles->files, &group);
       }
       tagfiles->files_sorted = EINA_FALSE;
@@ -273,6 +275,7 @@ File_Group *tagfiles_nth(Tagfiles *tagfiles, int idx)
       eina_inarray_sort(tagfiles->files_ls, (Eina_Compare_Cb)filegroup_cmp_neg);
       while (eina_inarray_count(tagfiles->files_ls)) {
 	group = *(File_Group**)eina_inarray_pop(tagfiles->files_ls);
+	assert(group);
 	eina_inarray_push(tagfiles->files, &group);
       }
     }
@@ -280,6 +283,7 @@ File_Group *tagfiles_nth(Tagfiles *tagfiles, int idx)
     
     _files_check_sort(tagfiles);
     assert(idx < eina_inarray_count(tagfiles->files));
+    assert(*(File_Group**)eina_inarray_nth(tagfiles->files, idx));
     return *(File_Group**)eina_inarray_nth(tagfiles->files, idx);
   }
 }
@@ -427,6 +431,7 @@ void insert_file(Tagfiles *tagfiles, const char *file)
   
   if (!group) {
     group = file_group_new(tagfiles, file, basename);
+    assert(group);
     eina_inarray_push(tagfiles->files_ls, &group);
   }
   else
@@ -564,7 +569,7 @@ void xmp_gettags(File_Group *group, Ecore_Thread *thread)
 static void _ls_error_cb(void *data, Eio_File *handler, int error)
 {
   fprintf(stderr, "error: [%s]\n", strerror(error));
-  abort();
+  //abort();
   //FIXME implement error cb!
 }
 
@@ -592,13 +597,13 @@ static void _fadvice_file(void *data, Ecore_Thread *th)
   posix_fadvise(fd, 0,preload->size, POSIX_FADV_WILLNEED);
   close(fd);
   
-  return 0;
+  return;
 }
 
 //FIXME check tag filter?
 void tagfiles_preload_headers(Tagfiles *tagfiles, int direction, int range, int size)
 {
-  int i, j;
+  int i;
   File_Group *group;
   const char *filename;
   Preload_Data *preload;
@@ -637,6 +642,7 @@ static void _ls_done_cb(void *data, Eio_File *handler)
   if (tagfiles->unsorted_insert) {
     while (eina_inarray_count(tagfiles->files_ls)) {
       group = *(File_Group**)eina_inarray_pop(tagfiles->files_ls);
+      assert(group);
       eina_inarray_push(tagfiles->files, &group);
     }
     tagfiles->files_sorted = EINA_FALSE;
@@ -647,7 +653,10 @@ static void _ls_done_cb(void *data, Eio_File *handler)
       eina_inarray_sort(tagfiles->files_ls, (Eina_Compare_Cb)filegroup_cmp_neg);
     while (eina_inarray_count(tagfiles->files_ls)) {
       group = *(File_Group**)eina_inarray_pop(tagfiles->files_ls);
-      eina_inarray_push(tagfiles->files, &group);
+      //assert(group);
+      //FIXME
+      if (group)
+	eina_inarray_push(tagfiles->files, &group);
     }
   }
   _files_check_sort(tagfiles);
