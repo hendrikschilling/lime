@@ -49,7 +49,7 @@
 #define PENDING_ACTIONS_BEFORE_SKIP_STEP 3
 #define REPEATS_ON_STEP_HOLD 2
 
-//#define BENCHMARK
+#define BENCHMARK
 
 //FIXME adjust depending on speed!
 #define PREREAD_RANGE 64
@@ -1517,10 +1517,8 @@ void step_image_do(void *data, Evas_Object *obj)
     return;
   
   if (data) {
-    printf("tagfiles old: %d\n", tagfiles_idx(files));
     tagfiles_step(files, (intptr_t)data);
     last_file_step = (intptr_t)data;
-    printf("tagfiles new: %d\n", tagfiles_idx(files));
   }
   
   del_filter_settings();  
@@ -2055,7 +2053,6 @@ Eina_Bool _idle_progress_printer(void *data)
 {
   Tagfiles *tagfiles = data;
   char buf[64];
-  printf("progress %d\n", tagfiles_count(tagfiles));
   
   sprintf(buf, "scanned %d files in %d dirs", tagfiles_scanned_files(tagfiles), tagfiles_scanned_dirs(tagfiles));
   
