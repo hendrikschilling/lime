@@ -987,8 +987,8 @@ int _loadjpeg_input_fixed(Filter *f)
   ((Dim*)data->dim)->width = cinfo.output_width;
   ((Dim*)data->dim)->height = cinfo.output_height;
   
-  f->tw_s = malloc(sizeof(int)*((Dim*)data->dim)->scaledown_max);
-  f->th_s = malloc(sizeof(int)*((Dim*)data->dim)->scaledown_max);
+  f->tw_s = malloc(sizeof(int)*(((Dim*)data->dim)->scaledown_max+1));
+  f->th_s = malloc(sizeof(int)*(((Dim*)data->dim)->scaledown_max+1));
   
   for(i=0;i<data->seekable;i++) {
     cinfo.scale_num = 1;
