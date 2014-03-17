@@ -49,7 +49,7 @@
 #define PENDING_ACTIONS_BEFORE_SKIP_STEP 3
 #define REPEATS_ON_STEP_HOLD 2
 
-#define BENCHMARK
+//#define BENCHMARK
 
 //FIXME adjust depending on speed!
 #define PREREAD_RANGE 64
@@ -1622,21 +1622,9 @@ void step_image_do(void *data, Evas_Object *obj)
   printf("configuration delay: %f\n", bench_delay_get()); 
   fill_scroller_preview();
   fill_scroller();
-    
-  elm_list_clear(group_list);
-  for(i=0;i<filegroup_count(group);i++)
-    if (filegroup_nth(group, i)) {
-      idx_cp = malloc(sizeof(int));
-      *idx_cp = i;
-      item = elm_list_item_append(group_list, filegroup_nth(group, i), NULL, NULL, &on_group_select, idx_cp);
-      if (group_idx == i) {
-	fixme_no_group_select = EINA_TRUE;
-	elm_list_item_selected_set(item, EINA_TRUE);
-	fixme_no_group_select = EINA_FALSE;
-      }
-    }
   
-  elm_list_go(group_list);
+  if (tab_current == tab_group)
+    refresh_group_tab();
   
   //update tag list
 
@@ -2094,10 +2082,8 @@ Eina_Bool _idle_progress_printer(void *data)
     
     evas_object_show(scroller);
   }
-  else {
-    printf("elm slider min-max set\n");
+  else
     elm_slider_min_max_set(file_slider, 0, tagfiles_count(files)-1);
-  }
   
   if (!cur_group)
     step_image_do(NULL, NULL);
@@ -2245,12 +2231,43 @@ static void on_insert_after(void *data, Evas_Object *obj, void *event_info)
   workerfinish_schedule(&insert_after_do, NULL, NULL, EINA_TRUE);
 }
 
+void refresh_group_tab(void) 
+{
+  int i, group_idx;
+  int *idx_cp;
+  Elm_Object_Item *item;
+  
+  if (!cur_group)
+    return;
+  
+  elm_list_clear(group_list);
+  for(i=0;i<filegroup_count(cur_group);i++)
+    if (filegroup_nth(cur_group, i)) {
+      idx_cp = malloc(sizeof(int));
+      *idx_cp = i;
+      item = elm_list_item_append(group_list, filegroup_nth(cur_group, i), NULL, NULL, &on_group_select, idx_cp);
+      if (group_idx == i) {
+	fixme_no_group_select = EINA_TRUE;
+	elm_list_item_selected_set(item, EINA_TRUE);
+	fixme_no_group_select = EINA_FALSE;
+      }
+    }
+  
+  elm_list_go(group_list);
+}
+
 static void on_tab_select(void *data, Evas_Object *obj, void *event_info)
 {
+  void (*refresh)(void);
   evas_object_hide(tab_current);
   elm_box_unpack(tab_box, tab_current);
   
   tab_current = (Evas_Object*)data;
+  
+  refresh = evas_object_data_get(tab_current, "limeview,main_tab,refresh_cb");
+  
+  if (refresh)
+    refresh();
   
   elm_box_pack_end(tab_box, tab_current);
   evas_object_show(tab_current);
@@ -2891,6 +2908,7 @@ elm_main(int argc, char **argv)
   evas_object_size_hint_align_set(group_list, EVAS_HINT_FILL, EVAS_HINT_FILL);
 
   tab_group = group_list;
+  evas_object_data_set(tab_group, "limeview,main_tab,refresh_cb", &refresh_group_tab);
   
   tab_tags = elm_box_add(win);
   evas_object_size_hint_weight_set(tab_tags, EVAS_HINT_EXPAND, EVAS_HINT_EXPAND);

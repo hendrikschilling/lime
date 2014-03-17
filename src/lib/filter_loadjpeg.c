@@ -671,7 +671,7 @@ void _loadjpeg_worker_ijg(Filter *f, Eina_Array *in, Eina_Array *out, Rect *area
   cinfo.scale_denom = 1u << area->corner.scale;
   
   assert(cinfo.jpeg_color_space == JCS_YCbCr);
-  cinfo.out_color_space   = JCS_YCbCr;
+  //cinfo.out_color_space   = JCS_YCbCr;
   cinfo.dct_method = JDCT_IFAST;
   cinfo.do_fancy_upsampling = FALSE;
   jpeg_start_decompress(&cinfo);
@@ -765,7 +765,7 @@ void _loadjpeg_worker_ijg_original(Filter *f, Eina_Array *in, Eina_Array *out, R
   cinfo.scale_denom = 1u << area->corner.scale;
   
   assert(cinfo.jpeg_color_space == JCS_YCbCr);
-  cinfo.out_color_space   = JCS_YCbCr;
+  //cinfo.out_color_space   = JCS_YCbCr;
   cinfo.dct_method = JDCT_IFAST;
   cinfo.do_fancy_upsampling = FALSE;
   jpeg_start_decompress(&cinfo);
@@ -849,7 +849,7 @@ void _loadjpeg_worker_ijg_thumb(Filter *f, Eina_Array *in, Eina_Array *out, Rect
   (void)jpeg_read_header(&cinfo, TRUE);
   
   assert(cinfo.jpeg_color_space == JCS_YCbCr);
-  cinfo.out_color_space   = JCS_YCbCr;
+  //cinfo.out_color_space   = JCS_YCbCr;
   cinfo.dct_method = JDCT_IFAST;
   cinfo.do_fancy_upsampling = FALSE;
   jpeg_start_decompress(&cinfo);
@@ -1075,7 +1075,7 @@ Filter *filter_loadjpeg_new(void)
   
   channel = meta_new_channel(filter, 1);
   color = meta_new_data(MT_COLOR, filter, malloc(sizeof(int)));
-  *(int*)(color->data) = CS_YUV_Y;
+  *(int*)(color->data) = CS_RGB_R;
   meta_attach(channel, color);
   meta_attach(channel, bitdepth);
   meta_attach(channel, dim);
@@ -1083,7 +1083,7 @@ Filter *filter_loadjpeg_new(void)
   
   channel = meta_new_channel(filter, 2);
   color = meta_new_data(MT_COLOR, filter, malloc(sizeof(int)));
-  *(int*)(color->data) = CS_YUV_U;
+  *(int*)(color->data) = CS_RGB_G;
   meta_attach(channel, color);
   meta_attach(channel, bitdepth);
   meta_attach(channel, dim);
@@ -1091,7 +1091,7 @@ Filter *filter_loadjpeg_new(void)
   
   channel = meta_new_channel(filter, 3);
   color = meta_new_data(MT_COLOR, filter, malloc(sizeof(int)));
-  *(int*)(color->data) = CS_YUV_V;
+  *(int*)(color->data) = CS_RGB_B;
   meta_attach(channel, color);
   meta_attach(channel, bitdepth);
   meta_attach(channel, dim);
