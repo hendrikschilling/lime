@@ -1623,7 +1623,7 @@ void step_image_do(void *data, Evas_Object *obj)
   fill_scroller_preview();
   fill_scroller();
     
-  /*elm_list_clear(group_list);
+  elm_list_clear(group_list);
   for(i=0;i<filegroup_count(group);i++)
     if (filegroup_nth(group, i)) {
       idx_cp = malloc(sizeof(int));
@@ -1636,7 +1636,7 @@ void step_image_do(void *data, Evas_Object *obj)
       }
     }
   
-  elm_list_go(group_list);*/
+  elm_list_go(group_list);
   
   //update tag list
 
