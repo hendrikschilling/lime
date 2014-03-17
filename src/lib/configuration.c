@@ -27,11 +27,14 @@
 
 #define DEBUG_OUT_GRAPH 
 
+#define MAX_CONS_TRIES 4
+
 //TODO replace by non-global filter-located variable! this here is bad for multiple filter graphs!
 static int configured = 0;
 static Eina_Array *applied_metas = NULL;
 static Eina_Array *global_nodes_list = NULL;
 Eina_Array *new_fs = NULL;
+Eina_Inarray *succ_inserts = NULL;
 
 typedef struct {
   Meta *tune;
@@ -42,6 +45,11 @@ typedef struct {
   Eina_Array *other_restr;
   int remain;
 } Tune_Restriction;
+
+typedef struct {
+  int len;
+  int filters[MAX_CONS_TRIES];
+} Config_Chain;
 
 void lime_config_reset(void)
 {
@@ -1019,9 +1027,34 @@ void _filter_insert_connect(int *tried_f, int tried_len, Eina_Array *insert_f, E
   ea_push(insert_cons, filter_connect_real(source, 0, sink, 0));
 }
 
-int _filter_count_up(int *tried_f, int *tried_len, Eina_Array *insert_f, int err_pos, int max_len)
+void succ_insert_load(Eina_Inarray *succ_inserts, int *tried_f, int *tried_len, int n)
+{
+  int i;
+  
+  Config_Chain *config = eina_inarray_nth(succ_inserts, n);
+  
+  *tried_len = config->len;
+  
+  for(i=0;i<config->len;i++)
+    tried_f[i] = config->filters[i];
+}
+
+int _filter_count_up(int *tried_f, int *tried_len, Eina_Array *insert_f, int err_pos, int max_len, int *try_cache)
 {
   //printf("f: %d %d (len: %d err: %d)\n", tried_f[0], tried_f[1], *tried_len, err_pos);
+  
+  if (*try_cache) {
+    (*try_cache)--;
+  
+    if (*try_cache)
+      succ_insert_load(succ_inserts, tried_f, tried_len, *try_cache);
+    else {
+      tried_f[0] = 0;
+      *tried_len = 1;
+    }
+
+    return 0;
+  }
   
   //err_pos is position of the connection. per default the sink of the connection will
   //be counted up. Only if we're after the last filter we'll attribute this error to 
@@ -1054,11 +1087,10 @@ int _filter_count_up(int *tried_f, int *tried_len, Eina_Array *insert_f, int err
   return 0;
 }
 
-#define MAX_CONS_TRIES 4
-
 int _cons_fix_err(Filter *start_f, Eina_Array *cons, Eina_Array *insert_f, int err_pos_start)
 {
-  int i;
+  int i, n;
+  int try_cache;
   Eina_Array *insert_cons = eina_array_new(8);
   int tried_f[MAX_CONS_TRIES];
   int tried_len;
@@ -1066,6 +1098,7 @@ int _cons_fix_err(Filter *start_f, Eina_Array *cons, Eina_Array *insert_f, int e
   int err_pos;
   Filter *source_f, *sink_f;
   int failed = 0;
+  Config_Chain succ_chain;
   
   ea_metas_data_zero(applied_metas);
   fg_undo_tunings();
@@ -1078,8 +1111,13 @@ int _cons_fix_err(Filter *start_f, Eina_Array *cons, Eina_Array *insert_f, int e
   
   //printf("failed between %s-%s\n", source_f->name, sink_f->name);
   
-  tried_f[0] = 0;
-  tried_len = 1; 
+  try_cache = eina_inarray_count(succ_inserts);
+  if (try_cache)
+    succ_insert_load(succ_inserts, tried_f, &tried_len, 0);
+  else {
+    tried_f[0] = 0;
+    tried_len = 1; 
+  }
   
   _filter_insert_connect(tried_f, tried_len, insert_f, insert_cons, new_fs, source_f, sink_f);
   
@@ -1093,11 +1131,38 @@ int _cons_fix_err(Filter *start_f, Eina_Array *cons, Eina_Array *insert_f, int e
       con_del_real(ea_data(insert_cons, i));
     eina_array_flush(insert_cons);
     
-    if (_filter_count_up(tried_f, &tried_len, insert_f, err_pos, MAX_CONS_TRIES))
+    if (_filter_count_up(tried_f, &tried_len, insert_f, err_pos, MAX_CONS_TRIES, &try_cache))
       failed = 1;
     _filter_insert_connect(tried_f, tried_len, insert_f, insert_cons, new_fs, source_f, sink_f);
     
     err_pos = test_filter_config_real(start_f, 0)-err_pos_start;
+  }
+  
+  if (!failed) {
+    int found = 0;
+    for(n=0;n<eina_inarray_count(succ_inserts);n++) {
+      Config_Chain *tmp = eina_inarray_nth(succ_inserts, n);
+      if (tmp->len == tried_len) {
+	for(i=0;i<tried_len;i++)
+	  if(tmp->filters[i] != tried_f[i])
+	    break;
+	  if (i == tried_len) {
+	    found = 1;
+	    break;
+	  }
+      }
+    }
+    
+    if (!found) {
+      printf("insert chain!\n");
+      
+      succ_chain.len = tried_len;
+      
+      for(i=0;i<tried_len;i++)
+	succ_chain.filters[i] = tried_f[i];
+      
+      eina_inarray_push(succ_inserts, &succ_chain);
+    }
   }
   
   con_insert = ea_data(insert_cons, 0);
@@ -1146,8 +1211,8 @@ int lime_config_test(Filter *f_sink)
   Eina_Array *cons;
   Con *con_orig;
   Filter *f = f_sink;
-  if (!applied_metas)
-    applied_metas = eina_array_new(8);
+  if (!applied_metas) applied_metas = eina_array_new(8);
+  if (!succ_inserts) succ_inserts = eina_inarray_new(sizeof(Config_Chain), 8);
   
   if (configured)
     return 0;
