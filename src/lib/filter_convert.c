@@ -216,6 +216,7 @@ static int _tunes_fixed(Filter *f)
     data->sws = sws_getContext(DEFAULT_TILE_SIZE, DEFAULT_TILE_SIZE, data->common->lav_fmt_in, DEFAULT_TILE_SIZE, DEFAULT_TILE_SIZE, data->common->lav_fmt_out, SWS_POINT, NULL, NULL, NULL);
 
     if (data->sws) {
+      printf("found fast transform\n");
       data->common->initialized = INIT_SWS;
       return 0;
     }
@@ -410,6 +411,7 @@ Filter *filter_convert_new(void)
   tune_in_bitdepth = meta_new_select(MT_BITDEPTH, filter, select_bitdepth);
   meta_name_set(tune_in_bitdepth, "Input Bitdepth");
   tune_in_bitdepth->dep = tune_in_bitdepth;
+  //FIXME why?
   data->in_bd = tune_out_bitdepth;
   tune_in_bitdepth->replace = tune_out_bitdepth;
   tune_in_color = meta_new_select(MT_COLOR, filter, select_color);

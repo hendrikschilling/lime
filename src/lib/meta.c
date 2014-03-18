@@ -70,11 +70,11 @@ Meta_Spec meta_def_list[MT_MAX] =
     NULL,
     {}	},
   {"MT_BITDEPTH",
-    NULL,
+    &meta_print_int,
     &Cmp_Int,
     {"BD_U8","BD_U16"}},
   {"MT_COLOR",
-    NULL,
+    &meta_print_int,
     &Cmp_Int,
     {"CS_LAB", "CS_RGB", "CS_YUV", "CS_HSV", "CS_LAB_L", "CS_LAB_A", "CS_LAB_B", "CS_RGB_R", "CS_RGB_G", "CS_RGB_B", "CS_YUV_Y", "CS_YUV_U", "CS_YUV_V", "CS_HSV_H", "CS_HSV_S", "CS_HSV_V"}},
   {"MT_LOADIMG",
@@ -106,10 +106,9 @@ Meta_Spec meta_def_list[MT_MAX] =
 int mt_data_snprint(char *buf, int len, Meta_Type t, void *data)
 {
   //FIXME what with selects?
-  if (meta_def_list[t].print_f) {
-    return meta_def_list[t].print_f(buf, data);
-  }
-    return 0;
+  assert(meta_def_list[t].print_f);
+  
+  return meta_def_list[t].print_f(buf, data);
 }
 
 void pushint(Eina_Array *ar, int val)

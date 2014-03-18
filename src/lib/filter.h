@@ -34,5 +34,6 @@ struct _Filter_Core{
 Eina_Hash *filters;
 Filter *filter_new(Filter_Core *fc);
 void filter_del(Filter *f);
+void filter_hash_invalidate(Filter *f);
 
 #endif

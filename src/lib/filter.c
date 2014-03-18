@@ -105,7 +105,7 @@ int lime_setting_float_set(Filter *f, const char *setting, float value)
       assert(m->data);
       *(float*)m->data = value;
       
-      filter_hash_recalc(f);
+      filter_hash_invalidate(f);
       
       if (f->setting_changed)
 	f->setting_changed(f);
@@ -223,7 +223,7 @@ int lime_setting_int_set(Filter *f, const char *setting, int value)
       assert(m->data);
       *(int*)m->data = value;
       
-      filter_hash_recalc(f);
+      filter_hash_invalidate(f);
       
       if (f->setting_changed)
         f->setting_changed(f);
@@ -251,7 +251,7 @@ int lime_setting_string_set(Filter *f, const char *setting, const char *value)
     if (!strcmp(setting, m->name)) {
       m->data = str;
       
-      filter_hash_recalc(f);
+      filter_hash_invalidate(f);
       
       if (f->setting_changed)
 	f->setting_changed(f);
@@ -312,7 +312,7 @@ Con *filter_connect(Filter *source, int out, Filter *sink, int in)
     eina_array_push(sink->node_orig->con_trees_in, con);
   }
   
-  filter_hash_recalc(source);
+  filter_hash_invalidate(source);
   
   return con;
 }
@@ -369,16 +369,21 @@ Con *filter_connect_real(Filter *source, int out, Filter *sink, int in)
   }
   if (ea_count(sink->node->con_trees_in)) {
     printf("WARNING: have con_trees_in\n");
-    while (ea_count(source->node->con_trees_in))
-      ea_pop(source->node->con_trees_in);
+    while (ea_count(sink->node->con_trees_in))
+      ea_pop(sink->node->con_trees_in);
   }
   
   eina_array_push(source->node->con_trees_out, con);
   eina_array_push(sink->node->con_trees_in, con);
   
-  filter_hash_recalc(source);
+  filter_hash_invalidate(source);
   
   return con;
+}
+
+void filter_hash_invalidate(Filter *f)
+{
+  f->hash.len = 0;
 }
 
 void filter_hash_recalc(Filter *f)
@@ -387,7 +392,7 @@ void filter_hash_recalc(Filter *f)
   int i;
   int len;
     
-  len = snprintf(f->hash.data, 1020, "%u%s", f->hash.prevhash, f->fc->name);
+  len = snprintf(f->hash.data, 1020, "%u%s", f->hash.prevhash, f->fc->shortname);
   
   if (len >= 1020)
     abort();
@@ -401,13 +406,25 @@ void filter_hash_recalc(Filter *f)
       abort();
   }
   
+  for(i=0;i<ea_count(f->tune);i++) {
+    if (!((Meta*)ea_data(f->tune, i))->data) {
+      printf("FIXME! no data for tune %d (%s) in %s\n", i, ((Meta*)ea_data(f->tune, i))->name, f->fc->shortname);
+      continue;
+    }
+    //assert(((Meta*)ea_data(f->tune, i))->data);
+    len += mt_data_snprint(&f->hash.data[len], 
+			   1024-len,
+			   ((Meta*)ea_data(f->tune, i))->type,
+			   ((Meta*)ea_data(f->tune, i))->data);
+    if (len >= 1020)
+      abort();
+  }
+  
   len += snprintf(&f->hash.data[len], 1024-len, "tail");
   
   f->hash.len = len;
   f->hash.hash = eina_hash_superfast(f->hash.data, len);
-  
-  //printf("single hash of: \"%s\": %u\n", f->hash.data, f->hash.hash);
-  
+    
   if (f->node->con_trees_out && ea_count(f->node->con_trees_out)) {
     assert(ea_count(f->node->con_trees_out) == 1);
     
@@ -420,6 +437,8 @@ void filter_hash_recalc(Filter *f)
 //FIXME proper hash calculation!
 Hash *filter_hash_get(Filter *f)
 {
+  assert(f->hash.len);
+  
   return &f->hash;
 }
 

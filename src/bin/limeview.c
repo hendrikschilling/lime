@@ -835,6 +835,17 @@ Eina_Bool idle_run_render(void *data)
   
   idle_render = NULL;
   
+  
+#ifdef BENCHMARK
+  if (!worker) {
+    bench_delay_start();
+    if (tagfiles_idx(files) >= 98)
+      workerfinish_schedule(&elm_exit_do, NULL, NULL, EINA_TRUE);
+    else
+      workerfinish_schedule(&step_image_do, (void*)(intptr_t)1, NULL, EINA_TRUE);
+  }
+#endif
+  
   return ECORE_CALLBACK_CANCEL;
 }
 
@@ -958,12 +969,13 @@ _finished_tile(void *data, Ecore_Thread *th)
   if (tdata->scaled_preview)
     preview_tiles--;
   
-#ifdef BENCHMARK
+/*#ifdef BENCHMARK
+  bench_delay_start();
   if (tagfiles_idx(files) >= 98)
     workerfinish_schedule(&elm_exit_do, NULL, NULL, EINA_TRUE);
   else
     workerfinish_schedule(&step_image_do, (void*)(intptr_t)1, NULL, EINA_TRUE);
-#endif
+#endif*/
   
   worker--;
   
@@ -1005,9 +1017,7 @@ _finished_tile(void *data, Ecore_Thread *th)
       _display_preview(NULL);
     }
   }
-  else 
-    
-  if (!worker) {
+  else if (!worker) {
     printf("final delay: %f\n", bench_delay_get());
     
     if (!key_repeat)
@@ -1025,6 +1035,16 @@ _finished_tile(void *data, Ecore_Thread *th)
     //workerfinish_schedule(pending_action, pending_data, pending_obj, EINA_TRUE);
     pending_exe();
   }
+  
+#ifdef BENCHMARK
+  if (!worker && !idle_render) {
+    bench_delay_start();
+    if (tagfiles_idx(files) >= 98)
+      workerfinish_schedule(&elm_exit_do, NULL, NULL, EINA_TRUE);
+    else
+      workerfinish_schedule(&step_image_do, (void*)(intptr_t)1, NULL, EINA_TRUE);
+  }
+#endif
   
 }
 
@@ -1382,6 +1402,7 @@ static void on_jump_image(void *data, Evas_Object *obj, void *event_info)
   if (idx == tagfiles_idx(files))
     return;
   
+  bench_delay_start();
   tagfiles_idx_set(files, idx);
   
   if (mat_cache_old && !worker)

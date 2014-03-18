@@ -1138,7 +1138,8 @@ int _cons_fix_err(Filter *start_f, Eina_Array *cons, Eina_Array *insert_f, int e
     err_pos = test_filter_config_real(start_f, 0)-err_pos_start;
   }
   
-  if (!failed) {
+  //FIXME need to check input/output tree/sort by size/???
+  /*if (!failed) {
     int found = 0;
     for(n=0;n<eina_inarray_count(succ_inserts);n++) {
       Config_Chain *tmp = eina_inarray_nth(succ_inserts, n);
@@ -1154,8 +1155,6 @@ int _cons_fix_err(Filter *start_f, Eina_Array *cons, Eina_Array *insert_f, int e
     }
     
     if (!found) {
-      printf("insert chain!\n");
-      
       succ_chain.len = tried_len;
       
       for(i=0;i<tried_len;i++)
@@ -1163,7 +1162,7 @@ int _cons_fix_err(Filter *start_f, Eina_Array *cons, Eina_Array *insert_f, int e
       
       eina_inarray_push(succ_inserts, &succ_chain);
     }
-  }
+  }*/
   
   con_insert = ea_data(insert_cons, 0);
   eina_array_data_set(cons, err_pos_start, con_insert);
@@ -1271,6 +1270,8 @@ int lime_config_test(Filter *f_sink)
   }
   
   configured = 1;
+  
+  filter_hash_recalc(f);
   
   printf("[CONFIG] actual filter chain:\n");
   f = f_sink;
