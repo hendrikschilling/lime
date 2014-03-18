@@ -54,6 +54,9 @@ static void _area_calc(Filter *f, Rect *in, Rect *out)
   _Data *data = ea_data(f->data, 0);
   int rot = *(int*)data->fliprot->data;
   
+  assert(in->corner.y < data->out_dim->height >> in->corner.scale);
+  assert(in->corner.x < data->out_dim->width >> in->corner.scale);
+  
   if (rot == 8) {
     out->corner.scale = in->corner.scale;
     if (!in->corner.scale) {
@@ -76,7 +79,8 @@ static void _area_calc(Filter *f, Rect *in, Rect *out)
     }
     else {
       out->corner.x = in->corner.y;
-      out->corner.y = ((data->out_dim->width + (1u << (in->corner.scale - 1))) >> in->corner.scale) - in->corner.x-DEFAULT_TILE_SIZE;
+      out->corner.y = ((data->out_dim->width + (1u << (in->corner.scale - 1))) >> in->corner.scale) - in->corner.x-DEFAULT_TILE_SIZE; 
+
     }
     out->width = in->height; //for interpolation
     out->height = in->width;
@@ -138,7 +142,6 @@ static void _worker(Filter *f, Eina_Array *in, Eina_Array *out, Rect *area, int 
 static int _del(Filter *f)
 {
   _Data *data = ea_data(f->data, 0);
-  int i;
   
   free(data->out_dim);
   free(data);

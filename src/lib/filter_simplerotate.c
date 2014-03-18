@@ -45,6 +45,9 @@ static void _area_calc(Filter *f, Rect *in, Rect *out)
 {
   _Data *data = ea_data(f->data, 0);
   
+  assert(in->corner.y < data->out_dim->height >> in->corner.scale);
+  assert(in->corner.x < data->out_dim->width >> in->corner.scale);
+  
   if ((data->rotation/90) % 4 == 3) {
     out->corner.scale = in->corner.scale;
     if (!in->corner.scale) {

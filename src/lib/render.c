@@ -637,10 +637,16 @@ void lime_render_area(Rect *area, Filter *f, int thread_id)
   int j;
   Render_Node *waiter;
   Render_Node *job;
+  Dim *ch_dim;
   
   lime_lock();
   
   lime_config_test(f);
+  
+  ch_dim = meta_child_data_by_type(ea_data(f->node->con_ch_in, 0), MT_IMGSIZE);
+  
+  assert(area->corner.x < ch_dim->width >> area->corner.scale);
+  assert(area->corner.y < ch_dim->height >> area->corner.scale);
   
   Render_State *state = render_state_new(area, f);
   

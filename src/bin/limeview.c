@@ -210,13 +210,10 @@ typedef struct {
 void size_recalc(void)
 {  
   Dim *size_ptr;
-  forbid_fill++;
   size_ptr = (Dim*)filter_core_by_type(sink, MT_IMGSIZE);
   if (size_ptr) {
     size = *size_ptr;
   }
-  
-  forbid_fill--;
 }
 
 void grid_setsize(void)
@@ -357,6 +354,7 @@ void remove_filter_do(void *data, Evas_Object *obj)
   
   forbid_fill--;
   
+  //FIXME just call fill_...?
   step_image_do(NULL, NULL);
 }
 
@@ -408,6 +406,7 @@ void fc_insert_filter(Filter *f, Eina_List *src, Eina_List *sink)
   
   //FIXME do we need this, shouldn't size recalc trigger reconfigure?
   lime_config_test(fc_sink->f);
+  size_recalc();
   //size_recalc();
 }
 
