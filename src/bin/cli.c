@@ -264,7 +264,7 @@ int parse_cli(int argc, char **argv, Eina_List **filters, Bench_Step **bench, in
 	break;
       case 's' :
 	*size = atoi(optarg);
-	if (*size < 1) {
+	if (*size < 5) {
 	  printf("ERROR parsing command line: require cache-size >= 5MB (was %s)\n", optarg);
 	  return -1;
 	}
