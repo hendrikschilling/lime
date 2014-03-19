@@ -198,9 +198,9 @@ static int _tunes_fixed(Filter *f)
     case CS_RGB :
       if (sws_isSupportedOutput(PIX_FMT_GBRP)) {
 	data->common->lav_fmt_out = PIX_FMT_GBRP;
-	data->common->out_shuffle[0] = 1;
-	data->common->out_shuffle[1] = 2;
-	data->common->out_shuffle[2] = 0;
+	data->common->out_shuffle[0] = 2;
+	data->common->out_shuffle[1] = 0;
+	data->common->out_shuffle[2] = 1;
       }
       else if (sws_isSupportedOutput(PIX_FMT_RGB24)) {
 	data->common->lav_fmt_out = PIX_FMT_RGB24;
@@ -216,22 +216,10 @@ static int _tunes_fixed(Filter *f)
     data->sws = sws_getContext(DEFAULT_TILE_SIZE, DEFAULT_TILE_SIZE, data->common->lav_fmt_in, DEFAULT_TILE_SIZE, DEFAULT_TILE_SIZE, data->common->lav_fmt_out, SWS_POINT, NULL, NULL, NULL);
 
     if (data->sws) {
-      printf("found fast transform\n");
       data->common->initialized = INIT_SWS;
       return 0;
     }
-    else {
-      printf("could not create conversion!\n");
-    }
   }
-  else {
-    printf("no fast conv from:\n");
-    meta_print(data->in_color);
-    printf("\nto:\n");
-    meta_print(data->out_color);
-    printf("\n");
-  }
-  
   
   switch (*((Colorspace*)data->in_color->data)) {
     case CS_RGB :
