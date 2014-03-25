@@ -55,6 +55,7 @@ void filegroup_filterchain_set(File_Group *group, const char *fc);
 Eina_Bool filegroup_tags_valid(File_Group *group);
 File_Group *tagfiles_nth(Tagfiles *tagfiles, int idx);
 void tagfiles_preload_headers(Tagfiles *tagfiles, int direction, int range, int size);
+Eina_Hash *tagfiles_add_tag(Tagfiles *tagfiles, const char *tag);
 
 void set_filterchain_save_sidecar(void);
 

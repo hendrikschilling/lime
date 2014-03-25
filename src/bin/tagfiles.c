@@ -247,6 +247,15 @@ Eina_Hash *tagfiles_known_tags(Tagfiles *tagfiles)
   return tagfiles->known_tags;
 }
 
+Eina_Hash *tagfiles_add_tag(Tagfiles *tagfiles, const char *tag)
+{    
+  eina_hash_add(tagfiles->known_tags, tag, tag);
+  
+  if (tagfiles->known_tags_cb)
+      tagfiles->known_tags_cb(tagfiles, tagfiles->cb_data, tag);
+  
+}
+
 int tagfiles_scanned_files(Tagfiles *tagfiles)
 {
   return tagfiles->scanned_files;
@@ -353,7 +362,8 @@ int filegroup_count(File_Group *g)
 
 char *filegroup_filterchain(File_Group *g)
 {
-  assert(g->state == GROUP_LOADED);
+  if (g->state != GROUP_LOADED)
+    printf("FIXME xmp not loaded for %s (%s)\n", g->basename, g->sidecar);
   
   return g->last_fc;
 }

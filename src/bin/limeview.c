@@ -2563,28 +2563,13 @@ Evas_Object *settings_box_add(Evas_Object *parent)
 
 
 static void on_new_tag(void *data, Evas_Object *obj, void *event_info)
-{
-  abort();
-  /*
+{  
   const char *new = elm_entry_entry_get((Evas_Object*)data);
   
-  if (eina_hash_find(known_tags, new))
+  if (eina_hash_find(tagfiles_known_tags(files), new))
     return;
   
-  new = strdup(new);
-  
-  eina_hash_add(known_tags, new, new);
-  
-  //update tag list
-  //FIXME only clear needed!
-  elm_genlist_clear(tags_list);
-  
-  eina_hash_foreach(known_tags, tags_hash_func, (File_Group*)eina_inarray_nth(files, file_idx));
-  
-  //update filter list
-  elm_genlist_clear(tags_filter_list);
-  eina_hash_foreach(known_tags, tags_hash_filter_func, NULL);
-  */
+  tagfiles_add_tag(files, new);
 }
 
 static void on_tag_changed(void *data, Evas_Object *obj, void *event_info)
