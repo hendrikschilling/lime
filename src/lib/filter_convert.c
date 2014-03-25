@@ -129,9 +129,9 @@ static void _worker(Filter *f, Eina_Array *in, Eina_Array *out, Rect *area, int 
     sws_scale(data->sws, in_planes, in_strides, 0, DEFAULT_TILE_SIZE, out_planes, out_strides);
     
     if (data->common->packed_output) {
-      out_planes[0] = ((Tiledata*)ea_data(out, 0))->data;
-      out_planes[1] = ((Tiledata*)ea_data(out, 1))->data;
-      out_planes[2] = ((Tiledata*)ea_data(out, 2))->data;
+      out_planes[0] = ((Tiledata*)ea_data(out, data->common->out_shuffle[0]))->data;
+      out_planes[1] = ((Tiledata*)ea_data(out, data->common->out_shuffle[1]))->data;
+      out_planes[2] = ((Tiledata*)ea_data(out, data->common->out_shuffle[2]))->data;
       for(j=0;j<DEFAULT_TILE_SIZE;j++)
 	  for(i=0;i<DEFAULT_TILE_SIZE;i++) {
 	    out_planes[0][j*DEFAULT_TILE_SIZE+i] = buf[(j*DEFAULT_TILE_SIZE+i)*3];
