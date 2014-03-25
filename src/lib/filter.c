@@ -442,6 +442,14 @@ Hash *filter_hash_get(Filter *f)
   return &f->hash;
 }
 
+//FIXME proper hash calculation!
+uint32_t filter_hash_value_get(Filter *f)
+{
+  assert(f->hash.len);
+  
+  return &f->hash.hash;
+}
+
 //gives the predecessor according to channel
 Filter *filter_get_input_filter(Filter *f,  int channel)
 {

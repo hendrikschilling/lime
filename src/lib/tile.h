@@ -50,6 +50,7 @@ struct _Tile {
   uint64_t time; //time needed to create this tile from existing input
   Filter_Core *fc;	//FIXME use tile hash or something like that
   Filter_Core *fc_req;
+  uint32_t filterhash; //for exact filter identification
   Eina_Array *want; //render_nodes that need this tile when it's finished
   uint64_t generation;
 };

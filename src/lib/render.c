@@ -670,8 +670,7 @@ void lime_render_area(Rect *area, Filter *f, int thread_id)
       while(ea_count(job->tile->want)) {
 	waiter = ea_pop(job->tile->want);
 	for(j=0;j<ea_count(waiter->f_source);j++)
-	  //FIXME is it enough to check for filter-core? what if same fc but different filter is multiple times sourced?...
-	  if (((Filter*)ea_data(waiter->f_source, j))->fc == job->tile->fc)
+	  if (filter_hash_value_get(ea_data(waiter->f_source, j)) == job->tile->filterhash)
 	    //FIXME channel selection, use paired channels not blindly the same number!
 	    clobbertile_add(ea_data(waiter->inputs, j), ea_data(job->tile->channels, j));
 	waiter->need--;
