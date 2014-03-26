@@ -1024,6 +1024,11 @@ static int _del(Filter *f)
   int i;
   
   free(data->thumb_data);
+  if (data->index) {
+    if (*data->index)
+      free(*data->index);
+    free(data->index);
+  }
   
   for(i=0;i<ea_count(f->data);i++) {
     data = ea_data(f->data, i);
