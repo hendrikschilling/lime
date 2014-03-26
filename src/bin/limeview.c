@@ -2619,12 +2619,12 @@ static void on_rating_changed(void *data, Evas_Object *obj, void *event_info)
   
   filegroup_rating_set(cur_group, elm_segment_control_item_index_get(elm_segment_control_item_selected_get(obj)));
   
-  filegroup_filterchain_set(cur_group, lime_filter_chain_serialize(((Filter_Chain*)eina_list_data_get(eina_list_next(filter_chain)))->f));
+  if (!group_in_filters(cur_group, tags_filter))
+      step_image_do(NULL, NULL);
 }
 
 static void on_filter_rating_changed(void *data, Evas_Object *obj, void *event_info)
 {
-  abort();
   File_Group *group = cur_group;
   
   tags_filter_rating = elm_segment_control_item_index_get(elm_segment_control_item_selected_get(obj));
