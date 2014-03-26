@@ -2121,7 +2121,6 @@ static void _ls_progress_cb(Tagfiles *tagfiles, void *data)
 
 static void _ls_done_cb(Tagfiles *tagfiles, void *data)
 {
-  printf("ls done\n");
   evas_object_del(load_notify);
   
   if (idle_progress_print) {

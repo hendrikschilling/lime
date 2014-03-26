@@ -140,8 +140,7 @@ Eina_Bool filegroup_tags_valid(File_Group *group)
   //FIXME load tags and GROUP_COMPLETE handling
   if (group->state != GROUP_LOADED) {
     //start scanning so info will be available soon
-    if (!group->tagfiles->xmp_thread)
-      group->tagfiles->xmp_thread = ecore_thread_feedback_run(_xmp_scanner, _xmp_notify, _xmp_finish, NULL, group->tagfiles, EINA_TRUE);
+    run_scanner(group->tagfiles);
     
     return EINA_FALSE;
   }
@@ -177,6 +176,15 @@ void filegroup_rating_set(File_Group *group, int rating)
   }
 }
 
+void run_scanner(Tagfiles *tagfiles)
+{
+  if (tagfiles->xmp_thread)
+    return;
+  
+  if (tagfiles->xmp_scanned_idx < eina_inarray_count(tagfiles->files) && tagfiles->xmp_scanned_idx < tagfiles->full_dir_inserted_idx)
+    tagfiles->xmp_thread = ecore_thread_feedback_run(_xmp_scanner, _xmp_notify, _xmp_finish, NULL, tagfiles, EINA_TRUE);
+}
+
 static void _xmp_finish(void *data, Ecore_Thread *th)
 {
   Tagfiles *tagfiles = data;
@@ -186,14 +194,12 @@ static void _xmp_finish(void *data, Ecore_Thread *th)
   //ls_done was called between _xmp_scanner exited and before finish was called
   //if we are over the current index and still scanning dirs stop scanning xmp files (do that later) 
   //FIXME multiple threads!
-  if (!eina_inarray_count(tagfiles->dirs_ls)) {
-    if (tagfiles->xmp_scanned_idx < eina_inarray_count(tagfiles->files))
-      tagfiles->xmp_thread = ecore_thread_run(_xmp_scanner, _xmp_finish, NULL, tagfiles);
-  }
-  else {
-    if (tagfiles->xmp_scanned_idx < tagfiles_idx(tagfiles))
-      tagfiles->xmp_thread = ecore_thread_run(_xmp_scanner, _xmp_finish, NULL, tagfiles);
-  }
+  /*if (!eina_inarray_count(tagfiles->dirs_ls))
+    run_scanner(tagfiles);
+  else if (tagfiles->xmp_scanned_idx < tagfiles_idx(tagfiles))
+    run_scanner(tagfiles);*/
+  //just run scanner slows down overall loading times but makes tags available earlier
+  run_scanner(tagfiles);
 }
 
 static void _xmp_notify(void *data, Ecore_Thread *thread, void *msg_data)
@@ -217,7 +223,7 @@ static void _xmp_scanner(void *data, Ecore_Thread *th)
 {
   Tagfiles *tagfiles = data;
   
-  while (tagfiles->xmp_scanned_idx < eina_inarray_count(tagfiles->files)) {
+  while (tagfiles->xmp_scanned_idx < eina_inarray_count(tagfiles->files) && tagfiles->xmp_scanned_idx < tagfiles->full_dir_inserted_idx) {
     xmp_gettags(*(File_Group**)eina_inarray_nth(tagfiles->files, tagfiles->xmp_scanned_idx),  th);
     tagfiles->xmp_scanned_idx++;
   }
@@ -247,7 +253,7 @@ Eina_Hash *tagfiles_known_tags(Tagfiles *tagfiles)
   return tagfiles->known_tags;
 }
 
-Eina_Hash *tagfiles_add_tag(Tagfiles *tagfiles, const char *tag)
+void tagfiles_add_tag(Tagfiles *tagfiles, const char *tag)
 {    
   eina_hash_add(tagfiles->known_tags, tag, tag);
   
@@ -291,7 +297,6 @@ File_Group *tagfiles_nth(Tagfiles *tagfiles, int idx)
     //we have not yet inserted any files from the dir - can sort before!
     else {
       assert(tagfiles->files_sorted == EINA_TRUE);
-      
       eina_inarray_sort(tagfiles->files_ls, (Eina_Compare_Cb)filegroup_cmp_neg);
       while (eina_inarray_count(tagfiles->files_ls)) {
 	group = *(File_Group**)eina_inarray_custom_pop(tagfiles->files_ls);
@@ -304,6 +309,7 @@ File_Group *tagfiles_nth(Tagfiles *tagfiles, int idx)
     _files_check_sort(tagfiles);
     assert(idx < eina_inarray_count(tagfiles->files));
     assert(*(File_Group**)eina_inarray_nth(tagfiles->files, idx));
+
     return *(File_Group**)eina_inarray_nth(tagfiles->files, idx);
   }
 }
@@ -687,16 +693,14 @@ static void _ls_done_cb(void *data, Eio_File *handler)
   //have finished dir - next dir is guaranteed to come after all files already seen
   tagfiles->unsorted_insert = EINA_FALSE;
   
+  run_scanner(tagfiles);
+  
   if (eina_inarray_count(tagfiles->dirs_ls)) {
     //dirs are sorted before scanning so we do not need to sort all files at once!
     ecore_idler_add(_idle_ls_continue, tagfiles);
   }
-  else {
-    if (!tagfiles->xmp_thread)
-      tagfiles->xmp_thread = ecore_thread_feedback_run(_xmp_scanner, _xmp_notify, _xmp_finish, NULL, tagfiles, EINA_TRUE);
-    
+  else
     tagfiles->done_cb(tagfiles, tagfiles->cb_data);
-  }
 }
 
 
@@ -718,6 +722,11 @@ Tagfiles *tagfiles_new_from_dir(const char *path, void (*progress_cb)(Tagfiles *
   eio_file_direct_ls(path, &_ls_filter_cb, &_ls_main_cb,&_ls_done_cb, &_ls_error_cb, files);
   
   return files;
+}
+
+const char *filegroup_basename(File_Group *group)
+{
+  return group->basename;
 }
 
 Tagged_File *tagged_file_new_from_path(const char *path)
