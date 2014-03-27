@@ -64,13 +64,13 @@ static void _worker_gamma(Filter *f, void *in, int channel, Eina_Array *out, Rec
    _Data *data = ea_data(f->data, 0);
    _Cmp_Data *cmp;
    int max, diff;
-   int div = 1u << tile->area->corner.scale;
+   int div = 1u << tile->area.corner.scale;
 
-   if (tile->area->corner.scale) {
-      //printf("rendered %dx%d @ %d\n", tile->area->corner.x, tile->area->corner.y, tile->area->corner.scale);
+   if (tile->area.corner.scale) {
+      //printf("rendered %dx%d @ %d\n", tile->area.corner.x, tile->area.corner.y, tile->area.corner.scale);
       cmp = ea_pop(data->to_compare);
       
-      if (tile->area->corner.x+tile->area->width < data->size.width/div && tile->area->corner.y+tile->area->height < data->size.height/div) {
+      if (tile->area.corner.x+tile->area.width < data->size.width/div && tile->area.corner.y+tile->area.height < data->size.height/div) {
 	max = 0;
       
       	 for(y=0;y<256;y++)
@@ -81,9 +81,9 @@ static void _worker_gamma(Filter *f, void *in, int channel, Eina_Array *out, Rec
 	    }
 	    
       /*if (max)
-	printf("max diff: %d (%d %d %dx%d)\n", max, channel, tile->area->corner.scale, tile->area->corner.x, tile->area->corner.y);*/
-      if (max > data->diffs[tile->area->corner.scale]) {
-	data->diffs[tile->area->corner.scale] = max;
+	printf("max diff: %d (%d %d %dx%d)\n", max, channel, tile->area.corner.scale, tile->area.corner.x, tile->area.corner.y);*/
+      if (max > data->diffs[tile->area.corner.scale]) {
+	data->diffs[tile->area.corner.scale] = max;
 	printf("max diff per scale:\n");
 	for(x=1;x<data->scales-2;x++)
 	  printf("%d %d\n", x, data->diffs[x]);
@@ -91,19 +91,19 @@ static void _worker_gamma(Filter *f, void *in, int channel, Eina_Array *out, Rec
 	
 	char buf[1024];
 	
-	sprintf(buf, "tile%dref.ppm", tile->area->corner.scale);
+	sprintf(buf, "tile%dref.ppm", tile->area.corner.scale);
 	FILE *file = fopen(buf, "w");
 	fprintf(file, "P5\n256 256\n255\n");
 	fwrite(cmp->buf, 256*256,1 ,file);
 	fclose(file);
 	
-	sprintf(buf, "tile%dbad.ppm", tile->area->corner.scale);
+	sprintf(buf, "tile%dbad.ppm", tile->area.corner.scale);
 	file = fopen(buf, "w");
 	fprintf(file, "P5\n256 256\n255\n");
 	fwrite(tile->data, 256*256,1 ,file);
 	fclose(file);
 	
-	//printf("worst for scale %d located at %dx%d\n", tile->area->corner.scale, tile->area->corner.x, tile->area->corner.y);
+	//printf("worst for scale %d located at %dx%d\n", tile->area.corner.scale, tile->area.corner.x, tile->area.corner.y);
       }
       }
       
@@ -114,10 +114,10 @@ static void _worker_gamma(Filter *f, void *in, int channel, Eina_Array *out, Rec
    }
 
    for(counter=data->counter, scale=1; scale<data->scales; counter/=4,scale++) {
-      xc = tile->area->corner.x;
+      xc = tile->area.corner.x;
       xc = xc >> (scale + 8);
       xc *= 256;
-      yc = tile->area->corner.y;
+      yc = tile->area.corner.y;
       yc = yc >> (scale + 8);
       yc *= 256;
       
@@ -195,12 +195,12 @@ static void _worker_linear(Filter *f, void *in, int channel, Eina_Array *out, Re
    _Data *data = ea_data(f->data, 0);
    _Cmp_Data *cmp;
    int max, diff;
-   int div = 1u << tile->area->corner.scale;
+   int div = 1u << tile->area.corner.scale;
 
-   if (tile->area->corner.scale) {
+   if (tile->area.corner.scale) {
       cmp = ea_pop(data->to_compare);
       
-      if (tile->area->corner.x+tile->area->width < data->size.width/div && tile->area->corner.y+tile->area->height < data->size.height/div) {
+      if (tile->area.corner.x+tile->area.width < data->size.width/div && tile->area.corner.y+tile->area.height < data->size.height/div) {
 	max = 0;
       
       	 for(y=0;y<256;y++)
@@ -210,8 +210,8 @@ static void _worker_linear(Filter *f, void *in, int channel, Eina_Array *out, Re
 		 max = diff;
 	    }
 	    
-      if (max > data->diffs[tile->area->corner.scale]) {
-	data->diffs[tile->area->corner.scale] = max;
+      if (max > data->diffs[tile->area.corner.scale]) {
+	data->diffs[tile->area.corner.scale] = max;
 	printf("max diff per scale:\n");
 	for(x=1;x<data->scales-2;x++)
 	  printf("%d %d\n", x, data->diffs[x]);
@@ -219,19 +219,19 @@ static void _worker_linear(Filter *f, void *in, int channel, Eina_Array *out, Re
 	
 	char buf[1024];
 	
-	sprintf(buf, "tile%dref.ppm", tile->area->corner.scale);
+	sprintf(buf, "tile%dref.ppm", tile->area.corner.scale);
 	FILE *file = fopen(buf, "w");
 	fprintf(file, "P5\n256 256\n255\n");
 	fwrite(cmp->buf, 256*256,1 ,file);
 	fclose(file);
 	
-	sprintf(buf, "tile%dbad.ppm", tile->area->corner.scale);
+	sprintf(buf, "tile%dbad.ppm", tile->area.corner.scale);
 	file = fopen(buf, "w");
 	fprintf(file, "P5\n256 256\n255\n");
 	fwrite(tile->data, 256*256,1 ,file);
 	fclose(file);
 	
-	//printf("worst for scale %d located at %dx%d\n", tile->area->corner.scale, tile->area->corner.x, tile->area->corner.y);
+	//printf("worst for scale %d located at %dx%d\n", tile->area.corner.scale, tile->area.corner.x, tile->area.corner.y);
       }
       }
       
@@ -242,10 +242,10 @@ static void _worker_linear(Filter *f, void *in, int channel, Eina_Array *out, Re
    }
 
    for(counter=data->counter, scale=1; scale<data->scales; counter/=4,scale++) {
-      xc = tile->area->corner.x;
+      xc = tile->area.corner.x;
       xc = xc >> (scale + 8);
       xc *= 256;
-      yc = tile->area->corner.y;
+      yc = tile->area.corner.y;
       yc = yc >> (scale + 8);
       yc *= 256;
       

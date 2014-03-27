@@ -130,7 +130,16 @@ Meta *meta_new(int type, Filter *filter)
   meta->type = type;
   meta->filter = filter;
   
+  eina_array_push(filter->metas, meta);
+  
   return meta;
+}
+
+void meta_del(Meta *m)
+{
+  if (m->childs)
+    meta_array_del(m->childs);
+  free(m);
 }
 
 Meta *meta_new_data(int type, Filter *filter, void *data)
@@ -142,6 +151,8 @@ Meta *meta_new_data(int type, Filter *filter, void *data)
   meta->type = type;
   meta->filter = filter;
   meta->data = data;
+  
+  eina_array_push(filter->metas, meta);
 
   return meta;
 }
@@ -153,15 +164,11 @@ Meta *meta_new_channel(Filter *filter, int idx)
   meta->type = MT_CHANNEL;
   meta->filter = filter;
   meta->data = (void*)(intptr_t)idx;
+  
+  eina_array_push(filter->metas, meta);
 
   return meta;
 }
-
-void meta_del(Meta *m)
-{
-  free(m);
-}
-
 
 Meta *meta_new_select(int type, Filter *filter, Eina_Array *select)
 {
@@ -172,6 +179,8 @@ Meta *meta_new_select(int type, Filter *filter, Eina_Array *select)
   meta->type = type;
   meta->filter = filter;
   meta->select = select;
+  
+  eina_array_push(filter->metas, meta);
   
   return meta;
 }

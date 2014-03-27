@@ -144,7 +144,7 @@ void clobbertile_add(Tiledata *big, Tiledata *small)
   
   assert(big);
   assert(small);
-  assert(big->area->corner.scale == small->area->corner.scale);
+  assert(big->area.corner.scale == small->area.corner.scale);
   assert(big->data);
   assert(small->data);
   
@@ -152,24 +152,24 @@ void clobbertile_add(Tiledata *big, Tiledata *small)
   hack_tiledata_fixsize(small->size, big);
   size = small->size;
 
-  minx = big->area->corner.x;
-  if (small->area->corner.x > minx) minx = small->area->corner.x;
+  minx = big->area.corner.x;
+  if (small->area.corner.x > minx) minx = small->area.corner.x;
   
-  miny = big->area->corner.y;
-  if (small->area->corner.y > miny) miny = small->area->corner.y;
+  miny = big->area.corner.y;
+  if (small->area.corner.y > miny) miny = small->area.corner.y;
   
-  maxx = big->area->corner.x+big->area->width;
-  if (small->area->corner.x+ small->area->width < maxx) maxx = small->area->corner.x+ small->area->width;
+  maxx = big->area.corner.x+big->area.width;
+  if (small->area.corner.x+ small->area.width < maxx) maxx = small->area.corner.x+ small->area.width;
   width = maxx - minx;
   
-  maxy = big->area->corner.y+big->area->height;
-  if (small->area->corner.y + small->area->height < maxy) maxy = small->area->corner.y + small->area->height;
+  maxy = big->area.corner.y+big->area.height;
+  if (small->area.corner.y + small->area.height < maxy) maxy = small->area.corner.y + small->area.height;
   
   //FIXME BITDEPTH!!!
   //assert(big->size = small->size);
   for(y=miny;y<maxy;y++) {
-    memcpy(big->  data + size*((y-big  ->area->corner.y)*big  ->area->width + minx-big  ->area->corner.x),
-	   small->data + size*((y-small->area->corner.y)*small->area->width + minx-small->area->corner.x),
+    memcpy(big->  data + size*((y-big  ->area.corner.y)*big  ->area.width + minx-big  ->area.corner.x),
+	   small->data + size*((y-small->area.corner.y)*small->area.width + minx-small->area.corner.x),
 	   width*size);
   }
 }
@@ -187,6 +187,9 @@ void render_node_del(Render_Node *node)
   if (node->f_source)
     eina_array_free(node->f_source);
   
+  if (node->tile && !cache_tile_get(&node->tile->hash))
+    tile_del(node->tile);
+  
   free(node);
 }
 
@@ -194,7 +197,7 @@ void render_node_del(Render_Node *node)
 Render_Node *render_node_new(Filter *f, Tile *tile, Render_State *state)
 {
   int i;
-  Rect *inputs_area;
+  Rect inputs_area;
   Render_Node *node = calloc(sizeof(Render_Node), 1);
   Rect *area;
   
@@ -253,12 +256,11 @@ Render_Node *render_node_new(Filter *f, Tile *tile, Render_State *state)
       node->pos.y = ((node->area.corner.y-node->th+1)/node->th)*node->th;
     node->pos.scale = node->area.corner.scale;
 
-    inputs_area = malloc(sizeof(Rect));
     //this is the input provided to filtes, so it will always be as large as actually requested by the filter
-    filter_calc_req_area(f, area, inputs_area);
+    filter_calc_req_area(f, area, &inputs_area);
     
     for(i=0;i<ea_count(f->node->con_ch_in);i++)
-      ea_push(node->inputs, tiledata_new(inputs_area, 1, NULL));
+      ea_push(node->inputs, tiledata_new(&inputs_area, 1, NULL));
   }
   else
     node->mode = MODE_INPUT;

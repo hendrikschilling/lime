@@ -45,6 +45,13 @@ Meta_Array *meta_array_new(void)
   return ar;
 }
 
+
+void meta_array_del(Meta_Array *ar)
+{
+  free(ar->data);
+  free(ar);
+}
+
 //TODO check for ar == NULL, realloc fail
 int meta_array_append(Meta_Array *ar, Meta *meta)
 {

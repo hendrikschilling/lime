@@ -21,6 +21,12 @@
 #include "lcms2.h"
 #include "libswscale/swscale.h"
 
+static Eina_Array *select_bitdepth = NULL;
+static Eina_Array *select_color = NULL;
+static Eina_Array *color1 = NULL;
+static Eina_Array *color2 = NULL;
+static Eina_Array *color3 = NULL;
+
 typedef struct {
   int initialized;
   int packed_output;
@@ -342,7 +348,6 @@ Filter *filter_convert_new(void)
 {
   Filter *filter = filter_new(&filter_core_convert);
   Meta *in, *out, *color, *channel, *tune_in_bitdepth, *tune_out_bitdepth, *tune_in_color, *tune_out_color;
-  Eina_Array *select_bitdepth, *select_color;
   filter->tunes_fixed = &_tunes_fixed;
   filter->del = &_del;
   _Data *data = calloc(sizeof(_Data), 1);
@@ -359,35 +364,35 @@ Filter *filter_convert_new(void)
   
   Meta *ch_out[3];
   
-  Eina_Array *color1, *color2, *color3;
-  
-  select_bitdepth = eina_array_new(2);
-  pushint(select_bitdepth, BD_U8);
-  pushint(select_bitdepth, BD_U16);
-  
-  select_color = eina_array_new(4);
-  pushint(select_color, CS_LAB);
-  pushint(select_color, CS_RGB);
-  pushint(select_color, CS_YUV);
-  //pushint(select_color, CS_HSV);
-  
-  color1 = eina_array_new(4);
-  pushint(color1, CS_LAB_L);
-  pushint(color1, CS_RGB_R);
-  pushint(color1, CS_YUV_Y);
-  //pushint(color1, CS_HSV_V);
-  
-  color2 = eina_array_new(4);
-  pushint(color2, CS_LAB_A);
-  pushint(color2, CS_RGB_G);
-  pushint(color2, CS_YUV_U);
-  //pushint(color2, CS_HSV_H);
-  
-  color3 = eina_array_new(4);
-  pushint(color3, CS_LAB_B);
-  pushint(color3, CS_RGB_B);
-  pushint(color3, CS_YUV_V);
-  //pushint(color3, CS_HSV_S);
+  if (!select_bitdepth) {
+    select_bitdepth = eina_array_new(2);
+    pushint(select_bitdepth, BD_U8);
+    pushint(select_bitdepth, BD_U16);
+    
+    select_color = eina_array_new(4);
+    pushint(select_color, CS_LAB);
+    pushint(select_color, CS_RGB);
+    pushint(select_color, CS_YUV);
+    //pushint(select_color, CS_HSV);
+    
+    color1 = eina_array_new(4);
+    pushint(color1, CS_LAB_L);
+    pushint(color1, CS_RGB_R);
+    pushint(color1, CS_YUV_Y);
+    //pushint(color1, CS_HSV_V);
+    
+    color2 = eina_array_new(4);
+    pushint(color2, CS_LAB_A);
+    pushint(color2, CS_RGB_G);
+    pushint(color2, CS_YUV_U);
+    //pushint(color2, CS_HSV_H);
+    
+    color3 = eina_array_new(4);
+    pushint(color3, CS_LAB_B);
+    pushint(color3, CS_RGB_B);
+    pushint(color3, CS_YUV_V);
+    //pushint(color3, CS_HSV_S);
+  }
   
   tune_out_bitdepth = meta_new_select(MT_BITDEPTH, filter, select_bitdepth);
   meta_name_set(tune_out_bitdepth, "Output Bitdepth");

@@ -40,7 +40,7 @@ static void _area_calc(Filter *f, Rect *in, Rect *out)
 
 static uint8_t *tileptr8(Tiledata *tile, int x, int y)
 { 
-  return &((uint8_t*)tile->data)[(y-tile->area->corner.y)*tile->area->width + x-tile->area->corner.x];
+  return &((uint8_t*)tile->data)[(y-tile->area.corner.y)*tile->area.width + x-tile->area.corner.x];
 }
 
 static void _worker_gamma(Filter *f, Eina_Array *in, Eina_Array *out, Rect *area, int thread_id)
@@ -53,7 +53,7 @@ static void _worker_gamma(Filter *f, Eina_Array *in, Eina_Array *out, Rect *area
   assert(in && ea_count(in) == 3);
   assert(out && ea_count(out) == 3);
   
-  in_area = ((Tiledata*)ea_data(in, 0))->area;
+  in_area = &((Tiledata*)ea_data(in, 0))->area;
   
   if (area->corner.scale)
     for(ch=0;ch<3;ch++) {
@@ -74,9 +74,9 @@ static void _worker_gamma(Filter *f, Eina_Array *in, Eina_Array *out, Rect *area
       for(ch=0;ch<3;ch++) {
 	in_td = (Tiledata*)ea_data(in, ch);
 	out_td = (Tiledata*)ea_data(out, ch);
-	assert(in_td->area->width == out_td->area->width);
-	assert(in_td->area->height == out_td->area->height);
-	memcpy(out_td->data, in_td->data, out_td->area->width*out_td->area->height);
+	assert(in_td->area.width == out_td->area.width);
+	assert(in_td->area.height == out_td->area.height);
+	memcpy(out_td->data, in_td->data, out_td->area.width*out_td->area.height);
       }
       
 }
@@ -92,7 +92,7 @@ static void _worker_linear(Filter *f, Eina_Array *in, Eina_Array *out, Rect *are
   assert(in && ea_count(in) == 3);
   assert(out && ea_count(out) == 3);
   
-  in_area = ((Tiledata*)ea_data(in, 0))->area;
+  in_area = &((Tiledata*)ea_data(in, 0))->area;
   
   if (area->corner.scale)
     for(ch=0;ch<3;ch++) {
@@ -113,9 +113,9 @@ static void _worker_linear(Filter *f, Eina_Array *in, Eina_Array *out, Rect *are
       for(ch=0;ch<3;ch++) {
 	in_td = (Tiledata*)ea_data(in, ch);
 	out_td = (Tiledata*)ea_data(out, ch);
-	assert(in_td->area->width == out_td->area->width);
-	assert(in_td->area->height == out_td->area->height);
-	memcpy(out_td->data, in_td->data, out_td->area->width*out_td->area->height);
+	assert(in_td->area.width == out_td->area.width);
+	assert(in_td->area.height == out_td->area.height);
+	memcpy(out_td->data, in_td->data, out_td->area.width*out_td->area.height);
       }
       
 }

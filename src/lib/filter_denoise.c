@@ -83,7 +83,7 @@ int cmp_mtach(const void * a, const void * b)
 
 static uint8_t *tileptr8(Tiledata *tile, int x, int y)
 { 
-  return &((uint8_t*)tile->data)[(y-tile->area->corner.y)*tile->area->width + x-tile->area->corner.x];
+  return &((uint8_t*)tile->data)[(y-tile->area.corner.y)*tile->area.width + x-tile->area.corner.x];
 }
 
 static void add_diff(_Data *data, _Match *m, int x, int y, Rect *area, Tiledata *td, int ch)
@@ -91,7 +91,7 @@ static void add_diff(_Data *data, _Match *m, int x, int y, Rect *area, Tiledata 
   int i, j;
   uint8_t *buf_ref, *buf_m;
   int avg_ref, avg_m;
-  int width = td->area->width;
+  int width = td->area.width;
   int sum = 0;
   int ax, ay; //absolute coordinates
   int ix, iy; //input relative coordinates
@@ -99,14 +99,14 @@ static void add_diff(_Data *data, _Match *m, int x, int y, Rect *area, Tiledata 
   
   ax = area->corner.x+x;
   ay = area->corner.y+y;
-  ix = ax - td->area->corner.x;
-  iy = ay - td->area->corner.y;
+  ix = ax - td->area.corner.x;
+  iy = ay - td->area.corner.y;
   
   buf_ref = tileptr8(td, ax-1, ay-1);
   buf_m = tileptr8(td, ax+m->x-1, ay+m->y-1);
   
-  avg_ref = data->avgs[(iy*td->area->width + ix)*3+ch];
-  avg_m = data->avgs[((iy+m->y)*td->area->width + ix+m->x)*3+ch];
+  avg_ref = data->avgs[(iy*td->area.width + ix)*3+ch];
+  avg_m = data->avgs[((iy+m->y)*td->area.width + ix+m->x)*3+ch];
   
   /*m->diff += abs(buf_ref[-width-1]-avg_ref+avg_m-buf_m[-width-1]) + abs(buf_ref[-width]-avg_ref+avg_m-buf_m[-width]) + abs(buf_ref[-width+1]-avg_ref+avg_m-buf_m[-width+1]);
   m->diff += abs(buf_ref[-1]-avg_ref+avg_m-buf_m[-1]) + abs(buf_ref[0]-avg_ref+avg_m-buf_m[0]) + abs(buf_ref[1]-avg_ref+avg_m-buf_m[1]);
@@ -181,11 +181,11 @@ static void calc_avg(_Data *data, Eina_Array *in)
   
   for(ch=0;ch<3;ch++) {
     td = (Tiledata*)ea_data(in, ch);
-    width = td->area->width;
+    width = td->area.width;
     
     for(j=2;j<(TILE_SIZE+2*SEARCH_SIZE)-1;j++)
       for(i=2;i<(TILE_SIZE+2*SEARCH_SIZE)-1;i++) {
-	buf = tileptr8(td, i+td->area->corner.x-1, j+td->area->corner.y-1);
+	buf = tileptr8(td, i+td->area.corner.x-1, j+td->area.corner.y-1);
 
 	sum = 0;
 	for(y=0;y<3;y++,buf+=width) {
@@ -195,7 +195,7 @@ static void calc_avg(_Data *data, Eina_Array *in)
 	}
 	sum /= 9;
 	
-	data->avgs[(j*td->area->width+i)*3+ch] = sum;
+	data->avgs[(j*td->area.width+i)*3+ch] = sum;
       }
   }
 }
@@ -323,22 +323,22 @@ static void limit(Eina_Array *in, Eina_Array *out, Rect *area)
       out_buf = tileptr8(in_td, area->corner.x, j);
       
       for(i=0;i<area->width;i++,in_buf+=2,out_buf+=2) {
-	ref = in_buf[0] + in_buf[1] + in_buf[in_td->area->width] + in_buf[in_td->area->width+1];
-	filtered = out_buf[0] + out_buf[1] + out_buf[out_td->area->width] + out_buf[out_td->area->width+1];
+	ref = in_buf[0] + in_buf[1] + in_buf[in_td->area.width] + in_buf[in_td->area.width+1];
+	filtered = out_buf[0] + out_buf[1] + out_buf[out_td->area.width] + out_buf[out_td->area.width+1];
 	
 	if (ref-filtered > MAX_SCALE_DIFF*4) {
 	  add = (ref-filtered + MAX_SCALE_DIFF*4)/4;
 	  out_buf[0] += add;
 	  out_buf[1] += add;
-	  out_buf[out_td->area->width] += add;
-	  out_buf[out_td->area->width+1] += add;
+	  out_buf[out_td->area.width] += add;
+	  out_buf[out_td->area.width+1] += add;
 	}
 	else if (filtered-ref > MAX_SCALE_DIFF*4) {
 	  add = (ref-filtered + MAX_SCALE_DIFF*4)/4;
 	  out_buf[0] += add;
 	  out_buf[1] += add;
-	  out_buf[out_td->area->width] += add;
-	  out_buf[out_td->area->width+1] += add;
+	  out_buf[out_td->area.width] += add;
+	  out_buf[out_td->area.width+1] += add;
 	}
       }
     }
@@ -375,7 +375,7 @@ static void avg_matches(_Data *data, Eina_Array *in, Eina_Array *out, Rect *area
 	out_td = (Tiledata*)ea_data(out, ch);
 	
 	sum = tileptr8(in_td, area->corner.x + i, area->corner.y + j)[0] 
-	      - data->avgs[((area->corner.y + j - in_td->area->corner.y)*in_td->area->width + area->corner.x + i - in_td->area->corner.x)*3+ch];
+	      - data->avgs[((area->corner.y + j - in_td->area.corner.y)*in_td->area.width + area->corner.x + i - in_td->area.corner.x)*3+ch];
 	count = 1;
 	rough = abs(sum);
 	
@@ -386,7 +386,7 @@ static void avg_matches(_Data *data, Eina_Array *in, Eina_Array *out, Rect *area
 	    if (m.diff*m.diff < max_diff_c*(rough+10)*10) {
 	      origins[m.origin]++;
 	      sum += tileptr8(in_td, area->corner.x + i + m.x, area->corner.y + j + m.y)[0] 
-		      - data->avgs[((area->corner.y + j + m.y - in_td->area->corner.y)*in_td->area->width + area->corner.x + i + m.x - in_td->area->corner.x)*3+ch];
+		      - data->avgs[((area->corner.y + j + m.y - in_td->area.corner.y)*in_td->area.width + area->corner.x + i + m.x - in_td->area.corner.x)*3+ch];
 	      count++;
 	    }
 	  }
@@ -394,14 +394,14 @@ static void avg_matches(_Data *data, Eina_Array *in, Eina_Array *out, Rect *area
 	    if (m.diff*m.diff < max_diff*(rough+10)*10) {
 	      origins[m.origin]++;
 	      sum += clip_u8(tileptr8(in_td, area->corner.x + i + m.x, area->corner.y + j + m.y)[0]
-	      - data->avgs[((area->corner.y + j + m.y - in_td->area->corner.y)*in_td->area->width + area->corner.x + i + m.x - in_td->area->corner.x)*3+ch]);
+	      - data->avgs[((area->corner.y + j + m.y - in_td->area.corner.y)*in_td->area.width + area->corner.x + i + m.x - in_td->area.corner.x)*3+ch]);
 	      count++;
 	    }
 	  }
 	}
 	
 	tileptr8(out_td, area->corner.x + i, area->corner.y + j)[0] = clip_u8(sum / count
-	    + data->avgs[((area->corner.y + j - in_td->area->corner.y)*in_td->area->width + area->corner.x + i - in_td->area->corner.x)*3+ch]);
+	    + data->avgs[((area->corner.y + j - in_td->area.corner.y)*in_td->area.width + area->corner.x + i - in_td->area.corner.x)*3+ch]);
       }
     }
     
@@ -523,21 +523,21 @@ static Filter *filter_denoise_new(void)
   
   channel = meta_new_channel(filter, 1);
   color[0] = meta_new_data(MT_COLOR, filter, malloc(sizeof(int)));
-  *(int*)(color[0]->data) = CS_YUV_Y;
+  *(int*)(color[0]->data) = CS_LAB_L;
   meta_attach(channel, color[0]);
   meta_attach(out, channel);
   ch_out[0] = channel;
   
   channel = meta_new_channel(filter, 2);
   color[1] = meta_new_data(MT_COLOR, filter, malloc(sizeof(int)));
-  *(int*)(color[1]->data) = CS_YUV_U;
+  *(int*)(color[1]->data) = CS_LAB_A;
   meta_attach(channel, color[1]);
   meta_attach(out, channel);
   ch_out[1] = channel;
   
   channel = meta_new_channel(filter, 3);
   color[2] = meta_new_data(MT_COLOR, filter, malloc(sizeof(int)));
-  *(int*)(color[2]->data) = CS_YUV_V;
+  *(int*)(color[2]->data) = CS_LAB_B;
   meta_attach(channel, color[2]);
   meta_attach(out, channel);
   ch_out[2] = channel;

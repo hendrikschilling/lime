@@ -57,15 +57,15 @@ void _worker_gamma(Filter *f, void *in, int channel, Eina_Array *out, Rect *area
    int written;
 
    assert(TIFFSetDirectory(data->file, 0));
-   written = TIFFWriteTile(data->file, tile->data, tile->area->corner.x, tile->area->corner.y, 0, channel);
+   written = TIFFWriteTile(data->file, tile->data, tile->area.corner.x, tile->area.corner.y, 0, channel);
    assert(written == 256*256);
    assert(TIFFRewriteDirectory(data->file));
    
    for(counter=data->counter, scale=1; scale<data->scales; counter/=4,scale++) {
-      xc = tile->area->corner.x;
+      xc = tile->area.corner.x;
       xc = xc >> (scale + 8);
       xc *= 256;
-      yc = tile->area->corner.y;
+      yc = tile->area.corner.y;
       yc = yc >> (scale + 8);
       yc *= 256;
       
@@ -136,15 +136,15 @@ void _worker_linear(Filter *f, void *in, int channel, Eina_Array *out, Rect *are
    int written;
 
    assert(TIFFSetDirectory(data->file, 0));
-   written = TIFFWriteTile(data->file, tile->data, tile->area->corner.x, tile->area->corner.y, 0, channel);
+   written = TIFFWriteTile(data->file, tile->data, tile->area.corner.x, tile->area.corner.y, 0, channel);
    assert(written == 256*256);
    assert(TIFFRewriteDirectory(data->file));
    
    for(counter=data->counter, scale=1; scale<data->scales; counter/=4,scale++) {
-      xc = tile->area->corner.x;
+      xc = tile->area.corner.x;
       xc = xc >> (scale + 8);
       xc *= 256;
-      yc = tile->area->corner.y;
+      yc = tile->area.corner.y;
       yc = yc >> (scale + 8);
       yc *= 256;
       

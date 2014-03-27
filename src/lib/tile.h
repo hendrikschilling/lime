@@ -34,7 +34,7 @@ typedef struct _Tile Tile;
 struct _Tiledata {
   int size; //pixel size in bytes
   void *data; //actual pixel (or whatever) data
-  Rect *area; //ref to parent tiles, area
+  Rect area; //ref to parent tiles, area
   Tile *parent;
 };
 

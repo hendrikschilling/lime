@@ -121,6 +121,7 @@ struct _Filter
   Eina_Array *core;
   Eina_Array *tune;
   Eina_Array *settings;
+  Eina_Array *metas; //too free on filter del
   Fg_Node *node;
   Fg_Node *node_orig;
   Filter_F setting_changed; //settings were changed, calc input-meta

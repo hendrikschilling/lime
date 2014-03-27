@@ -35,6 +35,7 @@ struct _Meta_Array
 int ma_count(Meta_Array *ar);
 Meta *ma_data(Meta_Array *ar, int pos);
 Meta_Array *meta_array_new(void);
+void meta_array_del(Meta_Array *ar);
 int meta_array_append(Meta_Array *ar, Meta *meta);
 
 #endif

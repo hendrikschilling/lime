@@ -213,12 +213,16 @@ int _loadtiff_input_fixed(Filter *f)
 
 static int _del(Filter *f)
 {
-  _Data *data;
   int i;
+  _Data *data = ea_data(f->data, 0);
+  
+  free(data->dim);
+  
   for(i=0;i<ea_count(f->data);i++) {
     data = ea_data(f->data, i);
     if (data->file)
       TIFFClose(data->file);
+    free(data);
   }
   
   return 0;

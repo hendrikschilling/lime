@@ -35,6 +35,7 @@
 
 typedef struct {
   int error;
+  int *index;
 } _Common;
 
 typedef struct {
@@ -49,7 +50,6 @@ typedef struct {
   int mcu_w, mcu_h;
   int w, h;
   int comp_count;
-  int **index;
   int serve_ix;
   int serve_iy;
   int serve_minx;
@@ -280,7 +280,7 @@ int jpeg_read_infos(FILE *f, _Data *data)
             i = 0;
           }
         }
-        *data->index = index;
+        data->common->index = index;
         return 0;
       case 0xC4:
       case 0xDB:
@@ -367,8 +367,8 @@ fill_input_buffer (j_decompress_ptr cinfo)
         && src->data->serve_ix == src->data->serve_maxx-1)
       size = INPUT_BUF_SIZE;
     else
-      size = (*src->data->index)[src->data->serve_iy*src->data->iw+src->data->serve_ix+1]-(*src->data->index)[src->data->serve_iy*src->data->iw+src->data->serve_ix];
-    fseek(src->infile, (*src->data->index)[src->data->serve_iy*src->data->iw+src->data->serve_ix], SEEK_SET);
+      size = (src->data->common->index)[src->data->serve_iy*src->data->iw+src->data->serve_ix+1]-(src->data->common->index)[src->data->serve_iy*src->data->iw+src->data->serve_ix];
+    fseek(src->infile, (src->data->common->index)[src->data->serve_iy*src->data->iw+src->data->serve_ix], SEEK_SET);
     assert(2*INPUT_BUF_SIZE >= size);
     nbytes = fread(src->buffer, 1, size, src->infile);
     //FIXME check size?
@@ -376,7 +376,7 @@ fill_input_buffer (j_decompress_ptr cinfo)
       src->buffer[nbytes-1] = 0xd0 | src->data->rst_next;
       src->data->rst_next = (src->data->rst_next+1) % 8;
     }
-    src->data->file_pos = (*src->data->index)[src->data->serve_iy*src->data->iw+src->data->serve_ix] + nbytes;
+    src->data->file_pos = (src->data->common->index)[src->data->serve_iy*src->data->iw+src->data->serve_ix] + nbytes;
     src->data->serve_ix++;
     if (src->data->serve_ix >= src->data->serve_maxx) {
       src->data->serve_ix = src->data->serve_minx;
@@ -389,8 +389,8 @@ fill_input_buffer (j_decompress_ptr cinfo)
   }
   else if (src->data->file_pos < *src->data->size_pos 
       && src->data->file_pos + INPUT_BUF_SIZE >= *src->data->size_pos) {
-    if (src->data->file_pos + 2*INPUT_BUF_SIZE >= (*src->data->index)[0])
-      nbytes = fread(src->buffer, 1, (*src->data->index)[0]-src->data->file_pos, src->infile);
+    if (src->data->file_pos + 2*INPUT_BUF_SIZE >= (src->data->common->index)[0])
+      nbytes = fread(src->buffer, 1, (src->data->common->index)[0]-src->data->file_pos, src->infile);
     else
       nbytes = fread(src->buffer, 1, 2*INPUT_BUF_SIZE, src->infile);
     //FIXME
@@ -399,22 +399,22 @@ fill_input_buffer (j_decompress_ptr cinfo)
     src->buffer[i+2] = src->data->serve_width / 256; //pretend size to be 256!
     src->buffer[i+3] = src->data->serve_width % 256;
   }
-  else if (src->data->file_pos < (*src->data->index)[0]
-      && src->data->file_pos + INPUT_BUF_SIZE >= (*src->data->index)[0]) {
-    nbytes = fread(src->buffer, 1, (*src->data->index)[0]-src->data->file_pos, src->infile);
+  else if (src->data->file_pos < (src->data->common->index)[0]
+      && src->data->file_pos + INPUT_BUF_SIZE >= (src->data->common->index)[0]) {
+    nbytes = fread(src->buffer, 1, (src->data->common->index)[0]-src->data->file_pos, src->infile);
   }
-  else if (src->data->file_pos == (*src->data->index)[0]) {
+  else if (src->data->file_pos == (src->data->common->index)[0]) {
     //printf("wohoo now feed fake jpeg\n");
     src->data->serve_fakejpg = 1;
     src->data->rst_next = 0;
-    size = (*src->data->index)[src->data->serve_iy*src->data->iw+src->data->serve_ix+1]-(*src->data->index)[src->data->serve_iy*src->data->iw+src->data->serve_ix];
-    fseek(src->infile, (*src->data->index)[src->data->serve_iy*src->data->iw+src->data->serve_ix], SEEK_SET);
+    size = (src->data->common->index)[src->data->serve_iy*src->data->iw+src->data->serve_ix+1]-(src->data->common->index)[src->data->serve_iy*src->data->iw+src->data->serve_ix];
+    fseek(src->infile, (src->data->common->index)[src->data->serve_iy*src->data->iw+src->data->serve_ix], SEEK_SET);
     assert(INPUT_BUF_SIZE > size);
     nbytes = fread(src->buffer, 1, size, src->infile);
     src->buffer[nbytes-1] = 0xd0 | src->data->rst_next;
     src->data->rst_next = (src->data->rst_next+1) % 8;
     assert(nbytes == size);
-    src->data->file_pos = (*src->data->index)[src->data->serve_iy*src->data->iw+src->data->serve_ix] + nbytes;
+    src->data->file_pos = (src->data->common->index)[src->data->serve_iy*src->data->iw+src->data->serve_ix] + nbytes;
     src->data->serve_ix++;
     if (src->data->serve_ix >= src->data->serve_maxx) {
       src->data->serve_ix = src->data->serve_minx;
@@ -638,9 +638,9 @@ void _loadjpeg_worker_ijg(Filter *f, Eina_Array *in, Eina_Array *out, Rect *area
     return;
   }
   
-  if (!(*data->index)) {
+  if (!(data->common->index)) {
     pthread_mutex_lock(data->lock);
-    if (!(*data->index)) {
+    if (!(data->common->index)) {
       if (jpeg_read_infos(file, data)) {
 	printf("corrupt jpeg!\n");
 	data->common->error = EINA_TRUE;
@@ -924,16 +924,15 @@ int _loadjpeg_input_fixed(Filter *f)
   if (!file)
     return -1;
   
-  if (*data->index) {
-    free(*data->index);
-    *data->index = NULL;
+  if (data->common->index) {
+    free(data->common->index);
+    data->common->index = NULL;
   }
   
   for(i=0;i<ea_count(f->data);i++) {
     tdata = ea_data(f->data, i);
     if (!tdata->filename || strcmp(tdata->filename, data->input->data)) {
       tdata->filename = data->input->data;
-      assert(!*tdata->index);
     }
   }
   
@@ -987,8 +986,8 @@ int _loadjpeg_input_fixed(Filter *f)
   ((Dim*)data->dim)->width = cinfo.output_width;
   ((Dim*)data->dim)->height = cinfo.output_height;
   
-  f->tw_s = malloc(sizeof(int)*(((Dim*)data->dim)->scaledown_max+1));
-  f->th_s = malloc(sizeof(int)*(((Dim*)data->dim)->scaledown_max+1));
+  f->tw_s = realloc(f->tw_s, sizeof(int)*(((Dim*)data->dim)->scaledown_max+1));
+  f->th_s = realloc(f->th_s, sizeof(int)*(((Dim*)data->dim)->scaledown_max+1));
   
   for(i=0;i<data->seekable;i++) {
     cinfo.scale_num = 1;
@@ -1024,16 +1023,19 @@ static int _del(Filter *f)
   int i;
   
   free(data->thumb_data);
-  if (data->index) {
-    if (*data->index)
-      free(*data->index);
-    free(data->index);
-  }
+  free(data->lock);
+  free(data->size_pos);
+  
+  if (data->common->index)
+    free(data->common->index);
+  
+  free(data->common);
   
   for(i=0;i<ea_count(f->data);i++) {
     data = ea_data(f->data, i);
     free(data);
   }
+  
   
   return 0;
 }
@@ -1044,7 +1046,6 @@ Filter *filter_loadjpeg_new(void)
   Meta *in, *out, *channel, *bitdepth, *color, *dim, *fliprot;
   _Data *data = calloc(sizeof(_Data), 1);
   data->common = calloc(sizeof(_Common), 1);
-  data->index = calloc(sizeof(int**), 1);
   data->size_pos = calloc(sizeof(int*), 1);
   data->lock = calloc(sizeof(pthread_mutex_t), 1);
   assert(pthread_mutex_init(data->lock, NULL) == 0);

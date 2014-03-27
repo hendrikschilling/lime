@@ -40,7 +40,7 @@ Tiledata *tiledata_new(Rect *area, int size, Tile *parent)
   
   tile->size = size;
   tile->data = calloc(size*area->width*area->height, 1);
-  tile->area = area;
+  tile->area = *area;
   tile->parent = parent;
   
   return tile;
@@ -54,7 +54,7 @@ void hack_tiledata_fixsize(int size, Tiledata *tile)
   free(tile->data);
   
   tile->size = size;
-  tile->data = calloc(size*tile->area->width*tile->area->height, 1);
+  tile->data = calloc(size*tile->area.width*tile->area.height, 1);
 }
 
 void tiledata_del(Tiledata *td)
@@ -68,11 +68,10 @@ void tile_del(Tile *tile)
   int i;
   
   assert(!tile_wanted(tile));
-
-  assert(tile->channels);
   
-  for(i=0;i<ea_count(tile->channels);i++) 
-    tiledata_del(ea_data(tile->channels, i));
+  if (tile->channels)
+    for(i=0;i<ea_count(tile->channels);i++) 
+      tiledata_del(ea_data(tile->channels, i));
   
   eina_array_free(tile->channels);
   
@@ -88,8 +87,8 @@ void tiledata_save(Tiledata *tile, const char *path)
   
   assert(file);
   
-  fprintf(file, "P5\n%d %d\n255\n", tile->area->width, tile->area->height);
-  fwrite(tile->data, tile->area->width*tile->area->height, 1, file);
+  fprintf(file, "P5\n%d %d\n255\n", tile->area.width, tile->area.height);
+  fwrite(tile->data, tile->area.width*tile->area.height, 1, file);
   
   fclose(file);
 }

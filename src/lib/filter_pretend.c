@@ -109,7 +109,7 @@ static void _worker(Filter *f, Eina_Array *in, Eina_Array *out, Rect *area, int 
   for(ch=0;ch<3;ch++) {
     in_td = (Tiledata*)ea_data(in, ch);
     out_td = (Tiledata*)ea_data(out, ch);
-    memcpy(out_td->data, in_td->data, out_td->area->width*out_td->area->height);
+    memcpy(out_td->data, in_td->data, out_td->area.width*out_td->area.height);
   }
 }
 

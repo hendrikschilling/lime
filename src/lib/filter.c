@@ -51,11 +51,37 @@ Filter *filter_new(Filter_Core *fc)
   filter->node = fg_node_new(filter);
   filter->node_orig = fg_node_new(filter);
   filter->data = eina_array_new(4);
+  filter->metas = eina_array_new(8);
   
   filter->tile_width = DEFAULT_TILE_SIZE;
   filter->tile_height = DEFAULT_TILE_SIZE;
   
   return filter;
+}
+
+
+Filter_Mode_Buffer *filter_mode_buffer_new(void)
+{
+  Filter_Mode_Buffer *mode = calloc(sizeof(Filter_Mode_Buffer), 1);
+  
+  return mode;
+}
+
+void filter_mode_buffer_del(Filter_Mode_Buffer *mode)
+{
+  free(mode);
+}
+
+Filter_Mode_Iter *filter_mode_iter_new(void)
+{
+  Filter_Mode_Iter *mode = calloc(sizeof(Filter_Mode_Iter), 1);
+  
+  return mode;
+}
+
+void filter_mode_iter_del(Filter_Mode_Iter *mode)
+{
+  free(mode);
 }
 
 void fg_node_del(Fg_Node *node)
@@ -167,17 +193,37 @@ void filter_del(Filter *f)
   /*if (f->node->con_trees_in && ea_count(f->node->con_trees_in))
     filter_deconfigure(((Con*)ea_data(f->node->con_trees_in, 0))->source->filter);*/
   
-  if (f->node->con_trees_in && ea_count(f->node->con_trees_in))
-    con_del_real(ea_pop(f->node->con_trees_in));
+  if (f->node->con_trees_in) {
+    if (ea_count(f->node->con_trees_in))
+      con_del_real(ea_pop(f->node->con_trees_in));
+    eina_array_free(f->node->con_trees_in);
+    f->node->con_trees_in = NULL;
+  }
   
-  if (f->node->con_trees_out && ea_count(f->node->con_trees_out))
-    con_del_real(ea_pop(f->node->con_trees_out));
+  if (f->node->con_trees_out) {
+    if (ea_count(f->node->con_trees_out))
+      con_del_real(ea_pop(f->node->con_trees_out));
+    eina_array_free(f->node->con_trees_out);
+    f->node->con_trees_out = NULL;
+  }
   
-  if (f->node_orig->con_trees_in && ea_count(f->node_orig->con_trees_in))
-    con_del(ea_pop(f->node_orig->con_trees_in));
+  if (f->node_orig->con_trees_in) {
+    if (ea_count(f->node_orig->con_trees_in))
+      con_del(ea_pop(f->node_orig->con_trees_in));
+    eina_array_free(f->node_orig->con_trees_in);
+    f->node_orig->con_trees_in = NULL;
+  }
   
-  if (f->node_orig->con_trees_out && ea_count(f->node_orig->con_trees_out))
-    con_del(ea_pop(f->node_orig->con_trees_out));
+  if (f->node_orig->con_trees_out) {
+    if (ea_count(f->node_orig->con_trees_out))
+      con_del(ea_pop(f->node_orig->con_trees_out));
+    eina_array_free(f->node_orig->con_trees_out);
+    f->node_orig->con_trees_out = NULL;
+  }
+  
+  if (f->node->con_ch_in)
+    eina_array_free(f->node->con_ch_in);
+  
   
   filter_deconfigure(f);
   
@@ -186,16 +232,10 @@ void filter_del(Filter *f)
   else
     printf("FIXME! del filter %s!\n", f->fc->shortname);
   
-  metas = eina_hash_pointer_new(&_free_meta);
+  while(ea_count(f->metas))
+    meta_del(ea_pop(f->metas));
   
-  _meta_array2hash(metas, f->in);
-  _meta_array2hash(metas, f->out);
-  _meta_array2hash(metas, f->tune);
-  _meta_array2hash(metas, f->settings);
-  _meta_array2hash(metas, f->core);
-  
-  eina_hash_free(metas);
-  
+  eina_array_free(f->metas);
   eina_array_free(f->in);
   eina_array_free(f->out);
   eina_array_free(f->tune);
@@ -206,6 +246,16 @@ void filter_del(Filter *f)
   
   eina_array_free(f->data);
   
+  if (f->mode_buffer)
+    filter_mode_buffer_del(f->mode_buffer);
+  if (f->mode_iter)
+    filter_mode_iter_del(f->mode_iter);
+  
+  if (f->tw_s)
+    free(f->tw_s);
+  if (f->th_s)
+    free(f->th_s);
+    
   free(f);
 }
 
@@ -566,18 +616,4 @@ void vizp_filter(FILE *file, Filter *filter)
   vizp_ar(file, filter->settings, filter, "settings");
   
   fprintf(file, "}\n");
-}
-
-Filter_Mode_Buffer *filter_mode_buffer_new(void)
-{
-  Filter_Mode_Buffer *mode = calloc(sizeof(Filter_Mode_Buffer), 1);
-  
-  return mode;
-}
-
-Filter_Mode_Iter *filter_mode_iter_new(void)
-{
-  Filter_Mode_Iter *mode = calloc(sizeof(Filter_Mode_Iter), 1);
-  
-  return mode;
 }

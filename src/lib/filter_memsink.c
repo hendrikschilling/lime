@@ -55,7 +55,7 @@ static void _memsink_worker(Filter *f, Eina_Array *in, Eina_Array *out, Rect *ar
   
   rgb = ((Tiledata*)ea_data(in, 0))->data;
   
-  area = ((Tiledata*)ea_data(in, 0))->area;
+  area = &((Tiledata*)ea_data(in, 0))->area;
   
   if (*data->use_alpha)
     memcpy(buf, rgb, 4*area->width*area->height);

@@ -80,7 +80,7 @@ static void _area_calc(Filter *f, Rect *in, Rect *out)
 
 static uint8_t *tileptr8(Tiledata *tile, int x, int y)
 { 
-  return &((uint8_t*)tile->data)[(y-tile->area->corner.y)*tile->area->width + x-tile->area->corner.x];
+  return &((uint8_t*)tile->data)[(y-tile->area.corner.y)*tile->area.width + x-tile->area.corner.x];
 }
 
 static void _worker(Filter *f, Eina_Array *in, Eina_Array *out, Rect *area, int thread_id)
@@ -101,8 +101,8 @@ static void _worker(Filter *f, Eina_Array *in, Eina_Array *out, Rect *area, int 
     
     if ((data->rotation/90) % 4 == 1)
       for(j=0;j<DEFAULT_TILE_SIZE;j++) {
-        buf_in = tileptr8(in_td, in_td->area->corner.x, in_td->area->corner.y+j);
-        buf_out = tileptr8(out_td, out_td->area->corner.x+DEFAULT_TILE_SIZE-j-1, out_td->area->corner.y);
+        buf_in = tileptr8(in_td, in_td->area.corner.x, in_td->area.corner.y+j);
+        buf_out = tileptr8(out_td, out_td->area.corner.x+DEFAULT_TILE_SIZE-j-1, out_td->area.corner.y);
         for(i=0;i<DEFAULT_TILE_SIZE;i++) {
           *buf_out = *buf_in;
           buf_in++;
@@ -111,8 +111,8 @@ static void _worker(Filter *f, Eina_Array *in, Eina_Array *out, Rect *area, int 
       }
     else if ((data->rotation/90) % 4 == 3)
       for(j=0;j<DEFAULT_TILE_SIZE;j++) {
-        buf_in = tileptr8(in_td, in_td->area->corner.x, in_td->area->corner.y+j);
-        buf_out = tileptr8(out_td, out_td->area->corner.x+j, out_td->area->corner.y+DEFAULT_TILE_SIZE-1);
+        buf_in = tileptr8(in_td, in_td->area.corner.x, in_td->area.corner.y+j);
+        buf_out = tileptr8(out_td, out_td->area.corner.x+j, out_td->area.corner.y+DEFAULT_TILE_SIZE-1);
         for(i=0;i<DEFAULT_TILE_SIZE;i++) {
           *buf_out = *buf_in;
           buf_in++;

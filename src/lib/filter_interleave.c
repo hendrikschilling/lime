@@ -21,6 +21,7 @@
 
 typedef struct {
   Meta *colorspace;
+  Eina_Array *select_color;
 } _Data;
 
 static void _worker(Filter *f, Eina_Array *in, Eina_Array *out, Rect *area, int thread_id)
@@ -36,7 +37,7 @@ static void _worker(Filter *f, Eina_Array *in, Eina_Array *out, Rect *area, int 
   g = ((Tiledata*)ea_data(in, 1))->data;
   b = ((Tiledata*)ea_data(in, 2))->data;
   
-  area = ((Tiledata*)ea_data(in, 0))->area;
+  area = &((Tiledata*)ea_data(in, 0))->area;
   
   if (*(int*)data->colorspace->data == CS_INT_ABGR) {
     hack_tiledata_fixsize(4, ea_data(out, 0));
@@ -63,6 +64,7 @@ static int _del(Filter *f)
 {
   _Data *data = ea_data(f->data, 0);
   
+  eina_array_free(data->select_color);
   free(data);
   
   return 0;
@@ -73,7 +75,6 @@ Filter *filter_interleave_new(void)
   Filter *filter = filter_new(&filter_core_interleave);
   Meta *in, *out, *channel, *color, *bitdepth;
   Meta *ch_out, *tune_color;
-  Eina_Array *select_color;
   _Data *data = calloc(sizeof(_Data), 1);
   ea_push(filter->data, data);
   
@@ -84,9 +85,9 @@ Filter *filter_interleave_new(void)
   //filter->mode_buffer->area_calc = &_area_calc;
   filter->fixme_outcount = 1;
   
-  select_color = eina_array_new(2);
-  pushint(select_color, CS_INT_ABGR);
-  pushint(select_color, CS_INT_RGB);
+  data->select_color = eina_array_new(2);
+  pushint(data->select_color, CS_INT_ABGR);
+  pushint(data->select_color, CS_INT_RGB);
   
   bitdepth = meta_new_data(MT_BITDEPTH, filter, malloc(sizeof(int)));
   *(int*)(bitdepth->data) = BD_U8;
@@ -95,7 +96,7 @@ Filter *filter_interleave_new(void)
   out = meta_new(MT_BUNDLE, filter);
   eina_array_push(filter->out, out);
   
-  tune_color = meta_new_select(MT_COLOR, filter, select_color);
+  tune_color = meta_new_select(MT_COLOR, filter, data->select_color);
   meta_name_set(tune_color, "Output Colorspace");
   tune_color->dep = tune_color;
   data->colorspace = tune_color;

@@ -49,7 +49,7 @@
 #define PENDING_ACTIONS_BEFORE_SKIP_STEP 3
 #define REPEATS_ON_STEP_HOLD 2
 
-#define BENCHMARK
+//#define BENCHMARK
 
 //FIXME adjust depending on speed!
 #define PREREAD_RANGE 64
@@ -766,6 +766,7 @@ void mat_free_func(void *user_data, void *cell_data)
   evas_object_image_data_set(cell->img, NULL);
   evas_object_del(cell->img);
   free(cell->buf);
+  free(cell);
 }
 
 void mat_cache_set(Mat_Cache *mat_cache, int scale, int x, int y, void *data)
@@ -991,7 +992,7 @@ _finished_tile(void *data, Ecore_Thread *th)
   if (mat_cache_old) {
     if (preview_tiles || (!pending_action() && delay < (1-quick_preview_only)*high_quality_delay && (worker || first_preview))) {
       //printf("delay for now: %f (%d)\n", delay, tdata->scale);
-      eina_array_push(finished_threads, data);
+      eina_array_push(finished_threads, tdata);
       
       if (first_preview) {
 	if (!preview_timer && !preview_tiles) {

@@ -35,6 +35,8 @@ static Eina_Array *applied_metas = NULL;
 static Eina_Array *global_nodes_list = NULL;
 Eina_Array *new_fs = NULL;
 Eina_Inarray *succ_inserts = NULL;
+Eina_Array *config_meta_allocs = NULL;
+Eina_Array *config_allocs = NULL;
 
 typedef struct {
   Meta *tune;
@@ -66,6 +68,8 @@ Meta *meta_copy(Meta *m)
 {
   int i;
   Meta *copy = calloc(sizeof(Meta), 1);
+  
+  eina_array_push(config_meta_allocs, copy);
   
   //printf("copying %p\n", m);
   
@@ -428,6 +432,8 @@ Tune_Restriction *restr_new(Meta *from)
   int i;
   Tune_Restriction *restr = calloc(sizeof(Tune_Restriction), 1);
   
+  eina_array_push(config_allocs, restr);
+  
   restr->tune = from;
   
   assert(from->select);
@@ -646,6 +652,8 @@ Meta *out_tree_construct(Meta *source, Eina_Array *src_con, Eina_Array *sink_con
     //assert(sink);
     
     if (source->childs) {
+      if (out->childs)
+	meta_array_del(out->childs);
       out->childs = meta_array_new();
       for(i=0;i<ma_count(source->childs);i++) {
 	Meta *child = out_tree_construct(source->childs->data[i], src_con, sink_con, copied, copy);
@@ -1170,6 +1178,8 @@ int _cons_fix_err(Filter *start_f, Eina_Array *cons, Eina_Array *insert_f, int e
   for(i=1;i<ea_count(insert_cons);i++)
     ea_insert(cons, err_pos_start+i, ea_data(insert_cons, i));
   
+  eina_array_free(insert_cons);
+  
   if (failed)
     return -2;
 
@@ -1200,6 +1210,12 @@ void filter_deconfigure(Filter *f)
     else
       con = NULL;
   }
+  
+  
+  while (eina_array_count(config_meta_allocs))
+    meta_del(eina_array_pop(config_meta_allocs));
+  while (eina_array_count(config_allocs))
+    free(eina_array_pop(config_allocs));
 }
 
 //insert nop filters if necessary
@@ -1212,6 +1228,8 @@ int lime_config_test(Filter *f_sink)
   Filter *f = f_sink;
   if (!applied_metas) applied_metas = eina_array_new(8);
   if (!succ_inserts) succ_inserts = eina_inarray_new(sizeof(Config_Chain), 8);
+  if (!config_meta_allocs) config_meta_allocs = eina_array_new(1024);
+  if (!config_allocs) config_allocs = eina_array_new(1024);
   
   if (configured)
     return 0;

@@ -82,7 +82,7 @@ static void _area_calc(Filter *f, Rect *in, Rect *out)
 
 static void *tileptr8(Tiledata *tile, int x, int y)
 { 
-  return &((uint8_t*)tile->data)[(y-tile->area->corner.y)*tile->area->width + x-tile->area->corner.x];
+  return &((uint8_t*)tile->data)[(y-tile->area.corner.y)*tile->area.width + x-tile->area.corner.x];
 }
 
 void _accu_blur(int x, int y, Tiledata *in, Tiledata *out, int rad, int extra, int in_step, int out_step, uint32_t frac)
@@ -177,15 +177,15 @@ static void _worker(Filter *f, Eina_Array *in, Eina_Array *out, Rect *area, int 
   
   _area_calc(f, area, &buf_area);
   
-  buf_t1.area = &buf_area;
-  buf_t2.area = &buf_area;
+  buf_t1.area = buf_area;
+  buf_t2.area = buf_area;
   buf_t1.data = data->buf1;
   buf_t2.data = data->buf2;
    
   assert(in && ea_count(in) == 3);
   assert(out && ea_count(out) == 3);
 
-  in_area = ((Tiledata*)ea_data(in, 0))->area;
+  in_area = &((Tiledata*)ea_data(in, 0))->area;
     
   for(ch=0;ch<3;ch++) {
     if (!render_r) {
@@ -264,7 +264,7 @@ Filter *filter_gauss_blur_new(void)
   
   channel = meta_new_channel(filter, 1);
   color[0] = meta_new_data(MT_COLOR, filter, malloc(sizeof(int)));
-  *(int*)(color[0]->data) = CS_YUV_Y;
+  *(int*)(color[0]->data) = CS_LAB_L;
   meta_attach(channel, color[0]);
   meta_attach(channel, bitdepth);
   meta_attach(out, channel);
@@ -272,7 +272,7 @@ Filter *filter_gauss_blur_new(void)
   
   channel = meta_new_channel(filter, 2);
   color[1] = meta_new_data(MT_COLOR, filter, malloc(sizeof(int)));
-  *(int*)(color[1]->data) = CS_YUV_U;
+  *(int*)(color[1]->data) = CS_LAB_A;
   meta_attach(channel, color[1]);
   meta_attach(channel, bitdepth);
   meta_attach(out, channel);
@@ -280,7 +280,7 @@ Filter *filter_gauss_blur_new(void)
   
   channel = meta_new_channel(filter, 3);
   color[2] = meta_new_data(MT_COLOR, filter, malloc(sizeof(int)));
-  *(int*)(color[2]->data) = CS_YUV_V;
+  *(int*)(color[2]->data) = CS_LAB_B;
   meta_attach(channel, color[2]);
   meta_attach(channel, bitdepth);
   meta_attach(out, channel);

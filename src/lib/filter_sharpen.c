@@ -44,7 +44,7 @@ static void _area_calc(Filter *f, Rect *in, Rect *out)
 
 static uint8_t *tileptr8(Tiledata *tile, int x, int y)
 { 
-  return &((uint8_t*)tile->data)[(y-tile->area->corner.y)*tile->area->width + x-tile->area->corner.x];
+  return &((uint8_t*)tile->data)[(y-tile->area.corner.y)*tile->area.width + x-tile->area.corner.x];
 }
 
 static void _worker(Filter *f, Eina_Array *in, Eina_Array *out, Rect *area, int thread_id)
@@ -81,10 +81,10 @@ static void _worker(Filter *f, Eina_Array *in, Eina_Array *out, Rect *area, int 
     out_td = (Tiledata*)ea_data(out, ch);
     
     if (s < 0.1) {
-      assert(in_td->area->corner.x == area->corner.x);
-      assert(in_td->area->corner.y == area->corner.y);
-      assert(in_td->area->width == area->width);
-      assert(in_td->area->height == area->height);
+      assert(in_td->area.corner.x == area->corner.x);
+      assert(in_td->area.corner.y == area->corner.y);
+      assert(in_td->area.width == area->width);
+      assert(in_td->area.height == area->height);
       
       memcpy(out_td->data, in_td->data, DEFAULT_TILE_SIZE*DEFAULT_TILE_SIZE);
     }
@@ -127,21 +127,21 @@ Filter *filter_sharpen_new(void)
   
   channel = meta_new_channel(filter, 1);
   color[0] = meta_new_data(MT_COLOR, filter, malloc(sizeof(int)));
-  *(int*)(color[0]->data) = CS_YUV_Y;
+  *(int*)(color[0]->data) = CS_LAB_L;
   meta_attach(channel, color[0]);
   meta_attach(out, channel);
   ch_out[0] = channel;
   
   channel = meta_new_channel(filter, 2);
   color[1] = meta_new_data(MT_COLOR, filter, malloc(sizeof(int)));
-  *(int*)(color[1]->data) = CS_YUV_U;
+  *(int*)(color[1]->data) = CS_LAB_A;
   meta_attach(channel, color[1]);
   meta_attach(out, channel);
   ch_out[1] = channel;
   
   channel = meta_new_channel(filter, 3);
   color[2] = meta_new_data(MT_COLOR, filter, malloc(sizeof(int)));
-  *(int*)(color[2]->data) = CS_YUV_V;
+  *(int*)(color[2]->data) = CS_LAB_B;
   meta_attach(channel, color[2]);
   meta_attach(out, channel);
   ch_out[2] = channel;
