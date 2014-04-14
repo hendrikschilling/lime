@@ -46,6 +46,7 @@ struct _Tile {
   //Eina_Array *want; //tiles die diesen tile benötigen
   //Eina_Array *want_ch; //tiles die diesen tile benötigen
   int refs;
+  int cached;
   //int need; //Anzahl an tiles die noch benötigt werden um diesen Tile zu rendern
   uint64_t time; //time needed to create this tile from existing input
   Filter_Core *fc;	//FIXME use tile hash or something like that

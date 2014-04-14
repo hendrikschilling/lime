@@ -30,4 +30,14 @@ Tile *cache_tile_get(Tilehash *hash);
 void cache_stats_update(Filter_Core *fc, int hit, int miss, int time, int count);
 void cache_tile_channelmem_add(Tile *tile);
 
+
+void cache_uncached_add(int mem);
+void cache_uncached_sub(int mem);
+void *cache_buffer_alloc(int mem);
+void cache_buffer_del(void *data, int mem);
+void *cache_app_alloc(int mem);
+void cache_app_del(void *data, int mem);
+void cache_mem_add(int mem);
+void cache_mem_sub(int mem);
+
 #endif

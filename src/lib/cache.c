@@ -17,6 +17,9 @@
  * along with Lime.  If not, see <http://www.gnu.org/licenses/>.
  */
 
+#include <sys/time.h>
+#include <sys/resource.h>
+
 #include "cache.h"
 #include "math.h"
 
@@ -30,6 +33,9 @@ struct _Cache {
   uint64_t generation;
   uint64_t mem;
   uint64_t mem_max;
+  uint64_t uncached;
+  uint64_t buffers;
+  uint64_t app;
   Tile **tiles;
   int count;
   int count_max;
@@ -107,17 +113,21 @@ float tile_score_dist(Tile *tile, Tile *newtile)
   return 1.0/sqrt(minx*minx+miny*miny);
 }
 
-void select_rand(Tile *newtile, Eina_Array *metrics, int *delpos, Tile **del)
+int select_rand(Tile *newtile, Eina_Array *metrics, int *delpos, Tile **del)
 {
   Tile *old;
   int pos;
+  int start;
   
   pos = rand() % cache->count_max;
+  start = pos;
   old = NULL;
   while (!old) {
     pos++;
     if (pos == cache->count_max)
       pos = 0;
+    if (pos == start)
+      return -1;
     old = cache->tiles[pos];
     if (old && tile_wanted(old)) {
       old = NULL;
@@ -125,6 +135,8 @@ void select_rand(Tile *newtile, Eina_Array *metrics, int *delpos, Tile **del)
   }
   *del = old;
   *delpos = pos;
+  
+  return 0;
 }
 
 float tile_score_time(Tile *tile, Tile *newtile)
@@ -150,7 +162,7 @@ float tile_score_hitrate_norm(Tile *tile, Tile *newtile)
   return stat->hits*(stat->hits+stat->misses)/stat->tiles;
 }
 
-void select_rand_napx(Tile *newtile, Eina_Array *metrics, int *delpos, Tile **del)
+int select_rand_napx(Tile *newtile, Eina_Array *metrics, int *delpos, Tile **del)
 {
   Tile *old;
   int pos;
@@ -159,16 +171,20 @@ void select_rand_napx(Tile *newtile, Eina_Array *metrics, int *delpos, Tile **de
   float score;
   float (*score_func)(Tile *tile, Tile *newtile);
   int i;
+  int start;
   
   *del = NULL;
   
   for (tries=0;tries<CACHE_ITERS;tries++) {
     pos = rand() % cache->count_max;
+    start = pos;
     old = NULL;
     while (!old) {
       pos++;
       if (pos == cache->count_max)
 	pos = 0;
+      if (pos == start)
+	return -1;
       old = cache->tiles[pos];
       if (old && tile_wanted(old)) {
 	old = NULL;
@@ -185,10 +201,12 @@ void select_rand_napx(Tile *newtile, Eina_Array *metrics, int *delpos, Tile **de
       *delpos = pos;
     }
   }
+  
+  return 0;
 }
 
 //FIXME this is currently broken!
-void select_rand_prob(Tile *newtile, Eina_Array *metrics, int *delpos, Tile **del)
+int select_rand_prob(Tile *newtile, Eina_Array *metrics, int *delpos, Tile **del)
 {
   int i;
   Tile *old;
@@ -200,16 +218,20 @@ void select_rand_prob(Tile *newtile, Eina_Array *metrics, int *delpos, Tile **de
   Tile *candidates[CACHE_ITERS];
   int cand_pos[CACHE_ITERS];
   float (*score_func)(Tile *tile, Tile *newtile);
+  int start;
   
   scoresum = 0.0;
   
   for (tries=0;tries<CACHE_ITERS;tries++) {
     pos = rand() % cache->count_max;
+    start = pos;
     old = NULL;
     while (!old) {
       pos++;
       if (pos == cache->count_max)
 	pos = 0;
+      if (pos == start)
+	return -1;
       old = cache->tiles[pos];
       if (old && tile_wanted(old)) {
 	old = NULL;
@@ -233,6 +255,8 @@ void select_rand_prob(Tile *newtile, Eina_Array *metrics, int *delpos, Tile **de
   }
   *del = candidates[tries];
   *delpos = cand_pos[tries];
+  
+  return 0;
 }
 
 void cache_stats_update(Filter_Core *fc, int hit, int miss, int time, int count)
@@ -282,13 +306,85 @@ void cache_stats_print(void)
   }
 }
 
+void cache_uncached_add(int mem)
+{
+  cache->uncached += mem;
+}
 
-void chache_tile_cleanone(Tile *tile)
+void cache_uncached_sub(int mem)
+{
+  cache->uncached -= mem;
+}
+
+void *cache_buffer_alloc(int mem)
+{
+  cache->buffers += mem;
+  
+  return malloc(mem);
+}
+
+void cache_buffer_del(void *data, int mem)
+{
+  cache->buffers -= mem;
+  free(data);
+}
+
+
+void *cache_app_alloc(int mem)
+{
+  cache->app += mem;
+  
+  return malloc(mem);
+}
+
+void cache_app_del(void *data, int mem)
+{
+  cache->app -= mem;
+  free(data);
+}
+
+void cache_mem_add(int mem)
+{
+  cache->mem += mem;
+}
+
+void cache_mem_sub(int mem)
+{
+  cache->mem -= mem;
+}
+
+void cache_tile_channelmem_add(Tile *tile)
+{
+  int i;
+  
+  assert(tile->area.width*tile->area.height*ea_count(tile->channels) != 0);
+    
+  for(i=0;i<ea_count(tile->channels);i++) {
+    assert(((Tiledata *)ea_data(tile->channels, i))->area.width == tile->area.width);
+    if (((Tiledata *)ea_data(tile->channels, i))->data)
+      cache_mem_add(tile->area.width*tile->area.height*((Tiledata *)ea_data(tile->channels, i))->size);
+  }
+}
+
+void cache_tile_channelmem_sub(Tile *tile)
+{
+  int i;
+  
+  assert(tile->area.width*tile->area.height*ea_count(tile->channels) != 0);
+    
+  for(i=0;i<ea_count(tile->channels);i++) {
+    assert(((Tiledata *)ea_data(tile->channels, i))->area.width == tile->area.width);
+    if (((Tiledata *)ea_data(tile->channels, i))->data)
+      cache_mem_sub(tile->area.width*tile->area.height*((Tiledata *)ea_data(tile->channels, i))->size);
+  }
+}
+
+int chache_tile_cleanone(Tile *tile)
 {
   Tile *del;
   int pos;
   Eina_Array *metrics = eina_array_new(4);
-  void (*select_func)(Tile *newtile, Eina_Array *metrics, int *delpos, Tile **del);
+  int (*select_func)(Tile *newtile, Eina_Array *metrics, int *delpos, Tile **del);
 
   if ((cache->strategy & CACHE_MASK_F) == CACHE_F_RAND)
     select_func = &select_rand;
@@ -305,10 +401,12 @@ void chache_tile_cleanone(Tile *tile)
     ea_push(metrics, &tile_score_hitrate_norm);
   if (cache->strategy & CACHE_MASK_M  & CACHE_M_LRU)
     ea_push(metrics, &tile_score_lru);
+    
+  if (select_func(tile, metrics, &pos, &del))
+    return -1;
   
-  select_func(tile, metrics, &pos, &del);
-  if (del->channels)
-    cache->mem -= del->area.width*del->area.height*ea_count(del->channels);
+  assert (del->channels);
+  
   cache->count--;
   eina_hash_del(cache->table, &del->hash, del);
   assert(del->fc);
@@ -316,37 +414,66 @@ void chache_tile_cleanone(Tile *tile)
   tile_del(del);
   cache->tiles[pos] = NULL;
   eina_array_free(metrics);
+  
+  return 0;
 }
 
-void cache_tile_channelmem_add(Tile *tile)
+int get_my_pss(void)
 {
-  assert(tile->area.width*tile->area.height*ea_count(tile->channels) != 0);
+  size_t size = 0;
+  char buf[1024];
   
-  cache->mem += tile->area.width*tile->area.height*ea_count(tile->channels);
+  FILE *f = fopen("/proc/self/smaps", "r");
+  
+  if (!f)
+    return 0;
+  
+  while (fgets(buf, 1024, f )) {
+    if (!strncmp(buf, "Pss:", 4)) {
+      size += atoi(buf+4);
+    }
+  }
+  
+  fclose(f);
+  
+  return size/1024;
 }
 
 void cache_tile_add(Tile *tile)
 {
+  int i;
   int pos;
+  int size;
   
   if (!cache)
     lime_cache_set(100, 0);
   
   tile->generation = cache->generation++;
+  tile->cached = 1;
   
   assert(tile->fc);
   cache_stats_update(tile->fc, 0, 0, 0, 1);
   
   eina_hash_direct_add(cache->table, &tile->hash, tile);
   if (tile->channels) {
-    assert(tile->area.width*tile->area.height*ea_count(tile->channels) != 0);
-    cache->mem += tile->area.width*tile->area.height*ea_count(tile->channels);
+    for(i=0;i<ea_count(tile->channels);i++) {
+      if (((Tiledata *)ea_data(tile->channels, i))->data) {
+	cache_uncached_sub(tile->area.width*tile->area.height*((Tiledata *)ea_data(tile->channels, i))->size);
+	cache_mem_add(tile->area.width*tile->area.height*((Tiledata *)ea_data(tile->channels, i))->size);
+      }
+    }
   }
   cache->count++;
   
+  size = get_my_pss();
+  printf("memory usage: %dMB cache: %.1fMB rendering: %.1fMB buffers: %.1fMB app(img): %.1fMB rest: %.1f\n", size, cache->mem/1048576.0, cache->uncached/1048576.0, cache->buffers/1048576.0, cache->app/1048576.0, (size*1048576.0-cache->mem-cache->uncached-cache->buffers-cache->app)/1048576.0);
+  
   //need to delete some tile
   while (cache->mem >= cache->mem_max || cache->count >= cache->count_max/2)
-    chache_tile_cleanone(tile);
+    if (chache_tile_cleanone(tile)) {
+      printf("unable to cope with cache size. ignoring!\n");
+      break;
+    }
     
   //find free pos in tiles array
   pos = rand() % cache->count_max;

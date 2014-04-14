@@ -33,10 +33,10 @@
 static int configured = 0;
 static Eina_Array *applied_metas = NULL;
 static Eina_Array *global_nodes_list = NULL;
-Eina_Array *new_fs = NULL;
-Eina_Inarray *succ_inserts = NULL;
-Eina_Array *config_meta_allocs = NULL;
-Eina_Array *config_allocs = NULL;
+static Eina_Array *new_fs = NULL;
+static Eina_Inarray *succ_inserts = NULL;
+static Eina_Array *config_meta_allocs = NULL;
+static Eina_Array *config_allocs = NULL;
 
 typedef struct {
   Meta *tune;
@@ -1194,6 +1194,13 @@ void filter_deconfigure(Filter *f)
   ea_metas_data_zero(applied_metas);
   fg_undo_tunings();
   
+  if (config_meta_allocs)
+    while (eina_array_count(config_meta_allocs))
+      meta_del(eina_array_pop(config_meta_allocs));
+  if (config_allocs)
+    while (eina_array_count(config_allocs))
+      free(eina_array_pop(config_allocs));
+  
   if (!f->node->con_trees_out || ! ea_count(f->node->con_trees_out))
     return;
  
@@ -1210,12 +1217,6 @@ void filter_deconfigure(Filter *f)
     else
       con = NULL;
   }
-  
-  
-  while (eina_array_count(config_meta_allocs))
-    meta_del(eina_array_pop(config_meta_allocs));
-  while (eina_array_count(config_allocs))
-    free(eina_array_pop(config_allocs));
 }
 
 //insert nop filters if necessary

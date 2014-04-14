@@ -43,6 +43,11 @@ Tiledata *tiledata_new(Rect *area, int size, Tile *parent)
   tile->area = *area;
   tile->parent = parent;
   
+  if (parent && parent->cached)
+    cache_mem_add(size*area->width*area->height);
+  else
+    cache_uncached_add(size*area->width*area->height);
+  
   return tile;
 }
 
@@ -52,13 +57,28 @@ void hack_tiledata_fixsize(int size, Tiledata *tile)
     return;
   
   free(tile->data);
+    
+  if (tile->parent && tile->parent->cached)
+    cache_mem_sub(tile->area.width*tile->area.height*tile->size);
+  else
+    cache_uncached_sub(tile->area.width*tile->area.height*tile->size);
   
   tile->size = size;
-  tile->data = calloc(size*tile->area.width*tile->area.height, 1);
+  tile->data = calloc(tile->area.width*tile->area.height*tile->size, 1);
+  
+  if (tile->parent && tile->parent->cached)
+    cache_mem_add(tile->area.width*tile->area.height*tile->size);
+  else
+    cache_uncached_add(tile->area.width*tile->area.height*tile->size);
 }
 
 void tiledata_del(Tiledata *td)
 {
+  if (td->parent && td->parent->cached)
+    cache_mem_sub(td->area.width*td->area.height*td->size);
+  else
+    cache_uncached_sub(td->area.width*td->area.height*td->size);
+  
   free(td->data);
   free(td);
 }

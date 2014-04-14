@@ -386,8 +386,10 @@ void filter_render_tile(Render_Node *job, int thread_id)
   
   job->tile->channels = channels;
   
-  if (job->f->fixme_outcount)
-    cache_tile_channelmem_add(job->tile);
+  //printf("render add %p filter %s\n", job->tile, job->f->fc->shortname);
+  //???
+  //if (job->f->fixme_outcount)
+  //  cache_tile_channelmem_add(job->tile);
 }
 
 int end_of_iteration(Render_Node *node)

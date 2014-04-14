@@ -26,6 +26,7 @@
 #include "Lime.h"
 #include "cli.h"
 #include "tagfiles.h"
+#include "cache.h"
 
 #include "filter_convert.h"
 #include "filter_gauss.h"
@@ -765,7 +766,7 @@ void mat_free_func(void *user_data, void *cell_data)
   
   evas_object_image_data_set(cell->img, NULL);
   evas_object_del(cell->img);
-  free(cell->buf);
+  cache_app_del(cell->buf, TILE_SIZE*TILE_SIZE*4);
   free(cell);
 }
 
@@ -839,7 +840,7 @@ Eina_Bool idle_run_render(void *data)
 #ifdef BENCHMARK
   if (!worker) {
     bench_delay_start();
-    if (tagfiles_idx(files) >= 98)
+    if (tagfiles_idx(files) >= 498)
       workerfinish_schedule(&elm_exit_do, NULL, NULL, EINA_TRUE);
     else
       workerfinish_schedule(&step_image_do, (void*)(intptr_t)1, NULL, EINA_TRUE);
@@ -903,8 +904,8 @@ void _insert_image(_Img_Thread_Data *tdata)
   evas_object_image_alpha_set(tdata->img, EINA_FALSE);
   evas_object_image_size_set(tdata->img, TILE_SIZE, TILE_SIZE);
   evas_object_image_smooth_scale_set(tdata->img, EINA_FALSE); 
-  evas_object_image_scale_hint_set(tdata->img, EVAS_IMAGE_SCALE_HINT_STATIC);
-  evas_object_image_scale_hint_set(tdata->img, EVAS_IMAGE_CONTENT_HINT_STATIC);
+  evas_object_image_scale_hint_set(tdata->img, EVAS_IMAGE_SCALE_HINT_DYNAMIC);
+  evas_object_image_scale_hint_set(tdata->img, EVAS_IMAGE_SCALE_HINT_DYNAMIC);
   evas_object_image_data_set(tdata->img, tdata->buf);
   //evas_object_image_data_update_add(tdata->img, 0, 0, TILE_SIZE, TILE_SIZE);
   evas_object_show(tdata->img);
@@ -969,13 +970,13 @@ _finished_tile(void *data, Ecore_Thread *th)
   if (tdata->scaled_preview)
     preview_tiles--;
   
-/*#ifdef BENCHMARK
+#ifdef BENCHMARK
   bench_delay_start();
-  if (tagfiles_idx(files) >= 98)
+  if (tagfiles_idx(files) >= 498)
     workerfinish_schedule(&elm_exit_do, NULL, NULL, EINA_TRUE);
   else
     workerfinish_schedule(&step_image_do, (void*)(intptr_t)1, NULL, EINA_TRUE);
-#endif*/
+#endif
   
   worker--;
   
@@ -1039,7 +1040,7 @@ _finished_tile(void *data, Ecore_Thread *th)
 #ifdef BENCHMARK
   if (!worker && !idle_render) {
     bench_delay_start();
-    if (tagfiles_idx(files) >= 98)
+    if (tagfiles_idx(files) >= 498)
       workerfinish_schedule(&elm_exit_do, NULL, NULL, EINA_TRUE);
     else
       workerfinish_schedule(&step_image_do, (void*)(intptr_t)1, NULL, EINA_TRUE);
@@ -1173,7 +1174,7 @@ int fill_area(int xm, int ym, int wm, int hm, int minscale, int preview)
 	  tdata = calloc(sizeof(_Img_Thread_Data), 1);
 	 
   	  //buf = evas_object_image_data_get(img, EINA_TRUE);
-	  buf = malloc(TILE_SIZE*TILE_SIZE*4);
+	  buf = cache_app_alloc(TILE_SIZE*TILE_SIZE*4);
 	  
 	  //elm_grid_pack(grid, img, i*TILE_SIZE*scalediv, j*TILE_SIZE*scalediv, TILE_SIZE*scalediv, TILE_SIZE*scalediv);
 	  

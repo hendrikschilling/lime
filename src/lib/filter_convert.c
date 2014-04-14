@@ -20,6 +20,7 @@
 #include "filter_convert.h"
 #include "lcms2.h"
 #include "libswscale/swscale.h"
+#include "cache.h"
 
 static Eina_Array *select_bitdepth = NULL;
 static Eina_Array *select_color = NULL;
@@ -53,7 +54,7 @@ static void *_data_new(Filter *f, void *data)
   _Data *newdata = calloc(sizeof(_Data), 1);
   
   *newdata = *(_Data*)data;
-  newdata->buf = malloc(DEFAULT_TILE_AREA*3);
+  newdata->buf = cache_buffer_alloc(DEFAULT_TILE_AREA*3);
   
   if (newdata->common->initialized == INIT_SWS)
     newdata->sws = sws_getContext(DEFAULT_TILE_SIZE, DEFAULT_TILE_SIZE, newdata->common->lav_fmt_in, DEFAULT_TILE_SIZE, DEFAULT_TILE_SIZE, newdata->common->lav_fmt_out, SWS_POINT, NULL, NULL, NULL);
@@ -70,7 +71,7 @@ static int _del(Filter *f)
   for(i=0;i<ea_count(f->data);i++) {
     data = ea_data(f->data, i);
     common = data->common;
-    free(data->buf);
+    cache_buffer_del(data->buf, DEFAULT_TILE_AREA*3);
     if (common->initialized == INIT_SWS)
       sws_freeContext(data->sws);
     free(data);
@@ -352,7 +353,7 @@ Filter *filter_convert_new(void)
   filter->del = &_del;
   _Data *data = calloc(sizeof(_Data), 1);
   data->common = calloc(sizeof(_Common), 1);
-  data->buf = malloc(DEFAULT_TILE_AREA*3);
+  data->buf = cache_buffer_alloc(DEFAULT_TILE_AREA*3);
   ea_push(filter->data, data);
   Meta *ch_out_color[3];
   
