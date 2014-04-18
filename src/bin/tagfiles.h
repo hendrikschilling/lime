@@ -36,7 +36,7 @@ int tagfiles_count(Tagfiles *files);
 int tagfiles_pos(Tagfiles *files);
 int tagfiles_idx(Tagfiles *files);
 int tagfiles_idx_set(Tagfiles *files, int idx);
-void tagfiles_del(Tagfiles *files);
+void tagfiles_del(Tagfiles *files); 
 int tagfiles_init(void);
 void tagfiles_shutdown(void);
 int tagfiles_scanned_dirs(Tagfiles *tagfiles);
@@ -57,6 +57,8 @@ File_Group *tagfiles_nth(Tagfiles *tagfiles, int idx);
 void tagfiles_preload_headers(Tagfiles *tagfiles, int direction, int range, int size);
 void tagfiles_add_tag(Tagfiles *tagfiles, const char *tag);
 const char *filegroup_basename(File_Group *group);
+void filegroup_move_trash(File_Group *group);
+void tagfiles_del_curgroup(Tagfiles *tagfiles);
 
 void set_filterchain_save_sidecar(void);
 

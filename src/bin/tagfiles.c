@@ -24,6 +24,7 @@
 #include <assert.h>
 #include <Ecore.h>
 #include <fcntl.h>
+#include <Efreet.h>
 
 #include "tagfiles.h"
 
@@ -267,6 +268,24 @@ int tagfiles_scanned_files(Tagfiles *tagfiles)
   return tagfiles->scanned_files;
 }
 
+void tagfiles_del(Tagfiles *files)
+{
+  printf("FIXME del tagfiles!\n");
+}
+
+
+//FIXME check scanning is finished?!
+void tagfiles_del_curgroup(Tagfiles *tagfiles)
+{
+  assert(tagfiles->xmp_scanned_idx == eina_inarray_count(tagfiles->files));
+  
+  eina_inarray_remove_at(tagfiles->files, tagfiles->idx);
+  
+  tagfiles->xmp_scanned_idx = eina_inarray_count(tagfiles->files);
+  if (tagfiles->idx >= eina_inarray_count(tagfiles->files))
+    tagfiles->idx = eina_inarray_count(tagfiles->files)-1;
+}
+
 File_Group *tagfiles_nth(Tagfiles *tagfiles, int idx)
 {
   File_Group *group;
@@ -349,11 +368,6 @@ int tagfiles_count(Tagfiles *files)
   return eina_inarray_count(files->files)+eina_inarray_count(files->files_ls);
 }
 
-void tagfiles_del(Tagfiles *files)
-{
-  printf("FIXME del tagfiles!\n");
-}
-
 const char *filegroup_nth(File_Group *g, int n)
 {
   assert(n < eina_inarray_count(g->files));
@@ -372,6 +386,29 @@ char *filegroup_filterchain(File_Group *g)
     printf("FIXME xmp not loaded for %s (%s)\n", g->basename, g->sidecar);
   
   return g->last_fc;
+}
+
+void filegroup_move_trash(File_Group *group)
+{
+  int i;
+  Efreet_Uri uri;
+  uri.protocol = "file";
+  uri.hostname = NULL;
+  
+  for(i=0;i<filegroup_count(group);i++) {
+    if (!filegroup_nth(group, i))
+      continue;
+    if (filegroup_nth(group, i)) {
+      uri.path = filegroup_nth(group, i);
+      if (efreet_trash_delete_uri(&uri, 0) != 1)
+	printf("delete failed for %s\n", filegroup_nth(group, i));
+    }
+    if (group->sidecar) {
+      uri.path = group->sidecar;
+      if (efreet_trash_delete_uri(&uri, 0) != 1)
+	printf("delete failed for %s\n", group->sidecar);
+    }
+  }
 }
 
 static Eina_Bool

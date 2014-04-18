@@ -1679,42 +1679,17 @@ void del_file_error(void *data, Eio_File *handler, int error)
 
 void delete_image_do(void *data, Evas_Object *obj)
 {
-  abort();
-  /*char dest[EINA_PATH_MAX];
-  char *filenem;
-  
+  int i;
   Tagged_File *file;
   File_Group *group;
-  
-  if (!ecore_file_exists("delete"))
-    ecore_file_mkdir("delete");
 
-  group = eina_inarray_nth(files, file_idx);
+  group = tagfiles_get(files);
   
-  EINA_INARRAY_FOREACH(group->files, file) {
-    if (!file->filename)
-      continue;
-    if (file->filename) {
-      //FIXME memleaks!
-      sprintf(dest, "%s/delete/%s", ecore_file_dir_get(file->filename), ecore_file_file_get(file->filename));
-      eio_file_move(file->filename, dest, NULL, &del_file_done, &del_file_error, file->filename);
-    }
-    if (file->sidecar) {
-      //FIXME memleaks!
-      sprintf(dest, "%s/delete/%s", ecore_file_dir_get(file->sidecar), ecore_file_file_get(file->sidecar));
-      eio_file_move(file->sidecar, dest, NULL, &del_file_done, &del_file_error, file->filename);
-    }
-  }
+  filegroup_move_trash(group);
   
-  //ATTENTION! inarray, group points to different group aufter inarray_remove_at!!!
-  if (!eina_inarray_remove_at(files, file_idx))
-    abort();
-  
-  elm_slider_min_max_set(file_slider, 0, eina_inarray_count(files)-1);
+  tagfiles_del_curgroup(files);
   
   step_image_do(NULL, NULL);
-  
-  file_group_del(group);*/
 }
 
 
@@ -2776,6 +2751,7 @@ elm_main(int argc, char **argv)
   ecore_init();
   eio_init();
   elm_init(argc, argv);
+  efreet_trash_init();
   
   tagfiles_init();
   
@@ -3099,6 +3075,7 @@ elm_main(int argc, char **argv)
   
   tagfiles_shutdown();
   
+  efreet_trash_shutdown();
   eio_shutdown();
   elm_shutdown();
   ecore_shutdown();

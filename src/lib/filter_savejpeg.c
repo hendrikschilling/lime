@@ -33,7 +33,7 @@ static void _worker(Filter *f, Eina_Array *in, Eina_Array *out, Rect *area, int 
   _Data *data = ea_data(f->data, 0);
   struct jpeg_compress_struct cinfo;
   struct jpeg_error_mgr jerr;
-    
+      
   file = fopen(data->filename->data, "w");
   
   cinfo.err = jpeg_std_error(&jerr);
