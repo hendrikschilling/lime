@@ -155,17 +155,22 @@ int _loadtiff_input_fixed(Filter *f)
   if (succ != 5) {
     printf("TIFF unsupported configuration %s\n", data->input->data);
     TIFFClose(data->file);
+    data->file = NULL;
     return -1;
   }
   
   if (!width || !height || !twidth || !theight) {
     printf("TIFF unsupported configuration %s\n", data->input->data);
     TIFFClose(data->file);
+    data->file = NULL;
     return -1;
   }
   
   if (!twidth || !theight) {
     printf("FIXME: TIFF unsupported tile configuration %dx%d\n", twidth, theight);
+    TIFFClose(data->file);
+    data->file = NULL;
+    return -1;
   }
   
   ((Dim*)data->dim)->width = width;
@@ -186,6 +191,7 @@ int _loadtiff_input_fixed(Filter *f)
     default:
     printf("TIFF unsupported colorspace %s\n", data->input->data);
     TIFFClose(data->file);
+    data->file = NULL;
     return -1;
   }
     
@@ -198,6 +204,7 @@ int _loadtiff_input_fixed(Filter *f)
     if (succ != 2 || twidth != twidth_d || theight != theight_d) {
       printf("TIFF unsupported configuration %s\n", data->input->data);
       TIFFClose(data->file);
+      data->file = NULL;
       return -1;
     }
     ((Dim*)data->dim)->scaledown_max++;

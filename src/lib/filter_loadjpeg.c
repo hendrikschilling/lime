@@ -972,7 +972,7 @@ int _loadjpeg_input_fixed(Filter *f)
   //printf("seekable tile size: %dx%d\n", data->rst_int*data->mcu_w, data->mcu_h);
 
   if (data->rst_int 
-    && JPEG_TILE_WIDTH % (data->rst_int * data->mcu_w) == 0)
+    && JPEG_TILE_WIDTH % (data->rst_int * data->mcu_w) == 0 && data->w % (data->rst_int * data->mcu_w) == 0)
     data->seekable = 3;
   
   ((Dim*)data->dim)->scaledown_max = 3;
