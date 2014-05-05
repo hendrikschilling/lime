@@ -89,11 +89,12 @@ void tile_del(Tile *tile)
   
   assert(!tile_wanted(tile));
   
-  if (tile->channels)
+  if (tile->channels) {
     for(i=0;i<ea_count(tile->channels);i++) 
       tiledata_del(ea_data(tile->channels, i));
   
-  eina_array_free(tile->channels);
+    eina_array_free(tile->channels);
+  }
   
   if (tile->want)
     eina_array_free(tile->want);

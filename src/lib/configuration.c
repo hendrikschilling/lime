@@ -951,27 +951,29 @@ void fg_undo_tunings(void)
   int i, j;
   Filter *f;
   
-  for(i=0;i<ea_count(global_nodes_list);i++) {
-    if (!ea_data(global_nodes_list, i))
-      continue;
+  if (global_nodes_list)
+    for(i=0;i<ea_count(global_nodes_list);i++) {
+      if (!ea_data(global_nodes_list, i))
+	continue;
 
-    f = ((Fg_Node*)ea_data(global_nodes_list, i))->f;
-    
-    if (f->in) {
-      assert(f->in > 100);
-      for(j=0;j<ea_count(f->in);j++)
-	meta_undo_tunings_rec(ea_data(f->in, j));
+      f = ((Fg_Node*)ea_data(global_nodes_list, i))->f;
+      
+      if (f->in) {
+	assert(f->in > 100);
+	for(j=0;j<ea_count(f->in);j++)
+	  meta_undo_tunings_rec(ea_data(f->in, j));
+      }
+      
+      if (f->out) {
+	assert(f->out > 100);
+	for(j=0;j<ea_count(f->out);j++)
+	  meta_undo_tunings_rec(ea_data(f->out, j));
+      }
     }
-    
-    if (f->out) {
-      assert(f->out > 100);
-      for(j=0;j<ea_count(f->out);j++)
-	meta_undo_tunings_rec(ea_data(f->out, j));
-    }
-  }
   
   
-  eina_array_flush(applied_metas);
+  if (applied_metas)
+    eina_array_flush(applied_metas);
 }
 
 void lime_config_node_add(Fg_Node *node)
