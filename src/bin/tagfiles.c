@@ -827,7 +827,7 @@ Eina_Bool xmp_add_tags_dc_func(const Eina_Hash *hash, const void *key, void *dat
 
 Eina_Bool xmp_add_tags_dk_func(const Eina_Hash *hash, const void *key, void *data, void *fdata)
 {
-  char *tag = data;
+  char *tag = strdup(data);
   char *replace;
   XmpPtr xmp = fdata;
   
@@ -837,7 +837,7 @@ Eina_Bool xmp_add_tags_dk_func(const Eina_Hash *hash, const void *key, void *dat
   xmp_append_array_item(xmp, "http://www.digikam.org/ns/1.0/", "digiKam:TagsList", XMP_PROP_ARRAY_IS_UNORDERED, tag, 0);
   
   //FIXME
-  //free(tag);
+  free(tag);
   
   return 1;
 }
