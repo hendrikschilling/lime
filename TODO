@@ -1,8 +1,9 @@
 next:
-- add (very simple) configuration cache (speed up image browsing in limeview)
-- clean export gui
-- libexif is too slow - write our own? (or fix configuration)
-- better scaling/low scale handling in loadjpeg - use swscale?
+- add useful --help to limedo with full list of filters/settings
+- benchmarking and README
+- add glsl code for RBPi
+- make configuration non-global - bind to filters/filterchain
+- clean api, api examples
 
 short term:
 - fix tiff writer : we somehow write too much data (can be cleaned out with tiffcp)
