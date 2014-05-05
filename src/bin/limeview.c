@@ -2564,7 +2564,7 @@ static void on_tag_changed(void *data, Evas_Object *obj, void *event_info)
   filegroup_filterchain_set(cur_group, lime_filter_chain_serialize(((Filter_Chain*)eina_list_data_get(eina_list_next(filter_chain)))->f));
   
   if (!group_in_filters(cur_group, tags_filter))
-    step_image_do(NULL, NULL);
+      workerfinish_schedule(&step_image_do, NULL, NULL, EINA_TRUE);
 }
 
 static void on_tag_filter_changed(void *data, Evas_Object *obj, void *event_info)
@@ -2583,7 +2583,7 @@ static void on_tag_filter_changed(void *data, Evas_Object *obj, void *event_info
   }
   
   if (!group_in_filters(group, tags_filter))
-      step_image_do(NULL, NULL);
+      workerfinish_schedule(&step_image_do, NULL, NULL, EINA_TRUE);
 }
 
 static void on_rating_changed(void *data, Evas_Object *obj, void *event_info)
@@ -2596,7 +2596,7 @@ static void on_rating_changed(void *data, Evas_Object *obj, void *event_info)
   filegroup_rating_set(cur_group, elm_segment_control_item_index_get(elm_segment_control_item_selected_get(obj)));
   
   if (!group_in_filters(cur_group, tags_filter))
-      step_image_do(NULL, NULL);
+      workerfinish_schedule(&step_image_do, NULL, NULL, EINA_TRUE);
 }
 
 static void on_filter_rating_changed(void *data, Evas_Object *obj, void *event_info)
@@ -2606,7 +2606,7 @@ static void on_filter_rating_changed(void *data, Evas_Object *obj, void *event_i
   tags_filter_rating = elm_segment_control_item_index_get(elm_segment_control_item_selected_get(obj));
   
   if (!group_in_filters(group, tags_filter))
-    step_image_do(NULL, NULL);
+    workerfinish_schedule(&step_image_do, NULL, NULL, EINA_TRUE);
 }
 
 static Evas_Object *_tag_gen_cont_get(void *data, Evas_Object *obj, const char *part)
