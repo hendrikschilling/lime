@@ -1465,7 +1465,10 @@ int group_in_filters(File_Group *group, Eina_Hash *filters)
   Filter_Check_Data check;
   
   if (!filegroup_tags_valid(group))
-    return 1;
+    if (filters && eina_hash_population(filters) || tags_filter_rating)
+      return 0;
+    else
+      return 1;
   
   if (tags_filter_rating && filegroup_rating(group) < tags_filter_rating)
     return 0;
