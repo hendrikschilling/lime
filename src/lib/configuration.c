@@ -53,11 +53,6 @@ typedef struct {
   int filters[MAX_CONS_TRIES];
 } Config_Chain;
 
-void lime_config_reset(void)
-{
-  configured = 0;
-}
-
 void meta_dep_set_data_calc(Meta *m, void *dep_data)
 {
   m->dep->data = dep_data;
@@ -716,7 +711,7 @@ void apply_sink_souce_matches(Eina_Array *match_source, Eina_Array *match_sink, 
   }
 }
 
-void ea_metas_data_zero(Eina_Array *metas)
+void _ea_metas_data_zero(Eina_Array *metas)
 {
   if (!metas)
     return;
@@ -792,7 +787,7 @@ int test_filter_config_real(Filter *f, int write_graph)
     
     if (!matches_compat) {
       //printf("failed\n");
-      ea_metas_data_zero(applied_metas);
+      _ea_metas_data_zero(applied_metas);
       eina_array_free(match_source);
       eina_array_free(match_sink);
       for(i=0;i<ea_count(copied);i++)
@@ -816,7 +811,7 @@ int test_filter_config_real(Filter *f, int write_graph)
     apply_sink_souce_matches(match_source, match_sink, applied_metas);
     if (con->sink->filter->input_fixed)
       if (con->sink->filter->input_fixed(con->sink->filter)) {
-	ea_metas_data_zero(applied_metas);
+	_ea_metas_data_zero(applied_metas);
 	eina_array_free(matches_compat);
 	eina_array_free(match_source);
 	eina_array_free(match_sink);
@@ -946,7 +941,7 @@ void meta_undo_tunings_rec(Meta *m)
 }
 
 
-void fg_undo_tunings(void)
+void _fg_undo_tunings(void)
 {
   int i, j;
   Filter *f;
@@ -1110,8 +1105,8 @@ int _cons_fix_err(Filter *start_f, Eina_Array *cons, Eina_Array *insert_f, int e
   int failed = 0;
   Config_Chain succ_chain;
   
-  ea_metas_data_zero(applied_metas);
-  fg_undo_tunings();
+  _ea_metas_data_zero(applied_metas);
+  _fg_undo_tunings();
   
   //delete original connection
   con_failed = ea_data(cons, err_pos_start);
@@ -1135,7 +1130,7 @@ int _cons_fix_err(Filter *start_f, Eina_Array *cons, Eina_Array *insert_f, int e
   err_pos = test_filter_config_real(start_f, 0)-err_pos_start;
   
   while (err_pos >= 0 && err_pos < ea_count(insert_cons) && !failed) {      
-    fg_undo_tunings();
+    _fg_undo_tunings();
     
     for(i=0;i<ea_count(insert_cons);i++)
       con_del_real(ea_data(insert_cons, i));
@@ -1188,13 +1183,24 @@ int _cons_fix_err(Filter *start_f, Eina_Array *cons, Eina_Array *insert_f, int e
   return err_pos+err_pos_start;
 }
 
+/* 
+ * needs source filter
+ * - resets metas (from tunings/inputs)
+ * - undo tunings (recursive/slow! - FIXME)
+ * - delete connections
+ */
 void filter_deconfigure(Filter *f)
 {
   Con *con;
   Filter *sink_f;
   
-  ea_metas_data_zero(applied_metas);
-  fg_undo_tunings();
+  if (!configured)
+    return;
+  
+  configured = 0;
+  
+  _ea_metas_data_zero(applied_metas);
+  _fg_undo_tunings();
   
   if (config_meta_allocs)
     while (eina_array_count(config_meta_allocs))
@@ -1219,6 +1225,18 @@ void filter_deconfigure(Filter *f)
     else
       con = NULL;
   }
+  
+  if (new_fs)
+    while(ea_count(new_fs))
+      filter_del(ea_pop(new_fs));
+}
+
+void lime_config_reset(Filter *f)
+{
+  while (f->node_orig->con_trees_in && ea_count(f->node_orig->con_trees_in))
+    f = ((Con*)ea_data(f->node_orig->con_trees_in, 0))->source->filter;
+  
+  filter_deconfigure(f);
 }
 
 //insert nop filters if necessary
@@ -1239,9 +1257,6 @@ int lime_config_test(Filter *f_sink)
   
   if (!new_fs)
     new_fs = eina_array_new(8);
-  
-  while(ea_count(new_fs))
-    filter_del(ea_pop(new_fs));
 
   insert_f =  eina_array_new(4);
   cons = eina_array_new(8);

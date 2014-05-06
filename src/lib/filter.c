@@ -136,7 +136,7 @@ int lime_setting_float_set(Filter *f, const char *setting, float value)
       if (f->setting_changed)
 	f->setting_changed(f);
       
-      lime_config_reset();
+      lime_config_reset(f);
       
       return 0;
     }
@@ -188,7 +188,7 @@ void filter_del(Filter *f)
 {
   Eina_Hash *metas;
   
-  lime_config_reset();
+  lime_config_reset(f);
   
   /*if (f->node->con_trees_in && ea_count(f->node->con_trees_in))
     filter_deconfigure(((Con*)ea_data(f->node->con_trees_in, 0))->source->filter);*/
@@ -223,9 +223,6 @@ void filter_del(Filter *f)
   
   if (f->node->con_ch_in)
     eina_array_free(f->node->con_ch_in);
-  
-  
-  filter_deconfigure(f);
   
   if (f->del)
     f->del(f);
@@ -278,6 +275,7 @@ int lime_setting_int_set(Filter *f, const char *setting, int value)
       if (f->setting_changed)
         f->setting_changed(f);
       
+      lime_config_reset(f);
       return 0;
     }
   }
@@ -306,7 +304,7 @@ int lime_setting_string_set(Filter *f, const char *setting, const char *value)
       if (f->setting_changed)
 	f->setting_changed(f);
       
-      lime_config_reset();
+      lime_config_reset(f);
       return 0;
     }
   }
@@ -332,10 +330,8 @@ Con *filter_connect(Filter *source, int out, Filter *sink, int in)
   assert(source->in);
   assert(sink->out);
   
-  filter_deconfigure(sink);
-  filter_deconfigure(source);
-  
-  lime_config_reset();
+  lime_config_reset(sink);
+  lime_config_reset(source);
   
   con->source = eina_array_data_get(source->out, out);
   con->sink = eina_array_data_get(sink->in, in);
