@@ -48,6 +48,7 @@ struct _Filter_Core;
 typedef struct _Filter_Core Filter_Core;
 
 #include "meta.h"
+#include "configuration.h"
 
 typedef int (*Filter_F)(Filter *f);
 typedef void (*Prepare_F)(Filter *f, int scale);
@@ -116,6 +117,7 @@ struct _Filter_Mode_Iter
 struct _Filter
 {
   Filter_Core *fc;
+  Config *c;
   Eina_Array *in;
   Eina_Array *out;
   Eina_Array *core;

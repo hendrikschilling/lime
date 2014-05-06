@@ -20,9 +20,13 @@
 #ifndef _CONFIGURATION_H
 #define _CONFIGURATION_H
 
-#include "filter.h"
 
 //TODO split public (test...) private (lime_configuration_reset)
+
+struct _Config;
+typedef struct _Config Config;
+
+#include "filter.h"
 
 int lime_config_test(Filter *f);
 

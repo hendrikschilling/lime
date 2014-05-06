@@ -314,6 +314,22 @@ void lime_filter_connect(Filter *source, Filter *sink)
   filter_connect(source, 0, sink, 0);
 }
 
+Filter *filter_chain_first_filter(Filter *f)
+{
+  while (f->node_orig->con_trees_in && ea_count(f->node_orig->con_trees_in))
+    f = ((Con*)ea_data(f->node_orig->con_trees_in, 0))->source->filter;
+  
+  return f;
+}
+
+Filter *filter_chain_last_filter(Filter *f)
+{
+  while (f->node_orig->con_trees_out && ea_count(f->node_orig->con_trees_out))
+    f = ((Con*)ea_data(f->node_orig->con_trees_out, 0))->sink->filter;
+  
+  return f;
+}
+
 //FIXME on sinks should replace old connection!
 Con *filter_connect(Filter *source, int out, Filter *sink, int in)
 {

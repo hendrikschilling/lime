@@ -30,12 +30,14 @@
 #define MAX_CONS_TRIES 4
 
 //TODO replace by non-global filter-located variable! this here is bad for multiple filter graphs!
-static int configured = 0;
-static Eina_Array *applied_metas = NULL;
-static Eina_Array *new_fs = NULL;
-static Eina_Inarray *succ_inserts = NULL;
-static Eina_Array *config_meta_allocs = NULL;
-static Eina_Array *config_allocs = NULL;
+struct _Config {
+   int configured;
+   Eina_Array *applied_metas;
+   Eina_Array *new_fs;
+   Eina_Inarray *succ_inserts;
+   Eina_Array *config_meta_allocs;
+   Eina_Array *config_allocs;
+};
 
 typedef struct {
   Meta *tune;
@@ -58,12 +60,12 @@ void meta_dep_set_data_calc(Meta *m, void *dep_data)
   meta_data_calc(m);
 }
 
-Meta *meta_copy(Meta *m)
+Meta *meta_copy(Meta *m, Config *c)
 {
   int i;
   Meta *copy = calloc(sizeof(Meta), 1);
   
-  eina_array_push(config_meta_allocs, copy);
+  eina_array_push(c->config_meta_allocs, copy);
   
   //printf("copying %p\n", m);
   
@@ -94,10 +96,10 @@ Meta *meta_copy(Meta *m)
   return copy;
 }
 
-Meta *meta_copy_tree(Meta *m, Eina_Array *copied_ar, Eina_Array *copy_ar)
+Meta *meta_copy_tree(Meta *m, Eina_Array *copied_ar, Eina_Array *copy_ar, Config *c)
 {
   int i, i_cp, is_copy;
-  Meta *copy = meta_copy(m);
+  Meta *copy = meta_copy(m, c);
   
   ea_push(copied_ar, m);
   ea_push(copy_ar, copy);
@@ -115,7 +117,7 @@ Meta *meta_copy_tree(Meta *m, Eina_Array *copied_ar, Eina_Array *copy_ar)
 	}
 	
 	if (!is_copy)
-	  meta_array_append(copy->childs, meta_copy_tree(m->childs->data[i], copied_ar, copy_ar));
+	  meta_array_append(copy->childs, meta_copy_tree(m->childs->data[i], copied_ar, copy_ar, c));
 
     }
   }
@@ -421,12 +423,12 @@ void restr_remove_value(Tune_Restriction *restr, int idx)
     restr->tune->data = NULL;
 }
 
-Tune_Restriction *restr_new(Meta *from)
+Tune_Restriction *restr_new(Meta *from, Config *c)
 {
   int i;
   Tune_Restriction *restr = calloc(sizeof(Tune_Restriction), 1);
   
-  eina_array_push(config_allocs, restr);
+  eina_array_push(c->config_allocs, restr);
   
   restr->tune = from;
   
@@ -446,7 +448,7 @@ Tune_Restriction *restr_new(Meta *from)
   return restr;
 }
 
-void tunes_restrict(Meta *a, Meta *b, Eina_Array *restrictions)
+void tunes_restrict(Meta *a, Meta *b, Eina_Array *restrictions, Config *c)
 {
   int i, j;
   int is_compatible;
@@ -469,12 +471,12 @@ void tunes_restrict(Meta *a, Meta *b, Eina_Array *restrictions)
   
   //create no yet existing tune-restrictions
   if (a->dep && !found_a) {
-    found_a = restr_new(a->dep);
+    found_a = restr_new(a->dep,c );
     ea_push(restrictions, found_a);
   }
   
   if (b->dep && !found_b) {
-    found_b = restr_new(b->dep);
+    found_b = restr_new(b->dep, c);
     ea_push(restrictions, found_b);
   }
   
@@ -580,7 +582,7 @@ wie finden wir kopierte knoten: Mit copied, copy!
 replace-knoten werden immer rekursiv kopiert, source-knoten einzeln!
 Annahme: kompatible teilbäume sind immer(!) verbunden
 */
-Meta *out_tree_construct(Meta *source, Eina_Array *src_con, Eina_Array *sink_con, Eina_Array *copied, Eina_Array *copy)
+Meta *out_tree_construct(Meta *source, Eina_Array *src_con, Eina_Array *sink_con, Eina_Array *copied, Eina_Array *copy, Config *c)
 {
   //betrachte Kinder von source
     //gibt es entsprechende verbindung zu sink?
@@ -619,7 +621,7 @@ Meta *out_tree_construct(Meta *source, Eina_Array *src_con, Eina_Array *sink_con
       }
     
     if (!replace) {
-      out = meta_copy(source);
+      out = meta_copy(source, c);
     }
     else {
       assert(sink);
@@ -636,7 +638,7 @@ Meta *out_tree_construct(Meta *source, Eina_Array *src_con, Eina_Array *sink_con
 	
       //müssen out_child erst mal kopieren
       if (!out)
-	out = meta_copy_tree(replace, copied, copy);
+	out = meta_copy_tree(replace, copied, copy, c);
       //printf("tunes merge (tree): %p %p %p\n", source, sink, out);
       //tunes_merge(source, sink, out, tunes_copied, tunes_copy);
     }
@@ -650,7 +652,7 @@ Meta *out_tree_construct(Meta *source, Eina_Array *src_con, Eina_Array *sink_con
 	meta_array_del(out->childs);
       out->childs = meta_array_new();
       for(i=0;i<ma_count(source->childs);i++) {
-	Meta *child = out_tree_construct(source->childs->data[i], src_con, sink_con, copied, copy);
+	Meta *child = out_tree_construct(source->childs->data[i], src_con, sink_con, copied, copy, c);
 	if (child)
 	  meta_array_append(out->childs, child);
 	
@@ -719,7 +721,7 @@ void _ea_metas_data_zero(Eina_Array *metas)
     ((Meta*)ea_pop(metas))->data = NULL;
 }
 
-int test_filter_config_real(Filter *f, int write_graph)
+int test_filter_config_real(Filter *f, int write_graph, Config *c)
 {
   int pos = 0;
   int i;
@@ -786,7 +788,7 @@ int test_filter_config_real(Filter *f, int write_graph)
     
     if (!matches_compat) {
       //printf("failed\n");
-      _ea_metas_data_zero(applied_metas);
+      _ea_metas_data_zero(c->applied_metas);
       eina_array_free(match_source);
       eina_array_free(match_sink);
       for(i=0;i<ea_count(copied);i++)
@@ -807,10 +809,10 @@ int test_filter_config_real(Filter *f, int write_graph)
     assert(ea_count(con->sink->filter->in)==1);
     
     //copy source meta->data to empty input metas
-    apply_sink_souce_matches(match_source, match_sink, applied_metas);
+    apply_sink_souce_matches(match_source, match_sink, c->applied_metas);
     if (con->sink->filter->input_fixed)
       if (con->sink->filter->input_fixed(con->sink->filter)) {
-	_ea_metas_data_zero(applied_metas);
+	_ea_metas_data_zero(c->applied_metas);
 	eina_array_free(matches_compat);
 	eina_array_free(match_source);
 	eina_array_free(match_sink);
@@ -827,12 +829,12 @@ int test_filter_config_real(Filter *f, int write_graph)
    
     old_out = out;
     if (con->sink->filter->node->con_trees_out && ea_count(con->sink->filter->node->con_trees_out))
-      out = out_tree_construct(out, match_source, match_sink, copied, copy);
+      out = out_tree_construct(out, match_source, match_sink, copied, copy, c);
     else
       out = NULL;
     
     for(i=0;i<ea_count(match_source);i++)
-      tunes_restrict(ea_data(match_source, i), ea_data(match_sink, i), restrictions);
+      tunes_restrict(ea_data(match_source, i), ea_data(match_sink, i), restrictions, c);
     
     //FIXME clean on reconfiguration!
     con->sink->filter->node->con_ch_in = eina_array_new(4);
@@ -944,13 +946,11 @@ void _f_undo_tunings(Filter *f)
   int j;
   
   if (f->in) {
-    assert(f->in > 100);
     for(j=0;j<ea_count(f->in);j++)
       meta_undo_tunings_rec(ea_data(f->in, j));
   }
   
   if (f->out) {
-    assert(f->out > 100);
     for(j=0;j<ea_count(f->out);j++)
       meta_undo_tunings_rec(ea_data(f->out, j));
   }
@@ -1001,7 +1001,7 @@ void _filter_insert_connect(int *tried_f, int tried_len, Eina_Array *insert_f, E
   ea_push(insert_cons, filter_connect_real(source, 0, sink, 0));
 }
 
-void succ_insert_load(Eina_Inarray *succ_inserts, int *tried_f, int *tried_len, int n)
+void succ_insert_load(Eina_Inarray *succ_inserts, int *tried_f, int *tried_len, int n, Config *c)
 {
   int i;
   
@@ -1013,7 +1013,7 @@ void succ_insert_load(Eina_Inarray *succ_inserts, int *tried_f, int *tried_len, 
     tried_f[i] = config->filters[i];
 }
 
-int _filter_count_up(int *tried_f, int *tried_len, Eina_Array *insert_f, int err_pos, int max_len, int *try_cache)
+int _filter_count_up(int *tried_f, int *tried_len, Eina_Array *insert_f, int err_pos, int max_len, int *try_cache, Config *c)
 {
   //printf("f: %d %d (len: %d err: %d)\n", tried_f[0], tried_f[1], *tried_len, err_pos);
   
@@ -1021,7 +1021,7 @@ int _filter_count_up(int *tried_f, int *tried_len, Eina_Array *insert_f, int err
     (*try_cache)--;
   
     if (*try_cache)
-      succ_insert_load(succ_inserts, tried_f, tried_len, *try_cache);
+      succ_insert_load(c->succ_inserts, tried_f, tried_len, *try_cache, c);
     else {
       tried_f[0] = 0;
       *tried_len = 1;
@@ -1061,9 +1061,34 @@ int _filter_count_up(int *tried_f, int *tried_len, Eina_Array *insert_f, int err
   return 0;
 }
 
-int _cons_fix_err(Filter *start_f, Eina_Array *cons, Eina_Array *insert_f, int err_pos_start)
+Config *config_new(void)
 {
-  int i, n;
+  Config *c = calloc(sizeof(Config), 1);
+  
+  c->applied_metas = eina_array_new(8);
+  c->succ_inserts = eina_inarray_new(sizeof(Config_Chain), 8);
+  c->config_meta_allocs = eina_array_new(1024);
+  c->config_allocs = eina_array_new(1024);
+  c->new_fs = eina_array_new(8);
+  
+  return c;
+}
+
+void config_del(Config *c)
+{
+  eina_array_free(c->applied_metas);
+  eina_inarray_free(c->succ_inserts);
+  eina_array_free(c->config_meta_allocs);
+  eina_array_free(c->config_allocs);
+  eina_array_free(c->new_fs);
+  
+  free(c);
+}
+
+int _cons_fix_err(Filter *start_f, Eina_Array *cons, Eina_Array *insert_f, int err_pos_start, Config *c)
+{
+  int i;
+  //int n;
   int try_cache;
   Eina_Array *insert_cons = eina_array_new(8);
   int tried_f[MAX_CONS_TRIES];
@@ -1072,9 +1097,9 @@ int _cons_fix_err(Filter *start_f, Eina_Array *cons, Eina_Array *insert_f, int e
   int err_pos;
   Filter *source_f, *sink_f;
   int failed = 0;
-  Config_Chain succ_chain;
+  //Config_Chain succ_chain;
   
-  _ea_metas_data_zero(applied_metas);
+  _ea_metas_data_zero(c->applied_metas);
   _f_undo_tunings_chain(start_f);
   
   //delete original connection
@@ -1085,18 +1110,18 @@ int _cons_fix_err(Filter *start_f, Eina_Array *cons, Eina_Array *insert_f, int e
   
   //printf("failed between %s-%s\n", source_f->name, sink_f->name);
   
-  try_cache = eina_inarray_count(succ_inserts);
+  try_cache = eina_inarray_count(c->succ_inserts);
   if (try_cache)
-    succ_insert_load(succ_inserts, tried_f, &tried_len, 0);
+    succ_insert_load(c->succ_inserts, tried_f, &tried_len, 0, c);
   else {
     tried_f[0] = 0;
     tried_len = 1; 
   }
   
-  _filter_insert_connect(tried_f, tried_len, insert_f, insert_cons, new_fs, source_f, sink_f);
+  _filter_insert_connect(tried_f, tried_len, insert_f, insert_cons, c->new_fs, source_f, sink_f);
   
   //err_pos now gives error position in insert_cons
-  err_pos = test_filter_config_real(start_f, 0)-err_pos_start;
+  err_pos = test_filter_config_real(start_f, 0, c)-err_pos_start;
   
   while (err_pos >= 0 && err_pos < ea_count(insert_cons) && !failed) {      
     _f_undo_tunings_chain(start_f);
@@ -1105,11 +1130,11 @@ int _cons_fix_err(Filter *start_f, Eina_Array *cons, Eina_Array *insert_f, int e
       con_del_real(ea_data(insert_cons, i));
     eina_array_flush(insert_cons);
     
-    if (_filter_count_up(tried_f, &tried_len, insert_f, err_pos, MAX_CONS_TRIES, &try_cache))
+    if (_filter_count_up(tried_f, &tried_len, insert_f, err_pos, MAX_CONS_TRIES, &try_cache, c))
       failed = 1;
-    _filter_insert_connect(tried_f, tried_len, insert_f, insert_cons, new_fs, source_f, sink_f);
+    _filter_insert_connect(tried_f, tried_len, insert_f, insert_cons, c->new_fs, source_f, sink_f);
     
-    err_pos = test_filter_config_real(start_f, 0)-err_pos_start;
+    err_pos = test_filter_config_real(start_f, 0, c)-err_pos_start;
   }
   
   //FIXME need to check input/output tree/sort by size/???
@@ -1162,21 +1187,22 @@ void filter_deconfigure(Filter *f)
 {
   Con *con;
   Filter *sink_f;
+  Config *c = filter_chain_last_filter(f)->c;
   
-  if (!configured)
+  if (!c || !c->configured)
     return;
   
-  configured = 0;
+  c->configured = 0;
   
-  _ea_metas_data_zero(applied_metas);
+  _ea_metas_data_zero(c->applied_metas);
   _f_undo_tunings_chain(f);
   
-  if (config_meta_allocs)
-    while (eina_array_count(config_meta_allocs))
-      meta_del(eina_array_pop(config_meta_allocs));
-  if (config_allocs)
-    while (eina_array_count(config_allocs))
-      free(eina_array_pop(config_allocs));
+  if (c->config_meta_allocs)
+    while (eina_array_count(c->config_meta_allocs))
+      meta_del(eina_array_pop(c->config_meta_allocs));
+  if (c->config_allocs)
+    while (eina_array_count(c->config_allocs))
+      free(eina_array_pop(c->config_allocs));
   
   if (!f->node->con_trees_out || ! ea_count(f->node->con_trees_out))
     return;
@@ -1195,9 +1221,12 @@ void filter_deconfigure(Filter *f)
       con = NULL;
   }
   
-  if (new_fs)
-    while(ea_count(new_fs))
-      filter_del(ea_pop(new_fs));
+  if (c->new_fs)
+    while(ea_count(c->new_fs))
+      filter_del(ea_pop(c->new_fs));
+    
+  //config_del(c);
+  //filter_chain_last_filter(f)->c = NULL;
 }
 
 void lime_config_reset(Filter *f)
@@ -1206,6 +1235,12 @@ void lime_config_reset(Filter *f)
     f = ((Con*)ea_data(f->node_orig->con_trees_in, 0))->source->filter;
   
   filter_deconfigure(f);
+  
+  f = filter_chain_last_filter(f);
+  if (f->c) {
+    config_del(f->c);
+    f->c = NULL;
+  }
 }
 
 //insert nop filters if necessary
@@ -1216,16 +1251,16 @@ int lime_config_test(Filter *f_sink)
   Eina_Array *cons;
   Con *con_orig;
   Filter *f = f_sink;
-  if (!applied_metas) applied_metas = eina_array_new(8);
-  if (!succ_inserts) succ_inserts = eina_inarray_new(sizeof(Config_Chain), 8);
-  if (!config_meta_allocs) config_meta_allocs = eina_array_new(1024);
-  if (!config_allocs) config_allocs = eina_array_new(1024);
+  Config *c = filter_chain_last_filter(f)->c;
   
-  if (configured)
+  if (c && c->configured)
     return 0;
-  
-  if (!new_fs)
-    new_fs = eina_array_new(8);
+  if (!c) {
+    c = config_new();
+    filter_chain_last_filter(f)->c = c;
+  }
+  else
+    lime_config_reset(f);
 
   insert_f =  eina_array_new(4);
   cons = eina_array_new(8);
@@ -1233,8 +1268,6 @@ int lime_config_test(Filter *f_sink)
   while (f->node_orig->con_trees_in && ea_count(f->node_orig->con_trees_in)) {
     f = ((Con*)ea_data(f->node_orig->con_trees_in, 0))->source->filter;
   }
-  
-  filter_deconfigure(f);
   
   Filter *source_f, *sink_f;
   
@@ -1263,10 +1296,10 @@ int lime_config_test(Filter *f_sink)
   ea_push(insert_f, filter_core_loadtiff.filter_new_f);
   ea_push(insert_f, filter_core_fliprot.filter_new_f);
   
-  err_pos_start = test_filter_config_real(f, 0);
+  err_pos_start = test_filter_config_real(f, 0, c);
   
   while (err_pos_start != -1) {
-    err_pos_start = _cons_fix_err(f, cons, insert_f, err_pos_start);
+    err_pos_start = _cons_fix_err(f, cons, insert_f, err_pos_start, c);
     if (err_pos_start == -2) {
       eina_array_free(cons);
       eina_array_free(insert_f);
@@ -1274,7 +1307,7 @@ int lime_config_test(Filter *f_sink)
     }
   }
   
-  configured = 1;
+  c->configured = 1;
   
   filter_hash_recalc(f);
   

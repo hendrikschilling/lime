@@ -36,5 +36,7 @@ Filter *filter_new(Filter_Core *fc);
 void filter_del(Filter *f);
 void filter_hash_invalidate(Filter *f);
 uint32_t filter_hash_value_get(Filter *f);
+Filter *filter_chain_first_filter(Filter *f);
+Filter *filter_chain_last_filter(Filter *f);
 
 #endif
