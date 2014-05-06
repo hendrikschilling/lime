@@ -62,6 +62,7 @@ int max_reaction_delay =  1000;
 int fullscreen = 0;
 int max_fast_scaledown = 5;
 int first_preview = 0;
+int filtered_image_count = 0;
 Ecore_Job *workerfinish_idle = NULL;
 Ecore_Idler *idle_render = NULL;
 Ecore_Idler *idle_preload = NULL;
@@ -1465,7 +1466,7 @@ int group_in_filters(File_Group *group, Eina_Hash *filters)
   Filter_Check_Data check;
   
   if (!filegroup_tags_valid(group))
-    if (filters && eina_hash_population(filters) || tags_filter_rating)
+    if ((filters && eina_hash_population(filters)) || tags_filter_rating)
       return 0;
     else
       return 1;
@@ -1516,6 +1517,15 @@ void on_known_tags_changed(Tagfiles *tagfiles, void *data, const char *new_tag)
 
 void filegroup_changed_cb(File_Group *group)
 {
+  char unit_fmt[32];
+  
+  if (tags_filter_rating || (tags_filter && eina_hash_population(tags_filter)))
+    if (group_in_filters(group, tags_filter)) {  
+      filtered_image_count = filtered_image_count_get();
+      sprintf(unit_fmt, "%%.0f/%d", filtered_image_count);
+      elm_slider_unit_format_set(file_slider, unit_fmt); 
+    }
+  
   //FIXME do we have to schedule this even if something else is running?
   workerfinish_schedule(step_image_do, NULL, NULL, EINA_TRUE);
 }
@@ -2551,8 +2561,24 @@ static void on_new_tag(void *data, Evas_Object *obj, void *event_info)
   tagfiles_add_tag(files, new);
 }
 
+int filtered_image_count_get(void)
+{
+  int count = 0;
+  int i;
+  
+  if (!tags_filter && !eina_hash_population(tags_filter) && !tags_filter_rating)
+    return tagfiles_count(files);
+  
+  for(i=0;i<tagfiles_count(files);i++)
+    if (group_in_filters(tagfiles_nth(files, i), tags_filter))
+      count++;
+    
+  return count;
+}
+
 static void on_tag_changed(void *data, Evas_Object *obj, void *event_info)
 {
+  char unit_fmt[32];
   Tags_List_Item_Data *tag = data;
   assert(cur_group);
   
@@ -2564,6 +2590,10 @@ static void on_tag_changed(void *data, Evas_Object *obj, void *event_info)
     eina_hash_del_by_key(filegroup_tags(cur_group), tag->tag);
   }
   
+  filtered_image_count = filtered_image_count_get();
+  sprintf(unit_fmt, "%%.0f/%d", filtered_image_count);
+  elm_slider_unit_format_set(file_slider, unit_fmt); 
+  
   filegroup_filterchain_set(cur_group, lime_filter_chain_serialize(((Filter_Chain*)eina_list_data_get(eina_list_next(filter_chain)))->f));
   
   if (!group_in_filters(cur_group, tags_filter))
@@ -2572,6 +2602,7 @@ static void on_tag_changed(void *data, Evas_Object *obj, void *event_info)
 
 static void on_tag_filter_changed(void *data, Evas_Object *obj, void *event_info)
 {
+  char unit_fmt[32];
   File_Group *group = cur_group;
   char *tag;
   
@@ -2585,12 +2616,17 @@ static void on_tag_filter_changed(void *data, Evas_Object *obj, void *event_info
     eina_hash_del_by_key(tags_filter, data);
   }
   
+  filtered_image_count = filtered_image_count_get();
+  sprintf(unit_fmt, "%%.0f/%d", filtered_image_count);
+  elm_slider_unit_format_set(file_slider, unit_fmt); 
+  
   if (!group_in_filters(group, tags_filter))
       workerfinish_schedule(&step_image_do, NULL, NULL, EINA_TRUE);
 }
 
 static void on_rating_changed(void *data, Evas_Object *obj, void *event_info)
 {
+  char unit_fmt[32];
   assert(cur_group);
   
   if (filegroup_rating(cur_group) == elm_segment_control_item_index_get(elm_segment_control_item_selected_get(obj)))
@@ -2598,15 +2634,24 @@ static void on_rating_changed(void *data, Evas_Object *obj, void *event_info)
   
   filegroup_rating_set(cur_group, elm_segment_control_item_index_get(elm_segment_control_item_selected_get(obj)));
   
+  filtered_image_count = filtered_image_count_get();
+  sprintf(unit_fmt, "%%.0f/%d", filtered_image_count);
+  elm_slider_unit_format_set(file_slider, unit_fmt); 
+  
   if (!group_in_filters(cur_group, tags_filter))
       workerfinish_schedule(&step_image_do, NULL, NULL, EINA_TRUE);
 }
 
 static void on_filter_rating_changed(void *data, Evas_Object *obj, void *event_info)
 {
+  char unit_fmt[32];
   File_Group *group = cur_group;
   
   tags_filter_rating = elm_segment_control_item_index_get(elm_segment_control_item_selected_get(obj));
+  
+  filtered_image_count = filtered_image_count_get();
+  sprintf(unit_fmt, "%%.0f/%d", filtered_image_count);
+  elm_slider_unit_format_set(file_slider, unit_fmt); 
   
   if (!group_in_filters(group, tags_filter))
     workerfinish_schedule(&step_image_do, NULL, NULL, EINA_TRUE);
