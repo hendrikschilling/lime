@@ -4,6 +4,7 @@ next:
 - add glsl code for RBPi
 - make configuration non-global - bind to filters/filterchain
 - clean api, api examples
+- race on remove filter in limeview - do not queue del request?
 
 short term:
 - fix tiff writer : we somehow write too much data (can be cleaned out with tiffcp)
