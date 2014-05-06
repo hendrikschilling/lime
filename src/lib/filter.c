@@ -85,9 +85,7 @@ void filter_mode_iter_del(Filter_Mode_Iter *mode)
 }
 
 void fg_node_del(Fg_Node *node)
-{
-  lime_config_node_del(node);
-  
+{  
   //FIXME del content!
   //FIXME del node!
   free(node);
@@ -150,8 +148,6 @@ Fg_Node *fg_node_new(Filter *f)
   Fg_Node *node = calloc(sizeof(Fg_Node), 1);
   
   node->f = f;
-  
-  lime_config_node_add(node);
   
   return node;
 }

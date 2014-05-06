@@ -32,7 +32,6 @@
 //TODO replace by non-global filter-located variable! this here is bad for multiple filter graphs!
 static int configured = 0;
 static Eina_Array *applied_metas = NULL;
-static Eina_Array *global_nodes_list = NULL;
 static Eina_Array *new_fs = NULL;
 static Eina_Inarray *succ_inserts = NULL;
 static Eina_Array *config_meta_allocs = NULL;
@@ -940,62 +939,32 @@ void meta_undo_tunings_rec(Meta *m)
       meta_undo_tunings_rec(ma_data(m->childs, i));
 }
 
-
-void _fg_undo_tunings(void)
+void _f_undo_tunings(Filter *f)
 {
-  int i, j;
-  Filter *f;
+  int j;
   
-  if (global_nodes_list)
-    for(i=0;i<ea_count(global_nodes_list);i++) {
-      if (!ea_data(global_nodes_list, i))
-	continue;
-
-      f = ((Fg_Node*)ea_data(global_nodes_list, i))->f;
-      
-      if (f->in) {
-	assert(f->in > 100);
-	for(j=0;j<ea_count(f->in);j++)
-	  meta_undo_tunings_rec(ea_data(f->in, j));
-      }
-      
-      if (f->out) {
-	assert(f->out > 100);
-	for(j=0;j<ea_count(f->out);j++)
-	  meta_undo_tunings_rec(ea_data(f->out, j));
-      }
-    }
+  if (f->in) {
+    assert(f->in > 100);
+    for(j=0;j<ea_count(f->in);j++)
+      meta_undo_tunings_rec(ea_data(f->in, j));
+  }
   
-  
-  if (applied_metas)
-    eina_array_flush(applied_metas);
+  if (f->out) {
+    assert(f->out > 100);
+    for(j=0;j<ea_count(f->out);j++)
+      meta_undo_tunings_rec(ea_data(f->out, j));
+  }
 }
 
-void lime_config_node_add(Fg_Node *node)
+void _f_undo_tunings_chain(Filter *f)
 {
-  int i;
-  
-  if (!global_nodes_list)
-    global_nodes_list = eina_array_new(8);
-  
-  for(i=0;i<ea_count(global_nodes_list);i++)
-    if (ea_data(global_nodes_list, i) == NULL) {
-      ea_set(global_nodes_list, i, node);
-      return;
-    }
-    
-  ea_push(global_nodes_list, node);
-}
-
-void lime_config_node_del(Fg_Node *node)
-{
-  int i;
-  
-  for(i=0;i<ea_count(global_nodes_list);i++)
-    if (ea_data(global_nodes_list, i) == node)
-      ea_set(global_nodes_list, i, NULL);
-  
-  assert(global_nodes_list);
+  while (f) {
+    _f_undo_tunings(f);
+    if (f->node->con_trees_out && ea_count(f->node->con_trees_out))
+      f = ((Con*)ea_data(f->node->con_trees_out, 0))->sink->filter;
+    else
+      f = NULL;
+  }
 }
 
 void ea_insert(Eina_Array *ar, int idx, void *data)
@@ -1106,7 +1075,7 @@ int _cons_fix_err(Filter *start_f, Eina_Array *cons, Eina_Array *insert_f, int e
   Config_Chain succ_chain;
   
   _ea_metas_data_zero(applied_metas);
-  _fg_undo_tunings();
+  _f_undo_tunings_chain(start_f);
   
   //delete original connection
   con_failed = ea_data(cons, err_pos_start);
@@ -1130,7 +1099,7 @@ int _cons_fix_err(Filter *start_f, Eina_Array *cons, Eina_Array *insert_f, int e
   err_pos = test_filter_config_real(start_f, 0)-err_pos_start;
   
   while (err_pos >= 0 && err_pos < ea_count(insert_cons) && !failed) {      
-    _fg_undo_tunings();
+    _f_undo_tunings_chain(start_f);
     
     for(i=0;i<ea_count(insert_cons);i++)
       con_del_real(ea_data(insert_cons, i));
@@ -1200,7 +1169,7 @@ void filter_deconfigure(Filter *f)
   configured = 0;
   
   _ea_metas_data_zero(applied_metas);
-  _fg_undo_tunings();
+  _f_undo_tunings_chain(f);
   
   if (config_meta_allocs)
     while (eina_array_count(config_meta_allocs))
