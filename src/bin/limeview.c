@@ -50,8 +50,8 @@
 #define PENDING_ACTIONS_BEFORE_SKIP_STEP 3
 #define REPEATS_ON_STEP_HOLD 2
 
-#define BENCHMARK
-#define BENCHMARK_LENGTH 98
+//#define BENCHMARK
+#define BENCHMARK_LENGTH 498
 
 //FIXME adjust depending on speed!
 #define PRECALC_CONFIG_RANGE 8
@@ -791,6 +791,15 @@ float actual_scale_get()
     
   return (float)size.width / grid_w;
 }
+float config_actual_scale_get(Config_Data *config)
+{
+  int x,y,w,h,grid_w,grid_h;
+  
+  elm_scroller_region_get(scroller, &x, &y, &w, &h);
+  evas_object_size_hint_min_get(grid, &grid_w, &grid_h);
+    
+  return (float)size_recalc2(config->sink)->width / grid_w;
+}
 
 void mat_free_func(void *user_data, void *cell_data)
 {
@@ -924,6 +933,13 @@ static void _process_tile(void *data, Ecore_Thread *th)
 {
   _Img_Thread_Data *tdata = data;
     
+  lime_render_area(&tdata->area, tdata->config->sink, tdata->t_id);
+}
+
+static void _process_tile_bg(void *data, Ecore_Thread *th)
+{
+  _Img_Thread_Data *tdata = data;
+    
   eina_sched_prio_drop();
   lime_render_area(&tdata->area, tdata->config->sink, tdata->t_id);
 }
@@ -982,8 +998,9 @@ Eina_Bool _display_preview(void *data)
 
 Eina_Bool idle_preload_run(void *data)
 {
-  tagfiles_preload_headers(files, last_file_step, 1, PREREAD_SIZE_FULL);
-  
+  printf("idle preload!\n");
+  step_image_preload_next();
+
   return ECORE_CALLBACK_CANCEL;
 }
 
@@ -1047,8 +1064,11 @@ _finished_tile(void *data, Ecore_Thread *th)
 	}
       }
       else
-	if (!worker)
+	if (!worker) {
 	  _display_preview(NULL);
+	  if (!pending_action())
+	    idle_preload = ecore_idler_add(idle_preload_run, NULL);
+	}
 
       first_preview = 0;
 
@@ -1062,12 +1082,14 @@ _finished_tile(void *data, Ecore_Thread *th)
       }
       
       _display_preview(NULL);
+      if (!pending_action())
+	idle_preload = ecore_idler_add(idle_preload_run, NULL);
     }
   }
   else if (!worker) {
     printf("final delay: %f\n", bench_delay_get());
     
-    if (!key_repeat)
+    if (!key_repeat && !pending_action())
       idle_preload = ecore_idler_add(idle_preload_run, NULL);
   }
   
@@ -1106,6 +1128,115 @@ int lock_free_thread_id(void)
     }
     
   abort();
+}
+
+int fill_area_blind(int xm, int ym, int wm, int hm, int minscale, Config_Data *config)
+{
+  int x,y,w,h;
+  int i, j;
+  uint8_t *buf;
+  int scale;
+  int scalediv;
+  Rect area;
+  float actual_scalediv;
+  int minx, miny, maxx, maxy;
+  int scale_start;
+  int actual_scale;
+  _Img_Thread_Data *tdata;
+  Dim size = *size_recalc2(config->sink);
+
+  
+  elm_scroller_region_get(scroller, &x, &y, &w, &h);
+  
+  if (!w || !h) {
+    return 0;
+  }
+  
+  actual_scalediv = config_actual_scale_get(config);
+  
+  x += xm;
+  y += ym;
+  w += wm;
+  h += hm;
+  
+  x *= actual_scalediv;
+  y *= actual_scalediv;
+  w *= actual_scalediv;
+  h *= actual_scalediv;
+  
+  actual_scale = 0;
+  while (actual_scalediv >= 2.0) {
+    actual_scalediv *= 0.5;
+    actual_scale++;
+  }
+
+  minscale = actual_scale + minscale;
+  
+  if (minscale > size.scaledown_max)
+    minscale = size.scaledown_max;
+  
+  scale_start = minscale + max_fast_scaledown;
+  
+  if (scale_start > size.scaledown_max)
+    scale_start = size.scaledown_max;
+  
+  for(scale=scale_start;scale>=minscale;scale--) {
+    //additional scaledown for preview
+    scalediv = ((uint32_t)1) << scale;
+    for(j=y/TILE_SIZE/scalediv;j<(y+h+TILE_SIZE*scalediv-1)/TILE_SIZE/scalediv;j++)
+      for(i=x/TILE_SIZE/scalediv;i<(x+w+TILE_SIZE*scalediv-1)/TILE_SIZE/scalediv;i++) {
+
+	if (i*TILE_SIZE*scalediv >= size.width || j*TILE_SIZE*scalediv >= size.height) {
+	  assert(j<=100 && i >= 0);
+	  continue;
+	  }
+		  
+	  minx = i*TILE_SIZE*scalediv;
+	  miny = j*TILE_SIZE*scalediv;
+	  maxx = minx + TILE_SIZE*scalediv;
+	  maxy = miny + TILE_SIZE*scalediv;
+	  
+	  if (minx < 0) {
+	    minx = 0;
+	  }
+	  if (miny < 0) {
+	    miny = 0;
+	  }
+	  if (maxx > size.width) {
+	    maxx = size.width;
+	  }
+	  if (maxy > size.height) {
+	    maxy = size.height;
+	  }
+	  
+	  //FIXME does not work, clipping is at the moment done uncoditionally in _image_insert
+	  /*if (crop)
+	    evas_object_clip_set(img, clipper);*/
+	  
+	  area.corner.scale = scale;
+	  area.corner.x = i*TILE_SIZE;
+	  area.corner.y = j*TILE_SIZE;  
+	  area.width = TILE_SIZE;
+	  area.height = TILE_SIZE;
+	  
+	  tdata = calloc(sizeof(_Img_Thread_Data), 1);
+	 
+	  buf = cache_app_alloc(TILE_SIZE*TILE_SIZE*4);
+	  
+	  tdata->buf = buf;
+	  tdata->scale = scale;
+	  tdata->area = area;
+	  tdata->config = config;
+	  
+	  tdata->t_id = lock_free_thread_id();
+	  
+	  assert(buf);
+	  filter_memsink_buffer_set(config->sink, tdata->buf, tdata->t_id);
+	  
+	  //printf("process %d %dx%d %dx%d\n", area.corner.scale, area.corner.x, area.corner.y, area.width, area.height);
+	  ecore_thread_run(_process_tile_bg, _finished_tile_blind, NULL, tdata);
+      }
+  }
 }
 
 int fill_area(int xm, int ym, int wm, int hm, int minscale, int preview)
@@ -1323,6 +1454,40 @@ static void fill_scroller(void)
     
   if (fill_area(0,0,0,0,0, 0))
     return;
+}
+
+static void fill_scroller_blind(Config_Data *config)
+{
+  int x, y, w, h, grid_w, grid_h;
+  float scale;
+  Dim *size;
+  
+  if (!grid)
+    return;
+
+  evas_object_size_hint_min_get(grid, &grid_w, &grid_h);
+  elm_scroller_region_get(scroller, &x, &y, &w, &h);
+  size = size_recalc2(config->sink);
+  
+  if (!w || !h) {
+    return;
+  }
+
+  if (grid_w && grid_h) {
+  scale = size->width / grid_w;	
+  if ((float)size->height / grid_h > scale)
+    scale = (float)size->height / grid_h;
+  }
+  else
+    scale = INFINITY;
+  
+  if (!w)
+    w++;
+  if (!h)
+    h++;
+
+  //FIXME 
+  fill_area_blind(0,0,0,0, 0, config);
 }
 
 static void
@@ -1676,7 +1841,7 @@ void config_finish(void *data, Ecore_Thread *thread)
   assert(buf);
   filter_memsink_buffer_set(config->sink, tdata->buf, tdata->t_id);
   
-  ecore_thread_run(_process_tile, _finished_tile_blind, NULL, tdata);
+  ecore_thread_run(_process_tile_bg, _finished_tile_blind, NULL, tdata);
 }
 
 void config_thread_start(File_Group *group, int nth)
@@ -1738,7 +1903,6 @@ void config_thread_start(File_Group *group, int nth)
   config->running = ecore_thread_run(&config_exe, &config_finish, NULL, config);
 }
 
-
 void step_image_start_configs(int n)
 {
   int i;
@@ -1747,8 +1911,7 @@ void step_image_start_configs(int n)
   File_Group *group;
   Config_Data *config;
   int step;
-  
-  assert(!worker);
+
   assert(files);
   
   if (!tagfiles_count(files))
@@ -1770,6 +1933,43 @@ void step_image_start_configs(int n)
       for(group_idx=0;group_idx<filegroup_count(group);group_idx++)
 	config_thread_start(group, group_idx);
     }
+  }
+}
+
+void step_image_preload_next(void)
+{
+  int i;
+  int group_idx;
+  int idx;
+  File_Group *group;
+  Config_Data *config;
+  int step;
+
+  assert(files);
+  
+  if (!tagfiles_count(files))
+    return;
+  
+  if (!last_file_step)
+    step = 1;
+  else
+    step = last_file_step;
+  
+  idx = (tagfiles_idx(files)+tagfiles_count(files)+step) % tagfiles_count(files);
+  
+  while (idx != tagfiles_idx(files)) {
+    group = tagfiles_nth(files, idx);
+    if (group_in_filters(group, tags_filter)) {
+      for(group_idx=0;group_idx<filegroup_count(group);group_idx++) {
+	config = config_data_get(group, group_idx);
+	if (!config->failed) {
+	  fill_scroller_blind(config);
+	  printf("preload %s\n", filegroup_nth(group, group_idx));
+	  return;
+	}
+      }
+    }
+    idx += step;
   }
 }
 
@@ -1855,8 +2055,6 @@ void step_image_do(void *data, Evas_Object *obj)
   //FIXME get all filter handling from actual filter chain
   filegroup_data_attach(group, group_idx, NULL);
   
-  step_image_start_configs(PRECALC_CONFIG_RANGE);
-  
   cur_group = group;
   delgrid();
   
@@ -1886,7 +2084,7 @@ void step_image_do(void *data, Evas_Object *obj)
   
   elm_slider_value_set(file_slider, tagfiles_idx(files)+0.1);
   
-  tagfiles_preload_headers(files, last_file_step, PREREAD_RANGE, PREREAD_SIZE_HEADER);
+  step_image_start_configs(PRECALC_CONFIG_RANGE);
 }
 
 void del_file_done(void *data, Eio_File *handler)
@@ -3039,7 +3237,7 @@ elm_main(int argc, char **argv)
   
   max_workers = ecore_thread_max_get();
   ecore_thread_max_set(max_workers*2);
-  max_thread_id = max_workers+PRECALC_CONFIG_RANGE;
+  max_thread_id = max_workers+PRECALC_CONFIG_RANGE+100;
   
   lime_init();
   eina_log_abort_on_critical_set(EINA_TRUE);
