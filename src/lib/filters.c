@@ -119,6 +119,8 @@ char *string_unescape_colon(const char *esc)
     str_ptr++;
   }
   
+  str_ptr[0] = '\0';
+  
   return strdup(str);
 }
 

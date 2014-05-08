@@ -50,9 +50,11 @@
 #define PENDING_ACTIONS_BEFORE_SKIP_STEP 3
 #define REPEATS_ON_STEP_HOLD 2
 
-//#define BENCHMARK
+#define BENCHMARK
+#define BENCHMARK_LENGTH 98
 
 //FIXME adjust depending on speed!
+#define PRECALC_CONFIG_RANGE 8
 #define PREREAD_RANGE 64
 #define PREREAD_SIZE_HEADER 1024*64
 #define PREREAD_SIZE_FULL 1024*1024*4
@@ -101,7 +103,7 @@ typedef struct {
   int failed;
   Filter *load, *sink;
   Ecore_Thread *running;
-  Filter_Chain *filter_chain;
+  Eina_List *filter_chain;
   Eina_List *filters;
 } Config_Data;
 
@@ -863,7 +865,7 @@ Eina_Bool idle_run_render(void *data)
 #ifdef BENCHMARK
   if (!worker) {
     bench_delay_start();
-    if (tagfiles_idx(files) >= 98)
+    if (tagfiles_idx(files) >= BENCHMARK_LENGTH)
       workerfinish_schedule(&elm_exit_do, NULL, NULL, EINA_TRUE);
     else
       workerfinish_schedule(&step_image_do, (void*)(intptr_t)1, NULL, EINA_TRUE);
@@ -995,7 +997,7 @@ _finished_tile(void *data, Ecore_Thread *th)
   
 #ifdef BENCHMARK
   bench_delay_start();
-  if (tagfiles_idx(files) >= 98)
+  if (tagfiles_idx(files) >= BENCHMARK_LENGTH)
     workerfinish_schedule(&elm_exit_do, NULL, NULL, EINA_TRUE);
   else
     workerfinish_schedule(&step_image_do, (void*)(intptr_t)1, NULL, EINA_TRUE);
@@ -1063,7 +1065,7 @@ _finished_tile(void *data, Ecore_Thread *th)
 #ifdef BENCHMARK
   if (!worker && !idle_render) {
     bench_delay_start();
-    if (tagfiles_idx(files) >= 98)
+    if (tagfiles_idx(files) >= BENCHMARK_LENGTH)
       workerfinish_schedule(&elm_exit_do, NULL, NULL, EINA_TRUE);
     else
       workerfinish_schedule(&step_image_do, (void*)(intptr_t)1, NULL, EINA_TRUE);
@@ -1239,22 +1241,17 @@ int fill_area(int xm, int ym, int wm, int hm, int minscale, int preview)
 }
 
 
-void fc_del(Filter_Chain *filter_chain)
+void fc_del_gui(Filter_Chain *filter_chain)
 {
   Eina_List *list_iter;
   Filter_Chain *fc;
   
   EINA_LIST_FOREACH(filter_chain, list_iter, fc) {
     //FIXME actually remove filters!
-    printf("del fc el\n");
     if (fc->item) {
-      printf("del %p\n", fc->item);
       elm_object_item_del(fc->item);
     }
-    filter_del(fc->f);
   }
-  
-  eina_list_free(filter_chain);
 }
 
 void fill_scroller_preview()
@@ -1575,6 +1572,90 @@ Config_Data *config_data_get(File_Group *group, int nth)
     && !eina_str_has_extension(filename, ".TIFF"))) {
     return NULL;
 }
+
+  config = filegroup_data_get(group, nth);
+  if (config && !config->running) {
+    printf("using cached config!\n");
+    return config;
+  }
+  else if (config)
+    printf("discarding running config!\n");
+  //FIXME handle running config!
+  
+  config = calloc(sizeof(Config_Data), 1);
+  if (filegroup_tags_valid(group) && filegroup_filterchain(group)) {
+    config->filters = lime_filter_chain_deserialize(filegroup_filterchain(group));
+    
+    //FIXME select group according to load file 
+    config->load = eina_list_data_get(config->filters);
+    if (strcmp(config->load->fc->shortname, "load")) {
+      config->load = lime_filter_new("load");
+      config->filters = eina_list_prepend(config->filters, config->load);
+    }
+    config->sink = eina_list_data_get(eina_list_last(config->filters));
+    if (strcmp(config->sink->fc->shortname, "sink")) {
+      config->sink = lime_filter_new("memsink");
+      lime_setting_int_set(config->sink, "add alpha", 1);
+      config->filters = eina_list_append(config->filters, config->sink);
+    }
+    fc_connect_from_list(config->filters);
+  }
+  else {
+    
+    config->load = lime_filter_new("load");
+    config->filters = eina_list_append(NULL, config->load);
+    config->sink = lime_filter_new("memsink");
+    lime_setting_int_set(config->sink, "add alpha", 1);
+    config->filters = eina_list_append(config->filters, config->sink);
+    
+    fc_connect_from_list(config->filters);
+  } 
+  
+  //strcpy(image_file, filename);
+  filegroup_data_attach(group, nth, config);
+  
+  lime_setting_string_set(config->load, "filename", filename);
+  
+  config->failed = lime_config_test(config->sink);
+  
+  return config;
+}
+
+void config_exe(void *data, Ecore_Thread *thread)
+{
+  Config_Data *config = data;
+  
+  config->failed = lime_config_test(config->sink);
+}
+
+void config_finish(void *data, Ecore_Thread *thread)
+{
+  Config_Data *config = data;
+  
+  worker_config--;
+  config->running = NULL;
+  //FIXME free stuff on failed!
+}
+
+void config_thread_start(File_Group *group, int nth)
+{
+  char *filename;
+  Config_Data *config;
+  
+  config = filegroup_data_get(group, nth);
+  if (config)
+    return;
+  
+  filename = filegroup_nth(group, nth);
+  //FIXME better file ending list (no static file endings!)
+  if (!filename || (!eina_str_has_extension(filename, ".jpg") 
+   && !eina_str_has_extension(filename, ".JPG")
+    && !eina_str_has_extension(filename, ".tif")
+    && !eina_str_has_extension(filename, ".TIF")
+    && !eina_str_has_extension(filename, ".tiff")
+    && !eina_str_has_extension(filename, ".TIFF"))) {
+    return;
+}
   
   config = calloc(sizeof(Config_Data), 1);
   if (filegroup_tags_valid(group) && filegroup_filterchain(group)) {
@@ -1608,10 +1689,48 @@ Config_Data *config_data_get(File_Group *group, int nth)
   //strcpy(image_file, filename);
   lime_setting_string_set(config->load, "filename", filename);
   
-  config->failed = lime_config_test(config->sink);
+  filegroup_data_attach(group, nth, config);
   
-  return config;
+  worker_config++;
+  
+  config->running = ecore_thread_run(&config_exe, &config_finish, NULL, config);
 }
+
+
+void step_image_start_configs(int n)
+{
+  int i;
+  int group_idx;
+  int idx;
+  File_Group *group;
+  Config_Data *config;
+  int step;
+  
+  assert(!worker);
+  assert(files);
+  
+  if (!tagfiles_count(files))
+    return;
+  
+  if (!last_file_step)
+    step = 1;
+  else
+    step = last_file_step;
+  
+  idx = tagfiles_idx(files);
+  
+  for (i=0;i<n;i++) {
+    idx += step;
+    
+    group = tagfiles_nth(files, idx);
+    
+    if (group_in_filters(group, tags_filter)) {
+      for(group_idx=0;group_idx<filegroup_count(group);group_idx++)
+	config_thread_start(group, group_idx);
+    }
+  }
+}
+
 
 void step_image_do(void *data, Evas_Object *obj)
 {
@@ -1623,11 +1742,11 @@ void step_image_do(void *data, Evas_Object *obj)
   File_Group *group;
   const char *filename;
   Elm_Object_Item *item;
-  Config_Data *config;
+  Config_Data *config = NULL;
   
   printf("non-chancellation delay: %f\n", bench_delay_get());
   
-  assert(!worker-worker_config);
+  assert(!worker);
   
   assert(files);
   
@@ -1659,9 +1778,9 @@ void step_image_do(void *data, Evas_Object *obj)
 	  
 	  if (!config || config->failed) {
 	    //FIXME del filters
-	    free(config);
-	    config = NULL;
-	    printf("failed to find valid configuration for %s\n", filename);
+	    //free(config);
+	    //config = NULL;
+	    printf("failed to find valid configuration for %s\n", filegroup_nth(group, group_idx));
 	    group_idx++;
 	  }
       }
@@ -1684,12 +1803,15 @@ void step_image_do(void *data, Evas_Object *obj)
   
   if (config_curr) {
     printf("del filterchain!\n");
-    fc_del(config_curr->filter_chain);
-    config_curr = NULL;
+    fc_del_gui(config_curr->filter_chain);
+    //config_curr->filter_chain = NULL;
+    //config_curr->filters = NULL;
+    //config_curr = NULL;
   }
   config_curr = config;
   fc_gui_from_list(config_curr->filters);
   
+  step_image_start_configs(PRECALC_CONFIG_RANGE);
   
   cur_group = group;
   delgrid();
@@ -2871,6 +2993,7 @@ elm_main(int argc, char **argv)
   elm_config_scroll_thumbscroll_enabled_set(EINA_TRUE);
   
   max_workers = ecore_thread_max_get();
+  ecore_thread_max_set(max_workers*2);
   
   lime_init();
   eina_log_abort_on_critical_set(EINA_TRUE);
