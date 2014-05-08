@@ -215,6 +215,7 @@ void delgrid(void);
 
 typedef struct {
   Evas_Object *img;
+  Config_Data *config;
   int scale;
   uint8_t *buf;
   Rect area;
@@ -231,6 +232,11 @@ void size_recalc(void)
   if (size_ptr) {
     size = *size_ptr;
   }
+}
+
+Dim *size_recalc2(Filter *sink)
+{
+  return filter_core_by_type(sink, MT_IMGSIZE);
 }
 
 void grid_setsize(void)
@@ -914,13 +920,12 @@ void workerfinish_schedule(void (*func)(void *data, Evas_Object *obj), void *dat
   }
 }
 
-static void
-_process_tile(void *data, Ecore_Thread *th)
+static void _process_tile(void *data, Ecore_Thread *th)
 {
   _Img_Thread_Data *tdata = data;
     
   eina_sched_prio_drop();
-  lime_render_area(&tdata->area, config_curr->sink, tdata->t_id);
+  lime_render_area(&tdata->area, tdata->config->sink, tdata->t_id);
 }
 
 void _insert_image(_Img_Thread_Data *tdata)
@@ -980,6 +985,21 @@ Eina_Bool idle_preload_run(void *data)
   tagfiles_preload_headers(files, last_file_step, 1, PREREAD_SIZE_FULL);
   
   return ECORE_CALLBACK_CANCEL;
+}
+
+
+static void
+_finished_tile_blind(void *data, Ecore_Thread *th)
+{
+  _Img_Thread_Data *tdata = data;
+  
+  assert(tdata->t_id != -1);
+  
+  thread_ids[tdata->t_id] = 0;
+  tdata->t_id = -1;
+
+  cache_app_del(tdata->buf, TILE_SIZE*TILE_SIZE*4);
+  free(tdata);
 }
 
 static void
@@ -1212,6 +1232,7 @@ int fill_area(int xm, int ym, int wm, int hm, int minscale, int preview)
 	  tdata->packy = j*TILE_SIZE*scalediv;
 	  tdata->packw = TILE_SIZE*scalediv;
 	  tdata->packh = TILE_SIZE*scalediv;
+	  tdata->config = config_curr;
 
 	  /*if (scale == scale_start)
 	    tdata->scaled_preview = 1;
@@ -1632,10 +1653,30 @@ void config_exe(void *data, Ecore_Thread *thread)
 void config_finish(void *data, Ecore_Thread *thread)
 {
   Config_Data *config = data;
+  _Img_Thread_Data *tdata = calloc(sizeof(_Img_Thread_Data), 1);
+  uint8_t *buf;
   
   worker_config--;
   config->running = NULL;
   //FIXME free stuff on failed!
+  
+  buf = cache_app_alloc(TILE_SIZE*TILE_SIZE*4);
+  
+  tdata->buf = buf;
+  tdata->scale =  size_recalc2(config->sink)->scaledown_max;
+  tdata->area.corner.x = 0;
+  tdata->area.corner.y = 0;
+  tdata->area.corner.scale = size_recalc2(config->sink)->scaledown_max;
+  tdata->area.width = TILE_SIZE;
+  tdata->area.height =  TILE_SIZE;
+  tdata->config = config;
+  
+  tdata->t_id = lock_free_thread_id();
+  
+  assert(buf);
+  filter_memsink_buffer_set(config->sink, tdata->buf, tdata->t_id);
+  
+  ecore_thread_run(_process_tile, _finished_tile_blind, NULL, tdata);
 }
 
 void config_thread_start(File_Group *group, int nth)

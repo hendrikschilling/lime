@@ -465,8 +465,8 @@ void cache_tile_add(Tile *tile)
   }
   cache->count++;
   
-  size = get_my_pss();
-  printf("memory usage: %dMB cache: %.1fMB rendering: %.1fMB buffers: %.1fMB app(img): %.1fMB rest: %.1f\n", size, cache->mem/1048576.0, cache->uncached/1048576.0, cache->buffers/1048576.0, cache->app/1048576.0, (size*1048576.0-cache->mem-cache->uncached-cache->buffers-cache->app)/1048576.0);
+  //size = get_my_pss();
+  //printf("memory usage: %dMB cache: %.1fMB rendering: %.1fMB buffers: %.1fMB app(img): %.1fMB rest: %.1f\n", size, cache->mem/1048576.0, cache->uncached/1048576.0, cache->buffers/1048576.0, cache->app/1048576.0, (size*1048576.0-cache->mem-cache->uncached-cache->buffers-cache->app)/1048576.0);
   
   //need to delete some tile
   while (cache->mem >= cache->mem_max || cache->count >= cache->count_max/2)
