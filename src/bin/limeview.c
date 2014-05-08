@@ -116,6 +116,7 @@ typedef struct {
 } Mat_Cache;
 
 int max_workers;
+int max_thread_id;
 Evas_Object *clipper, *win, *scroller, *file_slider, *filter_list, *select_filter, *pos_label, *fsb, *load_progress, *load_label, *load_notify;
 Evas_Object *tab_group, *tab_filter, *tab_settings, *tab_tags, *tab_current, *tab_box, *tab_export, *tab_tags, *tags_list, *tags_filter_list, *seg_rating;
 Evas_Object *group_list, *export_box, *export_extensions, *export_path, *main_vbox;
@@ -1078,7 +1079,7 @@ int lock_free_thread_id(void)
 {
   int i;
   
-  for(i=0;i<max_workers;i++)
+  for(i=0;i<max_thread_id;i++)
     if (!thread_ids[i]) {
       thread_ids[i] = 1;
       return i;
@@ -1241,7 +1242,7 @@ int fill_area(int xm, int ym, int wm, int hm, int minscale, int preview)
 }
 
 
-void fc_del_gui(Filter_Chain *filter_chain)
+void fc_del_gui(Eina_List *filter_chain)
 {
   Eina_List *list_iter;
   Filter_Chain *fc;
@@ -1753,10 +1754,8 @@ void step_image_do(void *data, Evas_Object *obj)
   if (!tagfiles_count(files))
     return;
   
-  if (data) {
-    tagfiles_step(files, (intptr_t)data);
-    last_file_step = (intptr_t)data;
-  }
+  tagfiles_step(files, (intptr_t)data);
+  last_file_step = (intptr_t)data;
   
   del_filter_settings();  
   
@@ -1804,12 +1803,16 @@ void step_image_do(void *data, Evas_Object *obj)
   if (config_curr) {
     printf("del filterchain!\n");
     fc_del_gui(config_curr->filter_chain);
-    //config_curr->filter_chain = NULL;
+    config_curr->filter_chain = NULL;
     //config_curr->filters = NULL;
     //config_curr = NULL;
   }
   config_curr = config;
   fc_gui_from_list(config_curr->filters);
+  //FIXME free filter list
+  config_curr->filters = NULL;
+  //FIXME get all filter handling from actual filter chain
+  filegroup_data_attach(group, group_idx, NULL);
   
   step_image_start_configs(PRECALC_CONFIG_RANGE);
   
@@ -2606,6 +2609,7 @@ void fc_gui_from_list(Eina_List *filters)
   Eina_List *list_iter;
   Filter_Chain *fc;
   
+  assert(filters);
   assert(config_curr);
   
   last = NULL;
@@ -2994,6 +2998,7 @@ elm_main(int argc, char **argv)
   
   max_workers = ecore_thread_max_get();
   ecore_thread_max_set(max_workers*2);
+  max_thread_id = max_workers+PRECALC_CONFIG_RANGE;
   
   lime_init();
   eina_log_abort_on_critical_set(EINA_TRUE);
@@ -3001,7 +3006,7 @@ elm_main(int argc, char **argv)
   mat_cache = mat_cache_new();
   delgrid();
   
-  thread_ids = calloc(sizeof(int)*(max_workers+1), 1);
+  thread_ids = calloc(sizeof(int)*(max_thread_id+1), 1);
   
   if (parse_cli(argc, argv, &filters, &bench, &cache_size, &cache_metric, &cache_strategy, &file, &dir, &winsize, &verbose, &help))
     return EXIT_FAILURE;
