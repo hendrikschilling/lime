@@ -39,6 +39,7 @@ struct _Tagged_File {
   const char *filename;
   const char *sidecar;
   Eina_Array *tags;
+  void *data;
 };
 
 struct _File_Group {
@@ -183,7 +184,7 @@ void run_scanner(Tagfiles *tagfiles)
     return;
   
   if (tagfiles->xmp_scanned_idx < eina_inarray_count(tagfiles->files) && tagfiles->xmp_scanned_idx < tagfiles->full_dir_inserted_idx)
-    tagfiles->xmp_thread = ecore_thread_feedback_run(_xmp_scanner, _xmp_notify, _xmp_finish, NULL, tagfiles, EINA_TRUE);
+    tagfiles->xmp_thread = ecore_thread_feedback_run(_xmp_scanner, _xmp_notify, _xmp_finish, NULL, tagfiles, EINA_FALSE);
 }
 
 static void _xmp_finish(void *data, Ecore_Thread *th)
@@ -373,6 +374,20 @@ const char *filegroup_nth(File_Group *g, int n)
   assert(n < eina_inarray_count(g->files));
   
   return ((Tagged_File*)eina_inarray_nth(g->files, n))->filename;
+}
+
+void filegroup_data_attach(File_Group *g, int n, void *data)
+{
+  assert(n < eina_inarray_count(g->files));
+  
+  ((Tagged_File*)eina_inarray_nth(g->files, n))->data = data;
+}
+
+void *filegroup_data_get(File_Group *g, int n)
+{
+  assert(n < eina_inarray_count(g->files));
+  
+  return ((Tagged_File*)eina_inarray_nth(g->files, n))->data;
 }
 
 int filegroup_count(File_Group *g)

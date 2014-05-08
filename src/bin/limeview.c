@@ -73,6 +73,9 @@ int quick_preview_only = 0;
 int cur_key_down = 0;
 int key_repeat = 0;
 
+int config_waitfor_idx;
+int config_waitfor_groupidx;
+
 Tagfiles *files = NULL;
 Tagfiles *files_new = NULL;
 int last_file_step = 1;
@@ -95,6 +98,14 @@ typedef struct {
 } Filter_Chain;
 
 typedef struct {
+  int failed;
+  Filter *load, *sink;
+  Ecore_Thread *running;
+  Filter_Chain *filter_chain;
+  Eina_List *filters;
+} Config_Data;
+
+typedef struct {
   Eina_Matrixsparse **mats;
   Evas_Object **high_of_layer;
   Evas_Object **low_of_layer;
@@ -103,7 +114,6 @@ typedef struct {
 } Mat_Cache;
 
 int max_workers;
-Filter *sink, *contr, *blur, *load;
 Evas_Object *clipper, *win, *scroller, *file_slider, *filter_list, *select_filter, *pos_label, *fsb, *load_progress, *load_label, *load_notify;
 Evas_Object *tab_group, *tab_filter, *tab_settings, *tab_tags, *tab_current, *tab_box, *tab_export, *tab_tags, *tags_list, *tags_filter_list, *seg_rating;
 Evas_Object *group_list, *export_box, *export_extensions, *export_path, *main_vbox;
@@ -118,7 +128,6 @@ Mat_Cache *mat_cache = NULL;
 Mat_Cache *mat_cache_old = NULL;
 int forbid_fill = 0;
 Eina_List *filter_last_selected = NULL;
-Eina_List *filter_chain = NULL;
 Filter *(*select_filter_func)(void);
 int verbose;
 Eina_Array *finished_threads = NULL;
@@ -136,7 +145,10 @@ float scale_goal = 1.0;
 Bench_Step *bench;
 int fit;
 
+Config_Data *config_curr = NULL;
+
 int worker;
+int worker_config;
 
 typedef struct {
   void (*action)(void *data, Evas_Object *obj);
@@ -212,7 +224,7 @@ typedef struct {
 void size_recalc(void)
 {  
   Dim *size_ptr;
-  size_ptr = (Dim*)filter_core_by_type(sink, MT_IMGSIZE);
+  size_ptr = (Dim*)filter_core_by_type(config_curr->sink, MT_IMGSIZE);
   if (size_ptr) {
     size = *size_ptr;
   }
@@ -222,6 +234,9 @@ void grid_setsize(void)
 {
   int x,y,w,h;
   
+  if (!config_curr)
+    return;
+    
   forbid_fill++;
   
   size_recalc();
@@ -274,6 +289,7 @@ void int_changed_do(void *data, Evas_Object *obj)
   
   assert(!worker);
   assert(cur_group);
+  assert(config_curr);
 
   forbid_fill++;
   
@@ -281,9 +297,9 @@ void int_changed_do(void *data, Evas_Object *obj)
   
   lime_setting_int_set(m->filter, m->name, (int)elm_spinner_value_get(obj));
   
-  lime_config_test(sink);
+  lime_config_test(config_curr->sink);
   
-  filegroup_filterchain_set(cur_group, lime_filter_chain_serialize(((Filter_Chain*)eina_list_data_get(eina_list_next(filter_chain)))->f));
+  filegroup_filterchain_set(cur_group, lime_filter_chain_serialize(((Filter_Chain*)eina_list_data_get(eina_list_next(config_curr->filter_chain)))->f));
   
   delgrid();
   
@@ -308,9 +324,9 @@ void float_changed_do(void *data, Evas_Object *obj)
   
   lime_setting_float_set(m->filter, m->name, (float)elm_spinner_value_get(obj));
   
-  lime_config_test(sink);
+  lime_config_test(config_curr->sink);
   
-  filegroup_filterchain_set(cur_group, lime_filter_chain_serialize(((Filter_Chain*)eina_list_data_get(eina_list_next(filter_chain)))->f));
+  filegroup_filterchain_set(cur_group, lime_filter_chain_serialize(((Filter_Chain*)eina_list_data_get(eina_list_next(config_curr->filter_chain)))->f));
   
   delgrid();
   
@@ -332,6 +348,7 @@ void remove_filter_do(void *data, Evas_Object *obj)
   
   assert(!worker);
   assert(cur_group);
+  assert(config_curr);
 
   forbid_fill++;
   
@@ -348,11 +365,11 @@ void remove_filter_do(void *data, Evas_Object *obj)
   
   del_filter_settings(); 
   elm_object_item_del(fc->item);
-  filter_chain = eina_list_remove_list(filter_chain, chain_node);
+  config_curr->filter_chain = eina_list_remove_list(config_curr->filter_chain, chain_node);
   
-  lime_config_test(sink);
+  lime_config_test(config_curr->sink);
  
-  filegroup_filterchain_set(cur_group, lime_filter_chain_serialize(((Filter_Chain*)eina_list_data_get(eina_list_next(filter_chain)))->f));
+  filegroup_filterchain_set(cur_group, lime_filter_chain_serialize(((Filter_Chain*)eina_list_data_get(eina_list_next(config_curr->filter_chain)))->f));
   
   forbid_fill--;
   
@@ -376,6 +393,7 @@ void fc_insert_filter(Filter *f, Eina_List *src, Eina_List *sink)
   Eina_List *chain_node = NULL;
     
   assert(cur_group);
+  assert(config_curr);
   
   //we always have src or sink, but those might not have an elm_item!
   assert(src);
@@ -384,8 +402,8 @@ void fc_insert_filter(Filter *f, Eina_List *src, Eina_List *sink)
   fc_src = eina_list_data_get(src);
   fc_sink = eina_list_data_get(sink);
   
-  filter_chain = eina_list_append_relative_list(filter_chain, fc, src);
-  chain_node = filter_chain;
+  config_curr->filter_chain = eina_list_append_relative_list(config_curr->filter_chain, fc, src);
+  chain_node = config_curr->filter_chain;
   while (eina_list_data_get(chain_node) != fc)
     chain_node = eina_list_next(chain_node);
 
@@ -402,7 +420,7 @@ void fc_insert_filter(Filter *f, Eina_List *src, Eina_List *sink)
   filter_connect(fc_src->f, 0, f, 0);
   filter_connect(f, 0, fc_sink->f, 0);
   
-  filegroup_filterchain_set(cur_group, lime_filter_chain_serialize(((Filter_Chain*)eina_list_data_get(eina_list_next(filter_chain)))->f));
+  filegroup_filterchain_set(cur_group, lime_filter_chain_serialize(((Filter_Chain*)eina_list_data_get(eina_list_next(config_curr->filter_chain)))->f));
   
   delgrid();
   
@@ -416,10 +434,12 @@ void insert_before_do(void *data, Evas_Object *obj)
 {
   Eina_List *source_l, *sink_l;
   
+  assert(config_curr);
+  
   if (!select_filter_func) return;
   
   if (!filter_last_selected) {
-    sink_l = eina_list_last(filter_chain);
+    sink_l = eina_list_last(config_curr->filter_chain);
     source_l = eina_list_prev(sink_l);
   }
   else {
@@ -439,7 +459,7 @@ void insert_rotation_do(void *data, Evas_Object *obj)
   int rotation = (intptr_t)data;
   Eina_List *src, *sink;
   
-  sink = eina_list_last(filter_chain);
+  sink = eina_list_last(config_curr->filter_chain);
   src = eina_list_prev(sink);
 
   f = filter_core_simplerotate.filter_new_f();
@@ -455,10 +475,12 @@ void insert_after_do(void *data, Evas_Object *obj)
 {
   Eina_List *source_l, *sink_l;
   
+  assert(config_curr);
+  
   if (!select_filter_func) return;
   
   if (!filter_last_selected) {
-    source_l = filter_chain;
+    source_l = config_curr->filter_chain;
     sink_l = eina_list_next(source_l);
   }
   else {
@@ -841,7 +863,7 @@ Eina_Bool idle_run_render(void *data)
 #ifdef BENCHMARK
   if (!worker) {
     bench_delay_start();
-    if (tagfiles_idx(files) >= 498)
+    if (tagfiles_idx(files) >= 98)
       workerfinish_schedule(&elm_exit_do, NULL, NULL, EINA_TRUE);
     else
       workerfinish_schedule(&step_image_do, (void*)(intptr_t)1, NULL, EINA_TRUE);
@@ -895,7 +917,7 @@ _process_tile(void *data, Ecore_Thread *th)
   _Img_Thread_Data *tdata = data;
     
   eina_sched_prio_drop();
-  lime_render_area(&tdata->area, sink, tdata->t_id);
+  lime_render_area(&tdata->area, config_curr->sink, tdata->t_id);
 }
 
 void _insert_image(_Img_Thread_Data *tdata)
@@ -973,7 +995,7 @@ _finished_tile(void *data, Ecore_Thread *th)
   
 #ifdef BENCHMARK
   bench_delay_start();
-  if (tagfiles_idx(files) >= 498)
+  if (tagfiles_idx(files) >= 98)
     workerfinish_schedule(&elm_exit_do, NULL, NULL, EINA_TRUE);
   else
     workerfinish_schedule(&step_image_do, (void*)(intptr_t)1, NULL, EINA_TRUE);
@@ -1041,7 +1063,7 @@ _finished_tile(void *data, Ecore_Thread *th)
 #ifdef BENCHMARK
   if (!worker && !idle_render) {
     bench_delay_start();
-    if (tagfiles_idx(files) >= 498)
+    if (tagfiles_idx(files) >= 98)
       workerfinish_schedule(&elm_exit_do, NULL, NULL, EINA_TRUE);
     else
       workerfinish_schedule(&step_image_do, (void*)(intptr_t)1, NULL, EINA_TRUE);
@@ -1198,7 +1220,7 @@ int fill_area(int xm, int ym, int wm, int hm, int minscale, int preview)
 	  tdata->t_id = lock_free_thread_id();
 	  
 	  assert(buf);
-	  filter_memsink_buffer_set(sink, tdata->buf, tdata->t_id);
+	  filter_memsink_buffer_set(config_curr->sink, tdata->buf, tdata->t_id);
 	  
 	  mat_cache_set(mat_cache, scale, i, j, tdata);
 	  	  
@@ -1217,24 +1239,29 @@ int fill_area(int xm, int ym, int wm, int hm, int minscale, int preview)
 }
 
 
-void fc_del(void)
+void fc_del(Filter_Chain *filter_chain)
 {
   Eina_List *list_iter;
   Filter_Chain *fc;
   
   EINA_LIST_FOREACH(filter_chain, list_iter, fc) {
     //FIXME actually remove filters!
+    printf("del fc el\n");
     if (fc->item) {
+      printf("del %p\n", fc->item);
       elm_object_item_del(fc->item);
     }
     filter_del(fc->f);
   }
   
-  filter_chain = NULL;
+  eina_list_free(filter_chain);
 }
 
 void fill_scroller_preview()
 {
+  if (!config_curr)
+    return;
+  
   if (max_fast_scaledown)
     preview_tiles += fill_area(0,0,0,0, max_fast_scaledown, 1);
 }
@@ -1243,6 +1270,9 @@ static void fill_scroller(void)
 {
   int x, y, w, h, grid_w, grid_h;
   float scale;
+  
+  if (!config_curr)
+    return;
   
   if (!grid)
     return;
@@ -1319,9 +1349,9 @@ void group_select_do(void *data, Evas_Object *obj)
       continue;
     }
       
-    lime_setting_string_set(load, "filename", filename);
+    lime_setting_string_set(config_curr->load, "filename", filename);
     
-    failed = lime_config_test(sink);
+    failed = lime_config_test(config_curr->sink);
     if (failed) {
       group_idx++;
       printf("could not configure: %s\n", filename);
@@ -1530,6 +1560,59 @@ void filegroup_changed_cb(File_Group *group)
   workerfinish_schedule(step_image_do, NULL, NULL, EINA_TRUE);
 }
 
+Config_Data *config_data_get(File_Group *group, int nth)
+{
+  char *filename;
+  Config_Data *config;
+  
+  filename = filegroup_nth(group, nth);
+  //FIXME better file ending list (no static file endings!)
+  if (!filename || (!eina_str_has_extension(filename, ".jpg") 
+   && !eina_str_has_extension(filename, ".JPG")
+    && !eina_str_has_extension(filename, ".tif")
+    && !eina_str_has_extension(filename, ".TIF")
+    && !eina_str_has_extension(filename, ".tiff")
+    && !eina_str_has_extension(filename, ".TIFF"))) {
+    return NULL;
+}
+  
+  config = calloc(sizeof(Config_Data), 1);
+  if (filegroup_tags_valid(group) && filegroup_filterchain(group)) {
+    config->filters = lime_filter_chain_deserialize(filegroup_filterchain(group));
+    
+    //FIXME select group according to load file 
+    config->load = eina_list_data_get(config->filters);
+    if (strcmp(config->load->fc->shortname, "load")) {
+      config->load = lime_filter_new("load");
+      config->filters = eina_list_prepend(config->filters, config->load);
+    }
+    config->sink = eina_list_data_get(eina_list_last(config->filters));
+    if (strcmp(config->sink->fc->shortname, "sink")) {
+      config->sink = lime_filter_new("memsink");
+      lime_setting_int_set(config->sink, "add alpha", 1);
+      config->filters = eina_list_append(config->filters, config->sink);
+    }
+    fc_connect_from_list(config->filters);
+  }
+  else {
+    
+    config->load = lime_filter_new("load");
+    config->filters = eina_list_append(NULL, config->load);
+    config->sink = lime_filter_new("memsink");
+    lime_setting_int_set(config->sink, "add alpha", 1);
+    config->filters = eina_list_append(config->filters, config->sink);
+    
+    fc_connect_from_list(config->filters);
+  } 
+  
+  //strcpy(image_file, filename);
+  lime_setting_string_set(config->load, "filename", filename);
+  
+  config->failed = lime_config_test(config->sink);
+  
+  return config;
+}
+
 void step_image_do(void *data, Evas_Object *obj)
 {
   int i;
@@ -1540,11 +1623,11 @@ void step_image_do(void *data, Evas_Object *obj)
   File_Group *group;
   const char *filename;
   Elm_Object_Item *item;
-  Eina_List *filters;
+  Config_Data *config;
   
   printf("non-chancellation delay: %f\n", bench_delay_get());
   
-  assert(!worker);
+  assert(!worker-worker_config);
   
   assert(files);
   
@@ -1563,64 +1646,21 @@ void step_image_do(void *data, Evas_Object *obj)
   start_idx = tagfiles_idx(files);
   
   group = tagfiles_get(files);
-    
-  failed = 1;
   
-  while (failed) {
+  while (!config || config->failed) {
     group_idx = 0;
     
     if (group_in_filters(group, tags_filter)) {
-      while(failed) {
+      while(!config || config->failed) {
 	if (group_idx == filegroup_count(group))
 	  break;
 	
-	filename = filegroup_nth(group, group_idx);
-	//FIXME better file ending list (no static file endings!)
-	if (!filename || (!eina_str_has_extension(filename, ".jpg") 
-	  && !eina_str_has_extension(filename, ".JPG")
-	  && !eina_str_has_extension(filename, ".tif")
-	  && !eina_str_has_extension(filename, ".TIF")
-	  && !eina_str_has_extension(filename, ".tiff")
-	  && !eina_str_has_extension(filename, ".TIFF"))) {
-	  group_idx++;
-	continue;
-	  }
+	  config = config_data_get(group, group_idx);
 	  
-	  if (filegroup_tags_valid(group) && filegroup_filterchain(group)) {
-	    fc_del();
-	    filters = lime_filter_chain_deserialize(filegroup_filterchain(group));
-	    
-	    //FIXME select group according to load file 
-	    load = eina_list_data_get(filters);
-	    if (strcmp(load->fc->shortname, "load")) {
-	      load = lime_filter_new("load");
-	      filters = eina_list_prepend(filters, load);
-	    }
-	    sink = eina_list_data_get(eina_list_last(filters));
-	    if (strcmp(sink->fc->shortname, "sink")) {
-	      sink = lime_filter_new("memsink");
-	      lime_setting_int_set(sink, "add alpha", 1);
-	      filters = eina_list_append(filters, sink);
-	    }
-	    fc_new_from_filters(filters);
-	  }
-	  else {
-	    fc_del();
-	    
-	    load = lime_filter_new("load");
-	    filters = eina_list_append(NULL, load);
-	    sink = lime_filter_new("memsink");
-	    lime_setting_int_set(sink, "add alpha", 1);
-	    filters = eina_list_append(filters, sink);
-	    
-	    fc_new_from_filters(filters);
-	  } 
-	  
-	  //strcpy(image_file, filename);
-	  lime_setting_string_set(load, "filename", filename);
-	  
-	  failed = lime_config_test(sink);
-	  if (failed) {
+	  if (!config || config->failed) {
+	    //FIXME del filters
+	    free(config);
+	    config = NULL;
 	    printf("failed to find valid configuration for %s\n", filename);
 	    group_idx++;
 	  }
@@ -1629,7 +1669,7 @@ void step_image_do(void *data, Evas_Object *obj)
     //else
     //  failed = 1;
     
-    if (!failed)
+    if (config && !config->failed)
       break;
     
     tagfiles_step(files, last_file_step);
@@ -1641,6 +1681,14 @@ void step_image_do(void *data, Evas_Object *obj)
       return;
     }
   }
+  
+  if (config_curr) {
+    printf("del filterchain!\n");
+    fc_del(config_curr->filter_chain);
+    config_curr = NULL;
+  }
+  config_curr = config;
+  fc_gui_from_list(config_curr->filters);
   
   
   cur_group = group;
@@ -2286,6 +2334,9 @@ void _scroller_resize_cb(void *data, Evas *e, Evas_Object *obj, void *event_info
 {
   if (forbid_fill)
     return;
+  
+  if (!config_curr)
+    return;
     
   grid_setsize();
   fill_scroller();
@@ -2411,7 +2462,7 @@ Evas_Object *elm_fsb_add_pack(Evas_Object *p, const char *text, void (*cb)(void 
   return btn;
 }
 
-void fc_new_from_filters(Eina_List *filters)
+void fc_connect_from_list(Eina_List *filters)
 {
   Filter *f, *last;
   Eina_List *list_iter;
@@ -2419,17 +2470,31 @@ void fc_new_from_filters(Eina_List *filters)
   
   last = NULL;
   EINA_LIST_FOREACH(filters, list_iter, f) {
-    //filter chain
-    fc = fc_new(f);
-    filter_chain = eina_list_append(filter_chain, fc);
-    
-    //create gui, but not for first and last filters
-    if (list_iter != filters && list_iter != eina_list_last(filters))
-      fc->item = elm_list_item_append(filter_list, f->fc->name, NULL, NULL, &_on_filter_select, eina_list_last(filter_chain));
-    
     //filter graph
     if (last)
       filter_connect(last, 0, f, 0);
+    
+    last = f;
+  }
+}
+
+void fc_gui_from_list(Eina_List *filters)
+{
+  Filter *f, *last;
+  Eina_List *list_iter;
+  Filter_Chain *fc;
+  
+  assert(config_curr);
+  
+  last = NULL;
+  EINA_LIST_FOREACH(filters, list_iter, f) {
+    //filter chain
+    fc = fc_new(f);
+    config_curr->filter_chain = eina_list_append(config_curr->filter_chain, fc);
+    
+    //create gui, but not for first and last filters
+    if (list_iter != filters && list_iter != eina_list_last(filters))
+      fc->item = elm_list_item_append(filter_list, f->fc->name, NULL, NULL, &_on_filter_select, eina_list_last(config_curr->filter_chain));
     
     last = f;
   }
@@ -2594,7 +2659,7 @@ static void on_tag_changed(void *data, Evas_Object *obj, void *event_info)
   sprintf(unit_fmt, "%%.0f/%d", filtered_image_count);
   elm_slider_unit_format_set(file_slider, unit_fmt); 
   
-  filegroup_filterchain_set(cur_group, lime_filter_chain_serialize(((Filter_Chain*)eina_list_data_get(eina_list_next(filter_chain)))->f));
+  filegroup_filterchain_set(cur_group, lime_filter_chain_serialize(((Filter_Chain*)eina_list_data_get(eina_list_next(config_curr->filter_chain)))->f));
   
   if (!group_in_filters(cur_group, tags_filter))
       workerfinish_schedule(&step_image_do, NULL, NULL, EINA_TRUE);
@@ -2900,12 +2965,6 @@ elm_main(int argc, char **argv)
 
   lime_cache_set(cache_size, cache_strategy | cache_metric);
   
-  load = lime_filter_new("load");
-  filters = eina_list_prepend(filters, load);
-  sink = lime_filter_new("memsink");
-  lime_setting_int_set(sink, "add alpha", 1);
-  filters = eina_list_append(filters, sink);
-  
   scroller = elm_scroller_add(win);
   evas_object_size_hint_weight_set(scroller, EVAS_HINT_EXPAND, EVAS_HINT_EXPAND);
   evas_object_size_hint_align_set(scroller, EVAS_HINT_FILL, EVAS_HINT_FILL);
@@ -3081,8 +3140,6 @@ elm_main(int argc, char **argv)
   filter_list = elm_list_add(win);
   elm_object_content_set(frame, filter_list);
   evas_object_show(filter_list);
-  
-  fc_new_from_filters(filters);
    
   on_open_dir(dir);
   
