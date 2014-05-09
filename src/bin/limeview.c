@@ -55,6 +55,7 @@
 
 //FIXME adjust depending on speed!
 #define PRECALC_CONFIG_RANGE 4
+#define PRELOAD_IMG_RANGE 2
 #define PRELOAD_THRESHOLD 8
 
 int high_quality_delay =  300;
@@ -68,7 +69,9 @@ Ecore_Idler *idle_render = NULL;
 Ecore_Idler *idle_progress_print = NULL;
 Ecore_Timer *timer_render = NULL;
 Eina_Array *taglist_add = NULL;
-Eina_Array *preload_list;
+Eina_List *preload_list = NULL;
+Eina_Array *preload_array = NULL;
+int preload_count = 0;
 int quick_preview_only = 0;
 int cur_key_down = 0;
 int key_repeat = 0;
@@ -894,32 +897,24 @@ void workerfinish_idle_run(void *data)
 
 void preload_add(_Img_Thread_Data *tdata)
 {
-  eina_array_push(preload_list, tdata);
-  //preload_list = eina_list_append(eina_list_last(preload_list), tdata);
-  //preload_count++;
+  ea_push(preload_array, tdata);
 }
 
 int preload_pending(void)
-{
-  return ea_count(preload_list);
+{ 
+  return ea_count(preload_array);
 }
 
 
 void preload_flush(void)
 {
-  //eina_array_flush(preload_list);
+  eina_array_flush(preload_array);
 }
 
 
 _Img_Thread_Data *preload_get(void)
 {
-  /*assert(preload_count);
-  _Img_Thread_Data *tdata = eina_list_data_get(eina_list_last(preload_list));
-  preload_list = eina_list_remove_list(preload_list, eina_list_last(preload_list));
-  preload_count--;
-  
-  return tdata;*/
-  return ea_pop(preload_list);
+  return ea_pop(preload_array);
 }
 
 void workerfinish_schedule(void (*func)(void *data, Evas_Object *obj), void *data, Evas_Object *obj, Eina_Bool append)
@@ -1031,8 +1026,7 @@ void run_preload_threads(void)
     worker_preload++;
     tdata = preload_get();
     tdata->t_id = lock_free_thread_id();
-    tdata->buf = cache_app_alloc(TILE_SIZE*TILE_SIZE*4);
-    filter_memsink_buffer_set(tdata->config->sink, tdata->buf, tdata->t_id);
+    filter_memsink_buffer_set(tdata->config->sink, NULL, tdata->t_id);
     ecore_thread_run(_process_tile_bg, _finished_tile_blind, NULL, tdata);
   }
 }
@@ -1049,7 +1043,6 @@ _finished_tile_blind(void *data, Ecore_Thread *th)
   
   worker_preload--;
 
-  cache_app_del(tdata->buf, TILE_SIZE*TILE_SIZE*4);
   free(tdata);
   
   //if (worker || pending_action())
@@ -1106,7 +1099,7 @@ _finished_tile(void *data, Ecore_Thread *th)
 	  _display_preview(NULL);
 
       if (worker < max_workers && preload_pending() < PRELOAD_THRESHOLD)
-	step_image_preload_next();
+	step_image_preload_next(PRELOAD_IMG_RANGE);
       else
 	run_preload_threads();
 	
@@ -1139,11 +1132,9 @@ _finished_tile(void *data, Ecore_Thread *th)
     pending_exe();
   }
   else if (worker < max_workers && preload_pending() < PRELOAD_THRESHOLD) {
-    printf("do preload!\n");
-    step_image_preload_next();
+    step_image_preload_next(PRELOAD_IMG_RANGE);
   }
   else {
-    printf("enough preload - run %d!\n", preload_pending());
     run_preload_threads();
   }
   
@@ -1945,7 +1936,7 @@ void step_image_start_configs(int n)
 }
 
 //FIXME 
-void step_image_preload_next(void)
+void step_image_preload_next(int n)
 {
   int i;
   int group_idx;
@@ -1953,6 +1944,7 @@ void step_image_preload_next(void)
   File_Group *group;
   Config_Data *config;
   int step;
+  int succ;
 
   assert(files);
   
@@ -1966,19 +1958,23 @@ void step_image_preload_next(void)
   
   idx = (tagfiles_idx(files)+tagfiles_count(files)+step) % tagfiles_count(files);
   
-  while (idx != tagfiles_idx(files)) {
-    group = tagfiles_nth(files, idx);
-    if (group_in_filters(group, tags_filter)) {
-      for(group_idx=0;group_idx<filegroup_count(group);group_idx++) {
-	config = config_data_get(group, group_idx);
-	if (!config->failed) {
-	  fill_scroller_blind(config);
-	  printf("preload %s\n", filegroup_nth(group, group_idx));
-	  return;
+  for(i=0;i<n;i++) {
+    succ = 0;
+    while (!succ && idx != tagfiles_idx(files)) {
+      group = tagfiles_nth(files, idx);
+      if (group_in_filters(group, tags_filter)) {
+	for(group_idx=0;group_idx<filegroup_count(group);group_idx++) {
+	  config = config_data_get(group, group_idx);
+	  if (!config->failed) {
+	    fill_scroller_blind(config);
+	    printf("preload %s\n", filegroup_nth(group, group_idx));
+	    succ = 1;
+	    break;
+	  }
 	}
       }
+      idx += step;
     }
-    idx += step;
   }
 }
 
@@ -3230,7 +3226,7 @@ elm_main(int argc, char **argv)
   Eina_List *filters = NULL;
   select_filter_func = NULL;
   int winsize;
-  preload_list = eina_array_new(64);
+  preload_array = eina_array_new(64);
   
   bench_start();
   

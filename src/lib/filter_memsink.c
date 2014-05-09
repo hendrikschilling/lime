@@ -53,6 +53,9 @@ static void _memsink_worker(Filter *f, Eina_Array *in, Eina_Array *out, Rect *ar
   
   assert(in && ea_count(in) == 1);
   
+  if (!buf)
+    return;
+  
   rgb = ((Tiledata*)ea_data(in, 0))->data;
   
   area = &((Tiledata*)ea_data(in, 0))->area;
