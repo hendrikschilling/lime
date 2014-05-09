@@ -54,10 +54,7 @@
 #define BENCHMARK_LENGTH 498
 
 //FIXME adjust depending on speed!
-#define PRECALC_CONFIG_RANGE 8
-#define PREREAD_RANGE 64
-#define PREREAD_SIZE_HEADER 1024*64
-#define PREREAD_SIZE_FULL 1024*1024*4
+#define PRECALC_CONFIG_RANGE 4
 
 int high_quality_delay =  300;
 int max_reaction_delay =  1000;
@@ -71,6 +68,7 @@ Ecore_Idler *idle_preload = NULL;
 Ecore_Idler *idle_progress_print = NULL;
 Ecore_Timer *timer_render = NULL;
 Eina_Array *taglist_add = NULL;
+Eina_Array *preload_list;
 int quick_preview_only = 0;
 int cur_key_down = 0;
 int key_repeat = 0;
@@ -150,8 +148,9 @@ int fit;
 
 Config_Data *config_curr = NULL;
 
-int worker;
-int worker_config;
+int worker = 0;
+int worker_config = 0;
+int worker_preload = 0;
 
 typedef struct {
   void (*action)(void *data, Evas_Object *obj);
@@ -904,6 +903,9 @@ void workerfinish_idle_run(void *data)
 
 void workerfinish_schedule(void (*func)(void *data, Evas_Object *obj), void *data, Evas_Object *obj, Eina_Bool append)
 {
+  //FIXME free stuff
+  //FIXME need to flush old preloads!
+  //eina_array_flush(preload_list);
   
   if (idle_render) {    
     ecore_idler_del(idle_render);
@@ -933,6 +935,7 @@ static void _process_tile(void *data, Ecore_Thread *th)
 {
   _Img_Thread_Data *tdata = data;
     
+  eina_sched_prio_drop();
   lime_render_area(&tdata->area, tdata->config->sink, tdata->t_id);
 }
 
@@ -940,6 +943,7 @@ static void _process_tile_bg(void *data, Ecore_Thread *th)
 {
   _Img_Thread_Data *tdata = data;
     
+  eina_sched_prio_drop();
   eina_sched_prio_drop();
   lime_render_area(&tdata->area, tdata->config->sink, tdata->t_id);
 }
@@ -996,14 +1000,22 @@ Eina_Bool _display_preview(void *data)
   return ECORE_CALLBACK_CANCEL;
 }
 
-Eina_Bool idle_preload_run(void *data)
+static void _finished_tile_blind(void *data, Ecore_Thread *th);
+
+void run_preload_threads(void)
 {
-  printf("idle preload!\n");
-  step_image_preload_next();
-
-  return ECORE_CALLBACK_CANCEL;
+  _Img_Thread_Data *tdata;
+  
+  while (worker_preload+worker < max_workers && ea_count(preload_list)) {
+    worker_preload++;
+    tdata = ea_pop(preload_list);
+    tdata->t_id = lock_free_thread_id();
+    tdata->buf = cache_app_alloc(TILE_SIZE*TILE_SIZE*4);
+    filter_memsink_buffer_set(tdata->config->sink, tdata->buf, tdata->t_id);
+    printf("run preload!\n");
+    ecore_thread_run(_process_tile_bg, _finished_tile_blind, NULL, tdata);
+  }
 }
-
 
 static void
 _finished_tile_blind(void *data, Ecore_Thread *th)
@@ -1014,9 +1026,18 @@ _finished_tile_blind(void *data, Ecore_Thread *th)
   
   thread_ids[tdata->t_id] = 0;
   tdata->t_id = -1;
+  
+  worker_preload--;
 
   cache_app_del(tdata->buf, TILE_SIZE*TILE_SIZE*4);
   free(tdata);
+  
+  //if (worker || pending_action())
+    //FIXME free tdatas
+    //FIXME need to flush old preloads!
+    //eina_array_flush(preload_list);
+  
+  run_preload_threads();
 }
 
 static void
@@ -1032,7 +1053,7 @@ _finished_tile(void *data, Ecore_Thread *th)
     
   if (tdata->scaled_preview)
     preview_tiles--;
-  
+ 
 #ifdef BENCHMARK
   bench_delay_start();
   if (tagfiles_idx(files) >= BENCHMARK_LENGTH)
@@ -1064,12 +1085,12 @@ _finished_tile(void *data, Ecore_Thread *th)
 	}
       }
       else
-	if (!worker) {
+	if (!worker)
 	  _display_preview(NULL);
-	  if (!pending_action())
-	    idle_preload = ecore_idler_add(idle_preload_run, NULL);
-	}
 
+      if (worker < max_workers && !ea_count(preload_list))
+	step_image_preload_next();
+	
       first_preview = 0;
 
       return;
@@ -1082,16 +1103,10 @@ _finished_tile(void *data, Ecore_Thread *th)
       }
       
       _display_preview(NULL);
-      if (!pending_action())
-	idle_preload = ecore_idler_add(idle_preload_run, NULL);
     }
   }
-  else if (!worker) {
+  else if (!worker)
     printf("final delay: %f\n", bench_delay_get());
-    
-    if (!key_repeat && !pending_action())
-      idle_preload = ecore_idler_add(idle_preload_run, NULL);
-  }
   
   _insert_image(tdata);
   
@@ -1104,6 +1119,8 @@ _finished_tile(void *data, Ecore_Thread *th)
     //workerfinish_schedule(pending_action, pending_data, pending_obj, EINA_TRUE);
     pending_exe();
   }
+  else if (worker < max_workers && !ea_count(preload_list))
+    step_image_preload_next();
   
 #ifdef BENCHMARK
   if (!worker && !idle_render) {
@@ -1145,7 +1162,6 @@ int fill_area_blind(int xm, int ym, int wm, int hm, int minscale, Config_Data *c
   _Img_Thread_Data *tdata;
   Dim size = *size_recalc2(config->sink);
 
-  
   elm_scroller_region_get(scroller, &x, &y, &w, &h);
   
   if (!w || !h) {
@@ -1209,10 +1225,6 @@ int fill_area_blind(int xm, int ym, int wm, int hm, int minscale, Config_Data *c
 	    maxy = size.height;
 	  }
 	  
-	  //FIXME does not work, clipping is at the moment done uncoditionally in _image_insert
-	  /*if (crop)
-	    evas_object_clip_set(img, clipper);*/
-	  
 	  area.corner.scale = scale;
 	  area.corner.x = i*TILE_SIZE;
 	  area.corner.y = j*TILE_SIZE;  
@@ -1221,22 +1233,16 @@ int fill_area_blind(int xm, int ym, int wm, int hm, int minscale, Config_Data *c
 	  
 	  tdata = calloc(sizeof(_Img_Thread_Data), 1);
 	 
-	  buf = cache_app_alloc(TILE_SIZE*TILE_SIZE*4);
-	  
-	  tdata->buf = buf;
 	  tdata->scale = scale;
 	  tdata->area = area;
 	  tdata->config = config;
 	  
-	  tdata->t_id = lock_free_thread_id();
-	  
-	  assert(buf);
-	  filter_memsink_buffer_set(config->sink, tdata->buf, tdata->t_id);
-	  
 	  //printf("process %d %dx%d %dx%d\n", area.corner.scale, area.corner.x, area.corner.y, area.width, area.height);
-	  ecore_thread_run(_process_tile_bg, _finished_tile_blind, NULL, tdata);
+	  eina_array_push(preload_list, tdata);
       }
   }
+  
+  run_preload_threads();
 }
 
 int fill_area(int xm, int ym, int wm, int hm, int minscale, int preview)
@@ -1825,9 +1831,6 @@ void config_finish(void *data, Ecore_Thread *thread)
   config->running = NULL;
   //FIXME free stuff on failed!
   
-  buf = cache_app_alloc(TILE_SIZE*TILE_SIZE*4);
-  
-  tdata->buf = buf;
   tdata->scale =  size_recalc2(config->sink)->scaledown_max;
   tdata->area.corner.x = 0;
   tdata->area.corner.y = 0;
@@ -1836,12 +1839,10 @@ void config_finish(void *data, Ecore_Thread *thread)
   tdata->area.height =  TILE_SIZE;
   tdata->config = config;
   
-  tdata->t_id = lock_free_thread_id();
+  eina_array_push(preload_list, tdata);
   
-  assert(buf);
-  filter_memsink_buffer_set(config->sink, tdata->buf, tdata->t_id);
-  
-  ecore_thread_run(_process_tile_bg, _finished_tile_blind, NULL, tdata);
+  printf("run low scale prload?\n");
+  run_preload_threads();
 }
 
 void config_thread_start(File_Group *group, int nth)
@@ -3219,6 +3220,7 @@ elm_main(int argc, char **argv)
   Eina_List *filters = NULL;
   select_filter_func = NULL;
   int winsize;
+  preload_list = eina_array_new(64);
   
   bench_start();
   
