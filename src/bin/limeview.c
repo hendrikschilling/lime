@@ -55,6 +55,7 @@
 
 //FIXME adjust depending on speed!
 #define PRECALC_CONFIG_RANGE 4
+#define PRELOAD_THRESHOLD 8
 
 int high_quality_delay =  300;
 int max_reaction_delay =  1000;
@@ -137,7 +138,6 @@ int fixme_no_group_select = 0;
 File_Group *cur_group = NULL;
 
 int bench_idx = 0;
-int preview_tiles = 0;
 
 int *thread_ids;
 
@@ -167,7 +167,6 @@ static void on_scroller_move(void *data, Evas_Object *obj, void *event_info);
 static void fill_scroller(void);
 void workerfinish_schedule(void (*func)(void *data, Evas_Object *obj), void *data, Evas_Object *obj, Eina_Bool append);
 void filter_settings_create_gui(Eina_List *chain_node, Evas_Object *box);
-void fill_scroller_preview();
 void step_image_do(void *data, Evas_Object *obj);
 
 int pending_action(void)
@@ -218,7 +217,6 @@ typedef struct {
   uint8_t *buf;
   Rect area;
   int t_id;
-  int scaled_preview;
   int packx, packy, packw, packh;
   int show_direct;
 } _Img_Thread_Data;
@@ -314,7 +312,6 @@ void int_changed_do(void *data, Evas_Object *obj)
   
   forbid_fill--;
   
-  fill_scroller_preview();
   fill_scroller();
 }
 
@@ -341,7 +338,6 @@ void float_changed_do(void *data, Evas_Object *obj)
   
   forbid_fill--;
   
-  fill_scroller_preview();
   fill_scroller();
 }
 
@@ -456,7 +452,6 @@ void insert_before_do(void *data, Evas_Object *obj)
   
   fc_insert_filter(select_filter_func(), source_l, sink_l);
   
-  fill_scroller_preview();
   fill_scroller();
 }
 
@@ -474,7 +469,6 @@ void insert_rotation_do(void *data, Evas_Object *obj)
   
   fc_insert_filter(f, src, sink);
   
-  fill_scroller_preview();
   fill_scroller();
 }
 
@@ -497,7 +491,6 @@ void insert_after_do(void *data, Evas_Object *obj)
     
   fc_insert_filter(select_filter_func(), source_l, sink_l);
   
-  fill_scroller_preview();
   fill_scroller();
 }
 
@@ -850,7 +843,6 @@ Eina_Bool timer_run_render(void *data)
   
   quick_preview_only = 0;
   
-  fill_scroller_preview();
   fill_scroller();
   
   return ECORE_CALLBACK_CANCEL;
@@ -863,12 +855,10 @@ Eina_Bool idle_run_render(void *data)
       //FIXME what time is good?
       //timer_run_render(NULL);
       quick_preview_only = 0;
-      fill_scroller_preview();
       fill_scroller();
       //timer_render = ecore_timer_add(FAST_SKIP_RENDER_DELAY, &timer_run_render, NULL);
   }
     else {
-      fill_scroller_preview();
       fill_scroller();
     }
   }
@@ -1049,8 +1039,6 @@ _finished_tile(void *data, Ecore_Thread *th)
   thread_ids[tdata->t_id] = 0;
   tdata->t_id = -1;
     
-  if (tdata->scaled_preview)
-    preview_tiles--;
  /*
 #ifdef BENCHMARK
   bench_delay_start();
@@ -1067,18 +1055,17 @@ _finished_tile(void *data, Ecore_Thread *th)
       idle_render = ecore_idler_add(idle_run_render, NULL);
     }
     else {
-      fill_scroller_preview();
       fill_scroller();
     }
   }
   
   if (mat_cache_old) {
-    if (preview_tiles || (!pending_action() && delay < (1-quick_preview_only)*high_quality_delay && (worker || first_preview))) {
+    if ((!pending_action() && delay < (1-quick_preview_only)*high_quality_delay && (worker || first_preview))) {
       //printf("delay for now: %f (%d)\n", delay, tdata->scale);
       eina_array_push(finished_threads, tdata);
       
       if (first_preview) {
-	if (!preview_timer && !preview_tiles) {
+	if (!preview_timer) {
 	    preview_timer = ecore_timer_add((high_quality_delay - delay)*0.001, &_display_preview, NULL);
 	}
       }
@@ -1086,8 +1073,10 @@ _finished_tile(void *data, Ecore_Thread *th)
 	if (!worker)
 	  _display_preview(NULL);
 
-      if (worker < max_workers)
+      if (worker < max_workers && ea_count(preload_list) < PRELOAD_THRESHOLD)
 	step_image_preload_next();
+      else
+	run_preload_threads();
 	
       first_preview = 0;
 
@@ -1096,7 +1085,6 @@ _finished_tile(void *data, Ecore_Thread *th)
     else {
       if (!first_preview && !pending_action()) {
         grid_setsize();
-        fill_scroller_preview();
         fill_scroller();
       }
       
@@ -1115,10 +1103,17 @@ _finished_tile(void *data, Ecore_Thread *th)
       _display_preview(NULL);
     //this will schedule an idle enterer to only process func after we are finished with rendering
     //workerfinish_schedule(pending_action, pending_data, pending_obj, EINA_TRUE);
+    printf("pending!\n");
     pending_exe();
   }
-  else if (worker < max_workers)
+  else if (worker < max_workers && ea_count(preload_list) < PRELOAD_THRESHOLD) {
+    printf("do preload!\n");
     step_image_preload_next();
+  }
+  else {
+    printf("enough preload - run %d!\n", ea_count(preload_list));
+    run_preload_threads();
+  }
   
 #ifdef BENCHMARK
   if (!worker && !idle_render) {
@@ -1368,13 +1363,6 @@ int fill_area(int xm, int ym, int wm, int hm, int minscale, int preview)
 	  tdata->packw = TILE_SIZE*scalediv;
 	  tdata->packh = TILE_SIZE*scalediv;
 	  tdata->config = config_curr;
-
-	  /*if (scale == scale_start)
-	    tdata->scaled_preview = 1;
-	  else
-	    tdata->scaled_preview = 0;*/
-	  
-	  tdata->scaled_preview = preview;
 	  
 	  tdata->t_id = lock_free_thread_id();
 	  
@@ -1409,15 +1397,6 @@ void fc_del_gui(Eina_List *filter_chain)
       elm_object_item_del(fc->item);
     }
   }
-}
-
-void fill_scroller_preview()
-{
-  if (!config_curr)
-    return;
-  
-  if (max_fast_scaledown)
-    preview_tiles += fill_area(0,0,0,0, max_fast_scaledown, 1);
 }
 
 static void fill_scroller(void)
@@ -1555,7 +1534,6 @@ void group_select_do(void *data, Evas_Object *obj)
   
   size_recalc();
 
-  fill_scroller_preview();
   fill_scroller();
 }
 
@@ -1593,7 +1571,6 @@ void tags_select_do(void *data, Evas_Object *obj)
 
   size_recalc();
 
-  fill_scroller_preview();
   fill_scroller();
 }*/
 
@@ -1995,6 +1972,9 @@ void step_image_do(void *data, Evas_Object *obj)
   if (!tagfiles_count(files))
     return;
   
+  //FIXME free stuff!
+  eina_array_flush(preload_list);
+  
   tagfiles_step(files, (intptr_t)data);
   last_file_step = (intptr_t)data;
   
@@ -2067,7 +2047,6 @@ void step_image_do(void *data, Evas_Object *obj)
   if (quick_preview_only)
     first_preview = 1;
   printf("configuration delay: %f\n", bench_delay_get()); 
-  fill_scroller_preview();
   fill_scroller();
   
   if (tab_current == tab_group)
