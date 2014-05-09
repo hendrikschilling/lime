@@ -890,6 +890,38 @@ void workerfinish_idle_run(void *data)
   return ECORE_CALLBACK_CANCEL;
 }
 
+
+
+void preload_add(_Img_Thread_Data *tdata)
+{
+  eina_array_push(preload_list, tdata);
+  //preload_list = eina_list_append(eina_list_last(preload_list), tdata);
+  //preload_count++;
+}
+
+int preload_pending(void)
+{
+  return ea_count(preload_list);
+}
+
+
+void preload_flush(void)
+{
+  //eina_array_flush(preload_list);
+}
+
+
+_Img_Thread_Data *preload_get(void)
+{
+  /*assert(preload_count);
+  _Img_Thread_Data *tdata = eina_list_data_get(eina_list_last(preload_list));
+  preload_list = eina_list_remove_list(preload_list, eina_list_last(preload_list));
+  preload_count--;
+  
+  return tdata;*/
+  return ea_pop(preload_list);
+}
+
 void workerfinish_schedule(void (*func)(void *data, Evas_Object *obj), void *data, Evas_Object *obj, Eina_Bool append)
 {
   //FIXME free stuff
@@ -995,9 +1027,9 @@ void run_preload_threads(void)
 {
   _Img_Thread_Data *tdata;
   
-  while (worker_preload+worker < max_workers && ea_count(preload_list)) {
+  while (worker_preload+worker < max_workers && preload_pending()) {
     worker_preload++;
-    tdata = ea_pop(preload_list);
+    tdata = preload_get();
     tdata->t_id = lock_free_thread_id();
     tdata->buf = cache_app_alloc(TILE_SIZE*TILE_SIZE*4);
     filter_memsink_buffer_set(tdata->config->sink, tdata->buf, tdata->t_id);
@@ -1073,7 +1105,7 @@ _finished_tile(void *data, Ecore_Thread *th)
 	if (!worker)
 	  _display_preview(NULL);
 
-      if (worker < max_workers && ea_count(preload_list) < PRELOAD_THRESHOLD)
+      if (worker < max_workers && preload_pending() < PRELOAD_THRESHOLD)
 	step_image_preload_next();
       else
 	run_preload_threads();
@@ -1106,12 +1138,12 @@ _finished_tile(void *data, Ecore_Thread *th)
     printf("pending!\n");
     pending_exe();
   }
-  else if (worker < max_workers && ea_count(preload_list) < PRELOAD_THRESHOLD) {
+  else if (worker < max_workers && preload_pending() < PRELOAD_THRESHOLD) {
     printf("do preload!\n");
     step_image_preload_next();
   }
   else {
-    printf("enough preload - run %d!\n", ea_count(preload_list));
+    printf("enough preload - run %d!\n", preload_pending());
     run_preload_threads();
   }
   
@@ -1231,7 +1263,7 @@ int fill_area_blind(int xm, int ym, int wm, int hm, int minscale, Config_Data *c
 	  tdata->config = config;
 	  
 	  //printf("process %d %dx%d %dx%d\n", area.corner.scale, area.corner.x, area.corner.y, area.width, area.height);
-	  eina_array_push(preload_list, tdata);
+	  preload_add(tdata);
       }
   }
   
@@ -1814,7 +1846,7 @@ void config_finish(void *data, Ecore_Thread *thread)
   tdata->area.height =  TILE_SIZE;
   tdata->config = config;
   
-  eina_array_push(preload_list, tdata);
+  preload_add(tdata);
   
   printf("run low scale prload?\n");
   run_preload_threads();
@@ -1973,7 +2005,7 @@ void step_image_do(void *data, Evas_Object *obj)
     return;
   
   //FIXME free stuff!
-  eina_array_flush(preload_list);
+  preload_flush();
   
   tagfiles_step(files, (intptr_t)data);
   last_file_step = (intptr_t)data;
