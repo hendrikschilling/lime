@@ -64,7 +64,6 @@ int first_preview = 0;
 int filtered_image_count = 0;
 Ecore_Job *workerfinish_idle = NULL;
 Ecore_Idler *idle_render = NULL;
-Ecore_Idler *idle_preload = NULL;
 Ecore_Idler *idle_progress_print = NULL;
 Ecore_Timer *timer_render = NULL;
 Eina_Array *taglist_add = NULL;
@@ -1012,7 +1011,6 @@ void run_preload_threads(void)
     tdata->t_id = lock_free_thread_id();
     tdata->buf = cache_app_alloc(TILE_SIZE*TILE_SIZE*4);
     filter_memsink_buffer_set(tdata->config->sink, tdata->buf, tdata->t_id);
-    printf("run preload!\n");
     ecore_thread_run(_process_tile_bg, _finished_tile_blind, NULL, tdata);
   }
 }
@@ -1053,14 +1051,14 @@ _finished_tile(void *data, Ecore_Thread *th)
     
   if (tdata->scaled_preview)
     preview_tiles--;
- 
+ /*
 #ifdef BENCHMARK
   bench_delay_start();
   if (tagfiles_idx(files) >= BENCHMARK_LENGTH)
     workerfinish_schedule(&elm_exit_do, NULL, NULL, EINA_TRUE);
   else
     workerfinish_schedule(&step_image_do, (void*)(intptr_t)1, NULL, EINA_TRUE);
-#endif
+#endif*/
   
   worker--;
   
@@ -1088,7 +1086,7 @@ _finished_tile(void *data, Ecore_Thread *th)
 	if (!worker)
 	  _display_preview(NULL);
 
-      if (worker < max_workers && !ea_count(preload_list))
+      if (worker < max_workers)
 	step_image_preload_next();
 	
       first_preview = 0;
@@ -1119,7 +1117,7 @@ _finished_tile(void *data, Ecore_Thread *th)
     //workerfinish_schedule(pending_action, pending_data, pending_obj, EINA_TRUE);
     pending_exe();
   }
-  else if (worker < max_workers && !ea_count(preload_list))
+  else if (worker < max_workers)
     step_image_preload_next();
   
 #ifdef BENCHMARK
@@ -1937,6 +1935,7 @@ void step_image_start_configs(int n)
   }
 }
 
+//FIXME 
 void step_image_preload_next(void)
 {
   int i;
