@@ -105,7 +105,7 @@ typedef struct {
 typedef struct {
   int failed;
   Filter *load, *sink;
-  Ecore_Thread *running;
+  int running;
   Eina_List *filter_chain;
   Eina_List *filters;
 } Config_Data;
@@ -1829,7 +1829,7 @@ void config_finish(void *data, Ecore_Thread *thread)
   uint8_t *buf;
   
   worker_config--;
-  config->running = NULL;
+  config->running = EINA_FALSE;
   //FIXME free stuff on failed!
   
   tdata->scale =  size_recalc2(config->sink)->scaledown_max;
@@ -1900,8 +1900,8 @@ void config_thread_start(File_Group *group, int nth)
   filegroup_data_attach(group, nth, config);
   
   worker_config++;
-  
-  config->running = ecore_thread_run(&config_exe, &config_finish, NULL, config);
+  config->running = EINA_TRUE;
+  ecore_thread_run(&config_exe, &config_finish, NULL, config);
 }
 
 //FIXME parallel configs might block limited worker threads with io!?
@@ -1968,7 +1968,7 @@ void step_image_preload_next(int n)
       if (group_in_filters(group, tags_filter)) {
 	for(group_idx=0;group_idx<filegroup_count(group);group_idx++) {
 	  config = config_data_get(group, group_idx);
-	  if (!config->failed) {
+	  if (config && !config->failed) {
 	    fill_scroller_blind(config);
 	    printf("preload %s\n", filegroup_nth(group, group_idx));
 	    succ = 1;
@@ -1991,7 +1991,8 @@ void step_image_config_reset_single(Tagfiles *files, int idx)
   
   for(i=0;i<filegroup_count(group);i++) {
     c = filegroup_data_get(group, i);
-    if (c) {
+    //FIXME will leak configs if config is still running!
+    if (c && !c->running) {
       lime_config_reset(c->sink);
     }
   }
