@@ -17,6 +17,7 @@
  * along with Lime.  If not, see <http://www.gnu.org/licenses/>.
  */
 
+#include <pthread.h>
 #include "filter.h"
 
 #include "configuration.h"
@@ -56,6 +57,8 @@ Filter *filter_new(Filter_Core *fc)
   filter->tile_width = DEFAULT_TILE_SIZE;
   filter->tile_height = DEFAULT_TILE_SIZE;
   
+  pthread_mutex_init(&filter->lock, NULL);
+    
   return filter;
 }
 
@@ -185,6 +188,8 @@ void filter_del(Filter *f)
   Eina_Hash *metas;
   
   lime_config_reset(f);
+  
+  pthread_mutex_destroy(&f->lock);
   
   /*if (f->node->con_trees_in && ea_count(f->node->con_trees_in))
     filter_deconfigure(((Con*)ea_data(f->node->con_trees_in, 0))->source->filter);*/

@@ -1204,11 +1204,11 @@ void filter_deconfigure(Filter *f)
     while (eina_array_count(c->config_allocs))
       free(eina_array_pop(c->config_allocs));
   
-  if (!f->node->con_trees_out || ! ea_count(f->node->con_trees_out))
+  if (!f->node->con_trees_in || ! ea_count(f->node->con_trees_in))
     return;
- 
-  con = ea_data(f->node->con_trees_out, 0);
-  assert(!con || con->source->filter == f);
+  
+  con = ea_data(f->node->con_trees_in, 0);
+  assert(!con || con->sink->filter == f);
   
   while (con) {
      sink_f = con->sink->filter;
@@ -1220,7 +1220,6 @@ void filter_deconfigure(Filter *f)
     else
       con = NULL;
   }
-  
   if (c->new_fs)
     while(ea_count(c->new_fs))
       filter_del(ea_pop(c->new_fs));
@@ -1229,10 +1228,9 @@ void filter_deconfigure(Filter *f)
   //filter_chain_last_filter(f)->c = NULL;
 }
 
-void lime_config_reset(Filter *f)
+void _config_reset_internal(Filter *f)
 {
-  while (f->node_orig->con_trees_in && ea_count(f->node_orig->con_trees_in))
-    f = ((Con*)ea_data(f->node_orig->con_trees_in, 0))->source->filter;
+  f = filter_chain_last_filter(f);
   
   filter_deconfigure(f);
   
@@ -1241,6 +1239,13 @@ void lime_config_reset(Filter *f)
     config_del(f->c);
     f->c = NULL;
   }
+}
+
+void lime_config_reset(Filter *f)
+{  
+  pthread_mutex_lock(&f->lock);
+  _config_reset_internal(f);
+  pthread_mutex_unlock(&f->lock);
 }
 
 //insert nop filters if necessary
@@ -1253,8 +1258,10 @@ int lime_config_test(Filter *f_sink)
   Filter *f = f_sink;
   Config *c = filter_chain_last_filter(f)->c;
   
-  if (c && c->configured)
+  if (c && c->configured) {
     return 0;
+  }
+  pthread_mutex_lock(&filter_chain_last_filter(f_sink)->lock);
   if (!c) {
     c = config_new();
     filter_chain_last_filter(f)->c = c;
@@ -1301,8 +1308,10 @@ int lime_config_test(Filter *f_sink)
   while (err_pos_start != -1) {
     err_pos_start = _cons_fix_err(f, cons, insert_f, err_pos_start, c);
     if (err_pos_start == -2) {
+      _config_reset_internal(f_sink);
       eina_array_free(cons);
       eina_array_free(insert_f);
+      pthread_mutex_unlock(&filter_chain_last_filter(f_sink)->lock);
       return -1;
     }
   }
@@ -1321,5 +1330,6 @@ int lime_config_test(Filter *f_sink)
   
   eina_array_free(cons);
   eina_array_free(insert_f);
+  pthread_mutex_unlock(&filter_chain_last_filter(f_sink)->lock);
   return 0;
 }

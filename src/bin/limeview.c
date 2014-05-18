@@ -49,12 +49,13 @@
 
 #define PENDING_ACTIONS_BEFORE_SKIP_STEP 3
 #define REPEATS_ON_STEP_HOLD 2
+#define EXTRA_THREADING_FACTOR 2
 
 //#define BENCHMARK
 #define BENCHMARK_LENGTH 498
 
 //FIXME adjust depending on speed!
-#define PRECALC_CONFIG_RANGE 4
+#define PRELOAD_CONFIG_RANGE 4
 #define PRELOAD_IMG_RANGE 2
 #define PRELOAD_THRESHOLD 8
 
@@ -1064,14 +1065,14 @@ _finished_tile(void *data, Ecore_Thread *th)
   thread_ids[tdata->t_id] = 0;
   tdata->t_id = -1;
     
- /*
+ 
 #ifdef BENCHMARK
   bench_delay_start();
   if (tagfiles_idx(files) >= BENCHMARK_LENGTH)
     workerfinish_schedule(&elm_exit_do, NULL, NULL, EINA_TRUE);
   else
     workerfinish_schedule(&step_image_do, (void*)(intptr_t)1, NULL, EINA_TRUE);
-#endif*/
+#endif
   
   worker--;
   
@@ -1128,7 +1129,6 @@ _finished_tile(void *data, Ecore_Thread *th)
       _display_preview(NULL);
     //this will schedule an idle enterer to only process func after we are finished with rendering
     //workerfinish_schedule(pending_action, pending_data, pending_obj, EINA_TRUE);
-    printf("pending!\n");
     pending_exe();
   }
   else if (worker < max_workers && preload_pending() < PRELOAD_THRESHOLD) {
@@ -1623,6 +1623,10 @@ static void on_jump_image(void *data, Evas_Object *obj, void *event_info)
     return;
   
   bench_delay_start();
+  //FIXME don't reset around next/target idx
+  //FIXME we still will leak configs if we are currently rendering stuff!
+  //FIXME segfaults if this happens - disable for now!
+  //step_image_config_reset_range(files, tagfiles_idx(files)-abs(last_file_step*PRELOAD_CONFIG_RANGE)-1, tagfiles_idx(files)+abs(last_file_step*PRELOAD_CONFIG_RANGE+1);
   tagfiles_idx_set(files, idx);
   
   if (mat_cache_old && !worker)
@@ -1745,6 +1749,7 @@ void filegroup_changed_cb(File_Group *group)
     }
   
   //FIXME do we have to schedule this even if something else is running?
+  //FIXME refresh/invalidate config -> filter chain changed?
   workerfinish_schedule(step_image_do, NULL, NULL, EINA_TRUE);
 }
 
@@ -1765,13 +1770,10 @@ Config_Data *config_data_get(File_Group *group, int nth)
 }
 
   config = filegroup_data_get(group, nth);
-  if (config && !config->running) {
-    printf("using cached config!\n");
+  if (config) {
+    config->failed = lime_config_test(config->sink);
     return config;
   }
-  else if (config)
-    printf("discarding running config!\n");
-  //FIXME handle running config!
   
   config = calloc(sizeof(Config_Data), 1);
   if (filegroup_tags_valid(group) && filegroup_filterchain(group)) {
@@ -1839,7 +1841,6 @@ void config_finish(void *data, Ecore_Thread *thread)
   
   preload_add(tdata);
   
-  printf("run low scale prload?\n");
   run_preload_threads();
 }
 
@@ -1890,7 +1891,7 @@ void config_thread_start(File_Group *group, int nth)
     config->filters = eina_list_append(config->filters, config->sink);
     
     fc_connect_from_list(config->filters);
-  } 
+  }
   
   //strcpy(image_file, filename);
   lime_setting_string_set(config->load, "filename", filename);
@@ -1902,6 +1903,7 @@ void config_thread_start(File_Group *group, int nth)
   config->running = ecore_thread_run(&config_exe, &config_finish, NULL, config);
 }
 
+//FIXME parallel configs might block limited worker threads with io!?
 void step_image_start_configs(int n)
 {
   int i;
@@ -1978,6 +1980,29 @@ void step_image_preload_next(int n)
   }
 }
 
+//TODO what about wrapping? problems with small number of files (reset before use...)
+//FIXME step depends on filters!
+void step_image_config_reset_single(Tagfiles *files, int idx)
+{
+  int i;
+  Config_Data *c;
+  File_Group *group = tagfiles_nth(files, idx); 
+  
+  for(i=0;i<filegroup_count(group);i++) {
+    c = filegroup_data_get(group, i);
+    if (c) {
+      lime_config_reset(c->sink);
+    }
+  }
+}
+
+void step_image_config_reset_range(Tagfiles *files, int start, int end)
+{
+  int i;
+  
+  for(i=start;i<end;i++)
+    step_image_config_reset_single(files, i);
+}
 
 void step_image_do(void *data, Evas_Object *obj)
 {
@@ -2003,8 +2028,13 @@ void step_image_do(void *data, Evas_Object *obj)
   //FIXME free stuff!
   preload_flush();
   
-  tagfiles_step(files, (intptr_t)data);
-  last_file_step = (intptr_t)data;
+  if (data) {
+    tagfiles_step(files, (intptr_t)data);
+    last_file_step = (intptr_t)data;
+  }
+  
+  if (last_file_step == 1 || last_file_step == -1)
+    step_image_config_reset_single(files, tagfiles_idx(files)-last_file_step*PRELOAD_CONFIG_RANGE);
   
   del_filter_settings();  
   
@@ -2050,7 +2080,7 @@ void step_image_do(void *data, Evas_Object *obj)
   }
   
   if (config_curr) {
-    printf("del filterchain!\n");
+    //FIXME free ->filter_chain
     fc_del_gui(config_curr->filter_chain);
     config_curr->filter_chain = NULL;
     //config_curr->filters = NULL;
@@ -2059,9 +2089,9 @@ void step_image_do(void *data, Evas_Object *obj)
   config_curr = config;
   fc_gui_from_list(config_curr->filters);
   //FIXME free filter list
-  config_curr->filters = NULL;
+  //config_curr->filters = NULL;
   //FIXME get all filter handling from actual filter chain
-  filegroup_data_attach(group, group_idx, NULL);
+  //filegroup_data_attach(group, group_idx, NULL);
   
   cur_group = group;
   delgrid();
@@ -2091,7 +2121,7 @@ void step_image_do(void *data, Evas_Object *obj)
   
   elm_slider_value_set(file_slider, tagfiles_idx(files)+0.1);
   
-  step_image_start_configs(PRECALC_CONFIG_RANGE);
+  step_image_start_configs(PRELOAD_CONFIG_RANGE);
 }
 
 void del_file_done(void *data, Eio_File *handler)
@@ -3244,8 +3274,8 @@ elm_main(int argc, char **argv)
   elm_config_scroll_thumbscroll_enabled_set(EINA_TRUE);
   
   max_workers = ecore_thread_max_get();
-  ecore_thread_max_set(max_workers*2);
-  max_thread_id = max_workers+PRECALC_CONFIG_RANGE+100;
+  ecore_thread_max_set(max_workers*EXTRA_THREADING_FACTOR);
+  max_thread_id = max_workers+PRELOAD_CONFIG_RANGE+100;
   
   lime_init();
   eina_log_abort_on_critical_set(EINA_TRUE);

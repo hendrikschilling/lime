@@ -117,6 +117,7 @@ struct _Filter_Mode_Iter
 struct _Filter
 {
   Filter_Core *fc;
+  pthread_mutex_t lock;
   Config *c;
   Eina_Array *in;
   Eina_Array *out;
