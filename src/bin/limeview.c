@@ -52,6 +52,7 @@
 #define EXTRA_THREADING_FACTOR 2
 
 //#define BENCHMARK
+//#define BENCHMARK_PREVIEW
 #define BENCHMARK_LENGTH 498
 
 //FIXME adjust depending on speed!
@@ -1066,7 +1067,7 @@ _finished_tile(void *data, Ecore_Thread *th)
   tdata->t_id = -1;
     
  
-#ifdef BENCHMARK
+#ifdef BENCHMARK_PREVIEW
   bench_delay_start();
   if (tagfiles_idx(files) >= BENCHMARK_LENGTH)
     workerfinish_schedule(&elm_exit_do, NULL, NULL, EINA_TRUE);

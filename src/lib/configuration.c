@@ -1266,8 +1266,10 @@ int lime_config_test(Filter *f_sink)
     c = config_new();
     filter_chain_last_filter(f)->c = c;
   }
-  else
-    lime_config_reset(f);
+  else {
+    printf("FIXME del config - what if theres still something using this config?!\n");
+    //_config_reset_internal(f);
+  }
 
   insert_f =  eina_array_new(4);
   cons = eina_array_new(8);
