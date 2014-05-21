@@ -237,6 +237,9 @@ void size_recalc(void)
 
 Dim *size_recalc2(Filter *sink)
 {
+  if (!sink)
+    return NULL;
+  
   return filter_core_by_type(sink, MT_IMGSIZE);
 }
 
@@ -244,7 +247,7 @@ void grid_setsize(void)
 {
   int x,y,w,h;
   
-  if (!config_curr)
+  if (!config_curr || !config_curr->sink )
     return;
     
   forbid_fill++;
@@ -1755,10 +1758,10 @@ void group_config_reset(File_Group *group)
   for(i=0;i<filegroup_count(group);i++)
   {
     config = filegroup_data_get(group, i);
-    if (config) {
-      assert(!config->running);
+    if (config && config->sink) {
       //FIXME free filters?
-      lime_config_reset(config->sink);
+      if (!config->running)
+	lime_config_reset(config->sink);
       config->sink = NULL;
     }
   }
@@ -1862,17 +1865,22 @@ void config_finish(void *data, Ecore_Thread *thread)
   
   worker_config--;
   config->running = EINA_FALSE;
-  //FIXME free stuff on failed!
-  
-  tdata->scale =  size_recalc2(config->sink)->scaledown_max;
-  tdata->area.corner.x = 0;
-  tdata->area.corner.y = 0;
-  tdata->area.corner.scale = size_recalc2(config->sink)->scaledown_max;
-  tdata->area.width = TILE_SIZE;
-  tdata->area.height =  TILE_SIZE;
-  tdata->config = config;
-  
-  preload_add(tdata);
+  //config was deleted/invalidated
+  if (!config->sink)
+    lime_config_reset(config->load);
+  else {   
+    //FIXME free stuff on failed!
+    
+    tdata->scale =  size_recalc2(config->sink)->scaledown_max;
+    tdata->area.corner.x = 0;
+    tdata->area.corner.y = 0;
+    tdata->area.corner.scale = size_recalc2(config->sink)->scaledown_max;
+    tdata->area.width = TILE_SIZE;
+    tdata->area.height =  TILE_SIZE;
+    tdata->config = config;
+    
+    preload_add(tdata);
+  }
   
   run_preload_threads();
 }
