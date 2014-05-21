@@ -958,6 +958,7 @@ static void _process_tile(void *data, Ecore_Thread *th)
     
   eina_sched_prio_drop();
   lime_render_area(&tdata->area, tdata->config->sink, tdata->t_id);
+  lime_filter_config_unref(tdata->config->load);
 }
 
 static void _process_tile_bg(void *data, Ecore_Thread *th)
@@ -967,6 +968,7 @@ static void _process_tile_bg(void *data, Ecore_Thread *th)
   eina_sched_prio_drop();
   eina_sched_prio_drop();
   lime_render_area(&tdata->area, tdata->config->sink, tdata->t_id);
+  lime_filter_config_unref(tdata->config->load);
 }
 
 void _insert_image(_Img_Thread_Data *tdata)
@@ -1035,6 +1037,7 @@ void run_preload_threads(void)
     worker_preload++;
     tdata->t_id = lock_free_thread_id();
     filter_memsink_buffer_set(tdata->config->sink, NULL, tdata->t_id);
+    lime_filter_config_ref(tdata->config->sink);
     ecore_thread_run(_process_tile_bg, _finished_tile_blind, NULL, tdata);
   }
 }
@@ -1050,7 +1053,7 @@ _finished_tile_blind(void *data, Ecore_Thread *th)
   tdata->t_id = -1;
   
   worker_preload--;
-
+  
   free(tdata);
   
   //if (worker || pending_action())
@@ -1403,6 +1406,7 @@ int fill_area(int xm, int ym, int wm, int hm, int minscale, int preview)
 	  	  
 	  worker++;
 	  
+	  lime_filter_config_ref(tdata->config->sink);
 	  ecore_thread_run(_process_tile, _finished_tile, NULL, tdata);
 	  started++;
 

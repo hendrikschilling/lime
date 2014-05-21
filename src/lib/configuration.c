@@ -59,7 +59,7 @@ void lime_filter_config_ref(Filter *f)
 {
   Config * c = filter_chain_last_filter(f)->c;
   
-  assert(c && c->configured);
+  assert(c);
     
   c->refcount++;
 }
@@ -68,7 +68,7 @@ void lime_filter_config_unref(Filter *f)
 {
   Config * c = filter_chain_last_filter(f)->c;
   
-  assert(c && c->configured);
+  assert(c);
     
   assert(c->refcount);
   
@@ -1302,8 +1302,10 @@ int lime_config_test(Filter *f_sink)
     filter_chain_last_filter(f)->c = c;
   }
   else {
-    printf("FIXME del config - what if theres still something using this config?!\n");
-    //_config_reset_internal(f);
+    assert(!c->refcount);
+    _config_reset_internal(f);
+    c = config_new();
+    filter_chain_last_filter(f)->c = c;
   }
 
   insert_f =  eina_array_new(4);
