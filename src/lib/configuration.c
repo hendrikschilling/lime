@@ -32,6 +32,7 @@
 //TODO replace by non-global filter-located variable! this here is bad for multiple filter graphs!
 struct _Config {
    int configured;
+   int refcount;
    Eina_Array *applied_metas;
    Eina_Array *new_fs;
    Eina_Inarray *succ_inserts;
@@ -53,6 +54,26 @@ typedef struct {
   int len;
   int filters[MAX_CONS_TRIES];
 } Config_Chain;
+
+void lime_filter_config_ref(Filter *f)
+{
+  Config * c = filter_chain_last_filter(f)->c;
+  
+  assert(c && c->configured);
+    
+  c->refcount++;
+}
+
+void lime_filter_config_unref(Filter *f)
+{
+  Config * c = filter_chain_last_filter(f)->c;
+  
+  assert(c && c->configured);
+    
+  assert(c->refcount);
+  
+  c->refcount--;
+}
 
 void meta_dep_set_data_calc(Meta *m, void *dep_data)
 {
@@ -1243,7 +1264,21 @@ void _config_reset_internal(Filter *f)
 
 void lime_config_reset(Filter *f)
 {  
+  Config *c = filter_chain_last_filter(f)->c;
+  
+  if (!c) return;
+  
   pthread_mutex_lock(&f->lock);
+  while (c->refcount) {
+    //TODO do we actually need to release f->lock?
+    pthread_mutex_unlock(&f->lock);
+    lime_lock();
+    usleep(10);
+    lime_unlock();
+    pthread_mutex_lock(&f->lock);
+    if (!filter_chain_last_filter(f)->c || filter_chain_last_filter(f)->c != c)
+      return;
+  }
   _config_reset_internal(f);
   pthread_mutex_unlock(&f->lock);
 }

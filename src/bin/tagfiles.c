@@ -82,8 +82,9 @@ struct _Tagfiles {
   void (*done_cb)(Tagfiles *files, void *data);
   void (*known_tags_cb)(Tagfiles *files, void *data, const char *new_tag);
   Eina_Hash *known_tags;
+  char *progress_wait_for_file;
   void *cb_data;
-  Eina_Array *group_changed_cb;
+  Eina_List *group_changed_cb;
 };
 
 void xmp_gettags(File_Group *group, Ecore_Thread *thread);
@@ -110,23 +111,35 @@ void tagfiles_group_changed_cb_insert(Tagfiles *tagfiles, File_Group *group, voi
   data->cb = filegroup_changed_cb;
   data->group = group;
   
-  eina_array_push(tagfiles->group_changed_cb, data);
+  tagfiles->group_changed_cb = eina_list_append(tagfiles->group_changed_cb, data);
 }
 
 void tagfiles_group_changed_cb_flush(Tagfiles *files)
 {
   //FIXME free data (use inarray?)
-  eina_array_flush(files->group_changed_cb);
+  files->group_changed_cb = NULL;
+}
+
+void tagfiles_group_changed_cb_del(Tagfiles *files, File_Group *group)
+{
+  Eina_List *l;
+  Group_Changed_Cb_Data *data;
+  
+  EINA_LIST_FOREACH(files->group_changed_cb, l, data) {
+    if (data->group == group) {
+      files->group_changed_cb = eina_list_remove_list(files->group_changed_cb, l);
+      free(data);
+      return;
+    }
+  }
 }
 
 void call_group_changed_cb(Tagfiles *files, File_Group *group)
 {
-  int i;
+  Eina_List *l;
   Group_Changed_Cb_Data *data;
   
-  for(i=0;i<eina_array_count(files->group_changed_cb);i++) {
-    data = eina_array_data_get(files->group_changed_cb, i);
-    
+  EINA_LIST_FOREACH(files->group_changed_cb, l, data) {
     if (group == data->group)
       data->cb(group);
   }
@@ -535,7 +548,15 @@ static void _ls_main_cb(void *data, Eio_File *handler, const Eina_File_Direct_In
     tagfiles->scanned_files++;
     insert_file(tagfiles, file);
     
-    tagfiles->progress_cb(tagfiles, tagfiles->cb_data);
+    if (tagfiles->progress_wait_for_file) {
+      if (!strcmp(tagfiles->progress_wait_for_file, file)) {
+	printf("found file ad idx %d\n", tagfiles_count(tagfiles)-1);
+	tagfiles->progress_wait_for_file = NULL;
+	tagfiles->idx = tagfiles_count(tagfiles)-1;
+      }
+    }
+    else
+      tagfiles->progress_cb(tagfiles, tagfiles->cb_data);
   }
   else {
     tagfiles->scanned_dirs++;
@@ -758,7 +779,26 @@ static void _ls_done_cb(void *data, Eio_File *handler)
 
 Tagfiles *tagfiles_new_from_dir(const char *path, void (*progress_cb)(Tagfiles *files, void *data), void (*done_cb)(Tagfiles *files, void *data), void (*known_tags_cb)(Tagfiles *files, void *data, const char *new_tag))
 {
-  Tagfiles *files = calloc(sizeof(Tagfiles), 1);
+  char *dir;
+  struct stat path_stat;
+  Tagfiles *files;
+  
+  if (stat(path, &path_stat) < 0)
+    return NULL;
+  
+  printf("start tagfiles with %s\n");
+  
+  files = calloc(sizeof(Tagfiles), 1);
+  
+  if (S_ISDIR(path_stat.st_mode)) {
+    printf("%s is dir! %d %d\n", path, ecore_file_is_dir(path));
+    dir = path;
+  } 
+  else {
+    dir = ecore_file_dir_get(path);
+    files->progress_wait_for_file = path;
+    printf("dir is %s\n", dir);
+  }
   
   files->progress_cb = progress_cb;
   files->done_cb = done_cb;
@@ -769,9 +809,8 @@ Tagfiles *tagfiles_new_from_dir(const char *path, void (*progress_cb)(Tagfiles *
   files->files_ls = eina_inarray_new(sizeof(File_Group*), 128);
   files->dirs_ls = eina_inarray_new(sizeof(char *), 32);
   files->files_sorted = EINA_TRUE;
-  files->group_changed_cb = eina_array_new(1);
   
-  eio_file_direct_ls(path, &_ls_filter_cb, &_ls_main_cb,&_ls_done_cb, &_ls_error_cb, files);
+  eio_file_direct_ls(dir, &_ls_filter_cb, &_ls_main_cb,&_ls_done_cb, &_ls_error_cb, files);
   
   return files;
 }

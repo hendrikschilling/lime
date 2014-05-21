@@ -1025,8 +1025,11 @@ void run_preload_threads(void)
   _Img_Thread_Data *tdata;
   
   while (worker_preload+worker < max_workers && preload_pending()) {
-    worker_preload++;
     tdata = preload_get();
+    //config was reset...
+    if (!tdata->config->sink)
+      continue;
+    worker_preload++;
     tdata->t_id = lock_free_thread_id();
     filter_memsink_buffer_set(tdata->config->sink, NULL, tdata->t_id);
     ecore_thread_run(_process_tile_bg, _finished_tile_blind, NULL, tdata);
@@ -1738,10 +1741,37 @@ void on_known_tags_changed(Tagfiles *tagfiles, void *data, const char *new_tag)
   elm_genlist_item_append(tags_filter_list, tags_filter_itc, new_tag, NULL, ELM_GENLIST_ITEM_NONE, NULL, NULL);
 }
 
+void group_config_reset(File_Group *group)
+{
+  int i;
+  Config_Data *config;
+  
+  //FIXME clean pending refs to config from preload_list (and other?)
+  
+  //FIXME delete group cb
+  printf("FIXME delete group_changed_cb\n");
+  //tagfiles_group_changed_cb_delete(files);
+  
+  for(i=0;i<filegroup_count(group);i++)
+  {
+    config = filegroup_data_get(group, i);
+    if (config) {
+      assert(!config->running);
+      //FIXME free filters?
+      lime_config_reset(config->sink);
+      config->sink = NULL;
+    }
+  }
+}
+
 void filegroup_changed_cb(File_Group *group)
 {
   char unit_fmt[32];
   
+  //filters may have changed -> reset config
+  group_config_reset(group);
+  
+  //if tags have changed
   if (tags_filter_rating || (tags_filter && eina_hash_population(tags_filter)))
     if (group_in_filters(group, tags_filter)) {  
       filtered_image_count = filtered_image_count_get();
@@ -1750,8 +1780,8 @@ void filegroup_changed_cb(File_Group *group)
     }
   
   //FIXME do we have to schedule this even if something else is running?
-  //FIXME refresh/invalidate config -> filter chain changed?
-  workerfinish_schedule(step_image_do, NULL, NULL, EINA_TRUE);
+  if (cur_group == group)
+    workerfinish_schedule(step_image_do, NULL, NULL, EINA_TRUE);
 }
 
 Config_Data *config_data_get(File_Group *group, int nth)
@@ -1771,10 +1801,12 @@ Config_Data *config_data_get(File_Group *group, int nth)
 }
 
   config = filegroup_data_get(group, nth);
-  if (config) {
+  if (config && config->sink) {
     config->failed = lime_config_test(config->sink);
     return config;
   }
+  
+  tagfiles_group_changed_cb_insert(files, group, filegroup_changed_cb);
   
   config = calloc(sizeof(Config_Data), 1);
   if (filegroup_tags_valid(group) && filegroup_filterchain(group)) {
@@ -1845,6 +1877,7 @@ void config_finish(void *data, Ecore_Thread *thread)
   run_preload_threads();
 }
 
+//FIXME unify config_thread_start and config_data_get
 void config_thread_start(File_Group *group, int nth)
 {
   char *filename;
@@ -1864,6 +1897,8 @@ void config_thread_start(File_Group *group, int nth)
     && !eina_str_has_extension(filename, ".TIFF"))) {
     return;
 }
+  
+  tagfiles_group_changed_cb_insert(files, group, filegroup_changed_cb);
   
   config = calloc(sizeof(Config_Data), 1);
   if (filegroup_tags_valid(group) && filegroup_filterchain(group)) {
@@ -1982,28 +2017,12 @@ void step_image_preload_next(int n)
 }
 
 //TODO what about wrapping? problems with small number of files (reset before use...)
-//FIXME step depends on filters!
-void step_image_config_reset_single(Tagfiles *files, int idx)
-{
-  int i;
-  Config_Data *c;
-  File_Group *group = tagfiles_nth(files, idx); 
-  
-  for(i=0;i<filegroup_count(group);i++) {
-    c = filegroup_data_get(group, i);
-    //FIXME will leak configs if config is still running!
-    if (c && !c->running) {
-      lime_config_reset(c->sink);
-    }
-  }
-}
-
 void step_image_config_reset_range(Tagfiles *files, int start, int end)
 {
   int i;
   
   for(i=start;i<end;i++)
-    step_image_config_reset_single(files, i);
+    group_config_reset(tagfiles_nth(files, i));
 }
 
 void step_image_do(void *data, Evas_Object *obj)
@@ -2036,7 +2055,7 @@ void step_image_do(void *data, Evas_Object *obj)
   }
   
   if (last_file_step == 1 || last_file_step == -1)
-    step_image_config_reset_single(files, tagfiles_idx(files)-last_file_step*PRELOAD_CONFIG_RANGE);
+    group_config_reset(tagfiles_nth(files, tagfiles_idx(files)-last_file_step*PRELOAD_CONFIG_RANGE));
   
   del_filter_settings();  
   
@@ -2097,9 +2116,6 @@ void step_image_do(void *data, Evas_Object *obj)
   
   cur_group = group;
   delgrid();
-  
-  tagfiles_group_changed_cb_flush(files);
-  tagfiles_group_changed_cb_insert(files, group, filegroup_changed_cb);
     
   //we start as early as possible with rendering!
   forbid_fill--;
@@ -2510,12 +2526,14 @@ Eina_Bool _idle_progress_printer(void *data)
   if (files_new) {
     if (files)
       tagfiles_del(files);
+    if (cur_group)
+      cur_group = NULL;
     files = files_new;
     files_new = NULL;
   
     elm_slider_min_max_set(file_slider, 0, tagfiles_count(files)-1);
     evas_object_smart_callback_add(file_slider, "changed", &on_jump_image, NULL);
-    elm_slider_value_set(file_slider, 0);
+    elm_slider_value_set(file_slider, tagfiles_idx(files));
     evas_object_size_hint_weight_set(file_slider, EVAS_HINT_EXPAND, 0);
     evas_object_size_hint_align_set(file_slider, EVAS_HINT_FILL, 0);
     elm_slider_unit_format_set(file_slider, "%.0f");
@@ -2572,12 +2590,14 @@ static void _ls_done_cb(Tagfiles *tagfiles, void *data)
   if (files_new) {
     if (files)
       tagfiles_del(files);
+    if (cur_group)
+      cur_group = NULL;
     files = files_new;
     files_new = NULL;
   
     elm_slider_min_max_set(file_slider, 0, tagfiles_count(files)-1);
     evas_object_smart_callback_add(file_slider, "changed", &on_jump_image, NULL);
-    elm_slider_value_set(file_slider, 0);
+    elm_slider_value_set(file_slider, tagfiles_idx(files));
     evas_object_size_hint_weight_set(file_slider, EVAS_HINT_EXPAND, 0);
     evas_object_size_hint_align_set(file_slider, EVAS_HINT_FILL, 0);
     elm_slider_unit_format_set(file_slider, "%.0f");
@@ -2616,32 +2636,30 @@ static void _ls_done_cb(Tagfiles *tagfiles, void *data)
     step_image_do(NULL, NULL);
 }
 
-void on_open_dir(char *path)
+void on_open_path(char *path)
 { 
-  char *dir = path;
-
-  if (dir) {
-    printf("open dir %s\n", path);
+  if (path) {
+    printf("open path %s\n", path);
     
     if (files_new) {
       tagfiles_del(files_new);
       files_new = NULL;
     }
     
-    elm_fileselector_button_path_set(fsb, dir);
+    elm_fileselector_button_path_set(fsb, path);
     load_notify = elm_notify_add(win);
     load_label = elm_label_add(load_notify);
     elm_object_text_set(load_label, "found 0 files groups");
     elm_object_content_set(load_notify, load_label);
     evas_object_show(load_label);
     evas_object_show(load_notify);
-    files_new = tagfiles_new_from_dir(dir, _ls_progress_cb, _ls_done_cb, on_known_tags_changed);
+    files_new = tagfiles_new_from_dir(path, _ls_progress_cb, _ls_done_cb, on_known_tags_changed);
   }
 }
 
 static void on_open(void *data, Evas_Object *obj, void *event_info)
 {
-  on_open_dir((char*)event_info);
+  on_open_path((char*)event_info);
 }
 
 
@@ -2852,7 +2870,7 @@ Evas_Object *elm_button_add_pack(Evas_Object *p, const char *text, void (*cb)(vo
 Evas_Object *elm_fsb_add_pack(Evas_Object *p, const char *text, void (*cb)(void *data, Evas_Object *obj, void *event_info), char *path)
 {
   Evas_Object *btn = elm_fileselector_button_add(p);
-  elm_fileselector_button_folder_only_set(btn, EINA_TRUE);
+  elm_fileselector_button_folder_only_set(btn, EINA_FALSE);
   evas_object_size_hint_weight_set(btn, EVAS_HINT_EXPAND, EVAS_HINT_EXPAND);
   evas_object_size_hint_align_set(btn, EVAS_HINT_FILL, EVAS_HINT_FILL);
   if (path)
@@ -3252,8 +3270,7 @@ elm_main(int argc, char **argv)
 {
   int help;
   int cache_strategy, cache_metric, cache_size;
-  char *file;
-  char *dir;
+  char *path;
   Evas_Object *hbox, *frame, *hpane, *seg_filter_rating, *entry, *btn;
   Eina_List *filters = NULL;
   select_filter_func = NULL;
@@ -3287,7 +3304,7 @@ elm_main(int argc, char **argv)
   
   thread_ids = calloc(sizeof(int)*(max_thread_id+1), 1);
   
-  if (parse_cli(argc, argv, &filters, &bench, &cache_size, &cache_metric, &cache_strategy, &file, &dir, &winsize, &verbose, &help))
+  if (parse_cli(argc, argv, &filters, &bench, &cache_size, &cache_metric, &cache_strategy, &path, &winsize, &verbose, &help))
     return EXIT_FAILURE;
   
   if (help) {
@@ -3303,7 +3320,7 @@ elm_main(int argc, char **argv)
   //strcpy(image_path, dir);
   //image_file = image_path + strlen(image_path);
   
-  print_init_info(bench, cache_size, cache_metric, cache_strategy, file, dir);
+  print_init_info(bench, cache_size, cache_metric, cache_strategy, path);
   
   if (bench && bench[0].scale != -1)
     fit = bench[0].scale;
@@ -3548,7 +3565,7 @@ elm_main(int argc, char **argv)
   elm_object_content_set(frame, filter_list);
   evas_object_show(filter_list);
    
-  on_open_dir(dir);
+  on_open_path(path);
   
   /*test_filter_config(load);
    s ize = *(*Dim*)filter_core_by_type(sink, MT_IMGSIZE);

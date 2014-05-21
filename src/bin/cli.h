@@ -42,8 +42,8 @@ typedef struct {
   void *val;  //... to this value
 } Bench_Step;
 
-int parse_cli(int argc, char **argv, Eina_List **filters, Bench_Step **bench, int *size, int *metric, int *strategy, char **file, char **dir, int *winsize, int *verbose, int *help);
-void print_init_info(Bench_Step *bench, int size, int metric, int strategy, char *file, char *dir);
+int parse_cli(int argc, char **argv, Eina_List **filters, Bench_Step **bench, int *size, int *metric, int *strategy, char **path, int *winsize, int *verbose, int *help);
+void print_init_info(Bench_Step *bench, int size, int metric, int strategy, char *path);
 void bench_time_mark(int type);
 void bench_delay_start(void);
 void bench_delay_stop(int type);

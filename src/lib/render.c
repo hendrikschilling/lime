@@ -647,6 +647,8 @@ void lime_render_area(Rect *area, Filter *f, int thread_id)
   
   lime_config_test(f);
   
+  lime_filter_config_ref(f);
+  
   ch_dim = meta_child_data_by_type(ea_data(f->node->con_ch_in, 0), MT_IMGSIZE);
   
   assert(area->corner.x < ch_dim->width >> area->corner.scale);
@@ -692,6 +694,7 @@ void lime_render_area(Rect *area, Filter *f, int thread_id)
   
   render_state_del(state);
   
+  lime_filter_config_unref(f);
   lime_unlock();
 }
 

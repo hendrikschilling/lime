@@ -46,7 +46,7 @@ main(int argc, char **argv)
   
   lime_init();
 
-  if (parse_cli(argc, argv, &filters, NULL, &cache_size, &cache_metric, &cache_strategy, &file, NULL, NULL, &verbose, &help))
+  if (parse_cli(argc, argv, &filters, NULL, &cache_size, &cache_metric, &cache_strategy, &file, NULL, &verbose, &help))
     return EXIT_FAILURE;
   
   if (help) {
@@ -54,7 +54,7 @@ main(int argc, char **argv)
     return EXIT_SUCCESS;
   }
   
-  print_init_info(NULL, cache_size, cache_metric, cache_strategy, NULL, NULL);
+  print_init_info(NULL, cache_size, cache_metric, cache_strategy, NULL);
   
   lime_cache_set(cache_size, cache_strategy | cache_metric);
   

@@ -190,7 +190,7 @@ char *clean_dirpath(char *path)
   return path;
 }
 
-int parse_cli(int argc, char **argv, Eina_List **filters, Bench_Step **bench, int *size, int *metric, int *strategy, char **file, char **dir, int *winsize,  int *verbose, int *help)
+int parse_cli(int argc, char **argv, Eina_List **filters, Bench_Step **bench, int *size, int *metric, int *strategy, char **path, int *winsize,  int *verbose, int *help)
 {
   int i;
   int c;
@@ -211,10 +211,8 @@ int parse_cli(int argc, char **argv, Eina_List **filters, Bench_Step **bench, in
   if (help)
     *help = 0;
   
-  if (file)
-    *file = NULL;
-  if (dir)
-    *dir = NULL;
+  if (path)
+    *path = NULL;
   
   while ((c = getopt_long(argc, argv, "b:s:m:f:w:vh", long_options, &option_index)) != -1) {
     switch (c) {
@@ -358,26 +356,26 @@ int parse_cli(int argc, char **argv, Eina_List **filters, Bench_Step **bench, in
         return -1;
       }
       if (S_ISDIR(statbuf.st_mode)) {
-        if (!dir) {
-          printf("ERROR parsing command line: %s: directory as argument not supported!\n", remain);
+        if (!path) {
+          printf("ERROR parsing command line: %s: dir as argument not supported!\n", remain);
           return -1;
         }
-        *dir = clean_dirpath(argv[optind]);
+        *path = clean_dirpath(argv[optind]);
       }
       else if (S_ISREG(statbuf.st_mode)) {
-        if (!file) {
+        if (!path) {
           printf("ERROR parsing command line: %s: file as argument not supported!\n", remain);
           return -1;
         }
-        *file = remain;
-        if (dir) {
+        *path = remain;
+        /*if (dir) {
           *dir = strdup(remain);
           for(i=strlen(remain)-1;i>0;i--)
             if ((*dir)[i] != '/')
               (*dir)[i] = '\0';
             else
               break;
-        }
+        }*/
       }
       else
           printf("ERROR parsing command line: %s could not be parsed and %s is neither a regular file nor a directory\n", argv[optind], remain);
@@ -388,11 +386,9 @@ int parse_cli(int argc, char **argv, Eina_List **filters, Bench_Step **bench, in
   return 0;
 }
 
-void print_init_info(Bench_Step *bench, int size, int metric, int strategy, char *file, char *dir)
+void print_init_info(Bench_Step *bench, int size, int metric, int strategy, char *path)
 {
   printf("[INIT] CACHE size %dMB metric %d strategy %d\n", size, metric, strategy);
-  if (file)
-    printf("[INIT] file: %s\n", file);
-  if (dir)
-    printf("[INIT] dir: %s\n", dir);
+  if (path)
+    printf("[INIT] path: %s\n", path);
 }
