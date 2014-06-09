@@ -52,7 +52,7 @@
 #define EXTRA_THREADING_FACTOR 4
 
 //#define BENCHMARK
-#define BENCHMARK_PREVIEW
+//#define BENCHMARK_PREVIEW
 #define BENCHMARK_LENGTH 2000
 
 //FIXME adjust depending on speed!
