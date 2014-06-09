@@ -1264,20 +1264,19 @@ void _config_reset_internal(Filter *f)
 
 void lime_config_reset(Filter *f)
 {  
+  pthread_mutex_lock(&f->lock);
+  
   Config *c = filter_chain_last_filter(f)->c;
   
-  if (!c) return;
-  
-  pthread_mutex_lock(&f->lock);
-  while (c->refcount) {
-    //TODO do we actually need to release f->lock?
+  if (!c) {
     pthread_mutex_unlock(&f->lock);
-    lime_lock();
-    usleep(10);
-    lime_unlock();
-    pthread_mutex_lock(&f->lock);
-    if (!filter_chain_last_filter(f)->c || filter_chain_last_filter(f)->c != c)
-      return;
+    return;
+  }
+  
+  if (c->refcount) {
+    pthread_mutex_unlock(&f->lock);
+    printf("FIXME config still has lingering ref (count %d)!\n", c->refcount);
+    return;
   }
   _config_reset_internal(f);
   pthread_mutex_unlock(&f->lock);
@@ -1359,13 +1358,13 @@ int lime_config_test(Filter *f_sink)
   
   filter_hash_recalc(f);
   
-  printf("[CONFIG] actual filter chain:\n");
+  /*printf("[CONFIG] actual filter chain:\n");
   f = f_sink;
   while (f->node->con_trees_in && ea_count(f->node->con_trees_in)) {
     printf("         %s\n", f->fc->name);
     f = ((Con*)ea_data(f->node->con_trees_in, 0))->source->filter;
   }
-  printf("         %s\n", f->fc->name);
+  printf("         %s\n", f->fc->name);*/
   
   eina_array_free(cons);
   eina_array_free(insert_f);

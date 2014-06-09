@@ -45,10 +45,10 @@ typedef struct {
 int parse_cli(int argc, char **argv, Eina_List **filters, Bench_Step **bench, int *size, int *metric, int *strategy, char **path, int *winsize, int *verbose, int *help);
 void print_init_info(Bench_Step *bench, int size, int metric, int strategy, char *path);
 void bench_time_mark(int type);
-void bench_delay_start(void);
+void bench_delay_start(struct timespec *delay);
 void bench_delay_stop(int type);
 void bench_report(void);
 void bench_start(void);
-double bench_delay_get(void);
+double bench_delay_get(struct timespec *start);
 
 #endif

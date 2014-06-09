@@ -45,11 +45,8 @@
 #include "filter_interleave.h"
 #include "filter_savejpeg.h"
 
-struct timespec bench_last_mark;
-struct timespec t_bench_start;
 double bench_times[3];
 double max_delay[2] = {0.0, 0.0};
-struct timespec bench_delay_mark;
 
 
 char *strategies[] = {"rand", "rapx", "prob", NULL};
@@ -101,49 +98,36 @@ Bench_Step bench_s1[] = {{2048,2048,2}, {-1}};
 Bench_Step bench_s2[] = {{1024,1024,4}, {-1}};
 Bench_Step bench_s3[] = {{512,512,8}, {-1}};
 
-void bench_time_mark(int type)
+/*void bench_time_mark(int type)
 {
   struct timespec mark;
   clock_gettime(CLOCK_REALTIME, &mark);
   
   bench_times[type] += (mark.tv_sec - bench_last_mark.tv_sec) + (mark.tv_nsec - bench_last_mark.tv_nsec)*0.000000001;
   
-}
+}*/
 
-void bench_delay_start()
+void bench_delay_start(struct timespec *delay)
 {
-  clock_gettime(CLOCK_REALTIME, &bench_delay_mark);
+  clock_gettime(CLOCK_REALTIME, delay);
 }
 
-void bench_delay_stop(int type)
-{
-  double delay;
-  
-  struct timespec mark;
-  clock_gettime(CLOCK_REALTIME, &mark);
-  
-  delay = (mark.tv_sec - bench_delay_mark.tv_sec)*1000 + (mark.tv_nsec - bench_delay_mark.tv_nsec)*0.000001; 
-  
-  if (delay > max_delay[type])
-    max_delay[type] = delay;
-}
-
-double bench_delay_get(void)
+double bench_delay_get(struct timespec *start)
 {
   double delay;
   
   struct timespec mark;
   clock_gettime(CLOCK_REALTIME, &mark);
   
-  delay = (mark.tv_sec - bench_delay_mark.tv_sec)*1000 + (mark.tv_nsec - bench_delay_mark.tv_nsec)*0.000001; 
+  delay = (mark.tv_sec - start->tv_sec)*1000 + (mark.tv_nsec - start->tv_nsec)*0.000001; 
   
   return delay;
 }
 
-void bench_start(void)
+/*void bench_start(void)
 {
   clock_gettime(CLOCK_PROCESS_CPUTIME_ID , &t_bench_start);
-}
+}*/
 
 void bench_report(void)
 {

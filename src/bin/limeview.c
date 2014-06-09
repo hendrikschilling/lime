@@ -47,13 +47,13 @@
 
 #define TILE_SIZE DEFAULT_TILE_SIZE
 
-#define PENDING_ACTIONS_BEFORE_SKIP_STEP 3
-#define REPEATS_ON_STEP_HOLD 2
-#define EXTRA_THREADING_FACTOR 2
+#define PENDING_ACTIONS_BEFORE_SKIP_STEP 10
+#define REPEATS_ON_STEP_HOLD 10
+#define EXTRA_THREADING_FACTOR 4
 
 //#define BENCHMARK
-//#define BENCHMARK_PREVIEW
-#define BENCHMARK_LENGTH 498
+#define BENCHMARK_PREVIEW
+#define BENCHMARK_LENGTH 2000
 
 //FIXME adjust depending on speed!
 #define PRELOAD_CONFIG_RANGE 4
@@ -87,6 +87,8 @@ int last_file_step = 1;
 
 Elm_Genlist_Item_Class *tags_list_itc;
 Elm_Genlist_Item_Class *tags_filter_itc;
+
+struct timespec *delay_cur;
 
 typedef struct {
   const char *extensions;
@@ -160,6 +162,7 @@ typedef struct {
   void (*action)(void *data, Evas_Object *obj);
   void *data;
   Evas_Object *obj;
+  struct timespec *delay;
 } _Pending_Action;
 
 Eina_List *pending_actions = NULL;
@@ -189,7 +192,10 @@ void pending_exe(void)
   while (pending_action() && !worker) {
     action = eina_list_data_get(pending_actions);
     pending_actions = eina_list_remove_list(pending_actions, pending_actions);
-
+    
+    if (delay_cur)
+      free(delay_cur);
+    delay_cur = action->delay;
     action->action(action->data, action->obj);
   }
 }
@@ -201,6 +207,8 @@ void pending_add(void (*action)(void *data, Evas_Object *obj), void *data, Evas_
   pending->action = action;
   pending->data = data;
   pending->obj = obj;
+  pending->delay = malloc(sizeof(struct timespec));
+  bench_delay_start(pending->delay);
   
   pending_actions = eina_list_append(pending_actions, pending);
 }
@@ -306,8 +314,6 @@ void int_changed_do(void *data, Evas_Object *obj)
 
   forbid_fill++;
   
-  bench_delay_start();
-  
   lime_setting_int_set(m->filter, m->name, (int)elm_spinner_value_get(obj));
   
   lime_config_test(config_curr->sink);
@@ -331,8 +337,6 @@ void float_changed_do(void *data, Evas_Object *obj)
   assert(cur_group);
   
   forbid_fill++;
-  
-  bench_delay_start();
   
   lime_setting_float_set(m->filter, m->name, (float)elm_spinner_value_get(obj));
   
@@ -521,8 +525,6 @@ static void on_select_filter_select(void *data, Evas_Object *obj, void *event_in
 static void
 on_remove_filter(void *data, Evas_Object *obj, void *event_info)
 {
-  bench_delay_start();
-  
   workerfinish_schedule(&remove_filter_do, data, obj, EINA_TRUE);
 }
 
@@ -876,7 +878,6 @@ Eina_Bool idle_run_render(void *data)
   
 #ifdef BENCHMARK
   if (!worker) {
-    bench_delay_start();
     if (tagfiles_idx(files) >= BENCHMARK_LENGTH)
       workerfinish_schedule(&elm_exit_do, NULL, NULL, EINA_TRUE);
     else
@@ -944,6 +945,10 @@ void workerfinish_schedule(void (*func)(void *data, Evas_Object *obj), void *dat
   if (!worker) {
     if (!workerfinish_idle) {
       workerfinish_idle = ecore_job_add(workerfinish_idle_run, NULL);
+      if (delay_cur)
+	free(delay_cur);
+      delay_cur = malloc(sizeof(struct timespec));
+      bench_delay_start(delay_cur);
     }
     //pending_exe();
   }
@@ -1015,7 +1020,7 @@ Eina_Bool _display_preview(void *data)
   eina_array_free(finished_threads);
   finished_threads = NULL;
       
-  printf("final delay for preview: %f\n", bench_delay_get());
+  printf("final delay for preview: %f\n", bench_delay_get(delay_cur));
 
   preview_timer = NULL;
 
@@ -1068,7 +1073,7 @@ static void
 _finished_tile(void *data, Ecore_Thread *th)
 {
   _Img_Thread_Data *tdata = data;
-  double delay = bench_delay_get();
+  double delay = bench_delay_get(delay_cur);
   
   assert(tdata->t_id != -1);
   
@@ -1077,7 +1082,6 @@ _finished_tile(void *data, Ecore_Thread *th)
     
  
 #ifdef BENCHMARK_PREVIEW
-  bench_delay_start();
   if (tagfiles_idx(files) >= BENCHMARK_LENGTH)
     workerfinish_schedule(&elm_exit_do, NULL, NULL, EINA_TRUE);
   else
@@ -1106,8 +1110,9 @@ _finished_tile(void *data, Ecore_Thread *th)
 	}
       }
       else
-	if (!worker)
+	if (!worker) {
 	  _display_preview(NULL);
+	}
 
       if (worker < max_workers && preload_pending() < PRELOAD_THRESHOLD)
 	step_image_preload_next(PRELOAD_IMG_RANGE);
@@ -1127,16 +1132,19 @@ _finished_tile(void *data, Ecore_Thread *th)
       _display_preview(NULL);
     }
   }
-  else if (!worker)
-    printf("final delay: %f\n", bench_delay_get());
+  
+  if (!worker)
+    printf("final delay: %f\n", bench_delay_get(delay_cur));
   
   _insert_image(tdata);
   
   first_preview = 0;
   
   if (!worker && pending_action()) {
-    if (mat_cache_old)
+    if (mat_cache_old) {
+      printf("final delay preview: %f\n", bench_delay_get(delay_cur));
       _display_preview(NULL);
+    }
     //this will schedule an idle enterer to only process func after we are finished with rendering
     //workerfinish_schedule(pending_action, pending_data, pending_obj, EINA_TRUE);
     pending_exe();
@@ -1150,7 +1158,6 @@ _finished_tile(void *data, Ecore_Thread *th)
   
 #ifdef BENCHMARK
   if (!worker && !idle_render) {
-    bench_delay_start();
     if (tagfiles_idx(files) >= BENCHMARK_LENGTH)
       workerfinish_schedule(&elm_exit_do, NULL, NULL, EINA_TRUE);
     else
@@ -1612,7 +1619,6 @@ void delgrid(void)
 {  
   if (mat_cache_old) {
     //we have not yet shown the current image (which would delete mat_cache_old)
-    printf("FIXME have old matcache!\n");
     mat_cache_old = NULL;
   }
   
@@ -1633,7 +1639,6 @@ static void on_jump_image(void *data, Evas_Object *obj, void *event_info)
   if (idx == tagfiles_idx(files))
     return;
   
-  bench_delay_start();
   //FIXME don't reset around next/target idx
   //FIXME we still will leak configs if we are currently rendering stuff!
   //FIXME segfaults if this happens - disable for now!
@@ -1774,6 +1779,8 @@ void group_config_reset(File_Group *group)
 void filegroup_changed_cb(File_Group *group)
 {
   char unit_fmt[32];
+  
+  printf("file group changed. FIXME figure out what changed and avoid full reload!\n");
   
   //filters may have changed -> reset config
   group_config_reset(group);
@@ -2037,6 +2044,11 @@ void step_image_config_reset_range(Tagfiles *files, int start, int end)
     group_config_reset(tagfiles_nth(files, i));
 }
 
+void refresh_tab_tags(void)
+{
+  elm_genlist_realized_items_update(tags_list);
+}
+
 void step_image_do(void *data, Evas_Object *obj)
 {
   int i;
@@ -2049,7 +2061,7 @@ void step_image_do(void *data, Evas_Object *obj)
   Elm_Object_Item *item;
   Config_Data *config = NULL;
   
-  printf("non-chancellation delay: %f\n", bench_delay_get());
+  printf("non-chancellation delay: %f\n", bench_delay_get(delay_cur));
   
   assert(!worker);
   
@@ -2134,7 +2146,7 @@ void step_image_do(void *data, Evas_Object *obj)
   size_recalc();
   if (quick_preview_only)
     first_preview = 1;
-  printf("configuration delay: %f\n", bench_delay_get()); 
+  printf("configuration delay: %f\n", bench_delay_get(delay_cur)); 
   fill_scroller();
   
   if (tab_current == tab_group)
@@ -2143,7 +2155,8 @@ void step_image_do(void *data, Evas_Object *obj)
   //update tag list
 
   if (filegroup_tags_valid(cur_group)) {
-    elm_genlist_realized_items_update(tags_list);
+    if (tab_current == tab_tags)
+      refresh_tab_tags();
   
     //update tag rating
     elm_segment_control_item_selected_set(elm_segment_control_item_get(seg_rating, filegroup_rating(group)), EINA_TRUE);
@@ -2457,10 +2470,6 @@ on_next_image(void *data, Evas_Object *obj, void *event_info)
 {
   //already waiting for an action?
   if (pending_action() <= PENDING_ACTIONS_BEFORE_SKIP_STEP && files) {
-    
-    bench_delay_start();
-    //tagfiles_step(files, last_file_step);
-
     if (mat_cache_old && !worker)
       _display_preview(NULL);
     //doesnt matter if true or false
@@ -2477,10 +2486,7 @@ on_delete_image(void *data, Evas_Object *obj, void *event_info)
 static void
 on_prev_image(void *data, Evas_Object *obj, void *event_info)
 {//already waiting for an action?
-  if (pending_action() <= PENDING_ACTIONS_BEFORE_SKIP_STEP && files) {
-    
-    bench_delay_start();
-    
+  if (pending_action() <= PENDING_ACTIONS_BEFORE_SKIP_STEP && files) {    
     if (mat_cache_old && !worker)
       _display_preview(NULL);
     //FIXME doesnt matter if true or false
@@ -2567,10 +2573,6 @@ Eina_Bool _idle_progress_printer(void *data)
       evas_object_show(grid);
     }
     
-    //grid_setsize();
-    
-    bench_delay_start();
-    
     evas_object_show(scroller);
   }
   else
@@ -2636,8 +2638,6 @@ static void _ls_done_cb(Tagfiles *tagfiles, void *data)
     
     
     //grid_setsize();
-    
-    bench_delay_start();
     
     evas_object_show(scroller);
   }
@@ -2709,15 +2709,11 @@ on_zoom_out(void *data, Evas_Object *obj, void *event_info)
 
 static void on_insert_before(void *data, Evas_Object *obj, void *event_info)
 {
-  bench_delay_start();
-  
   workerfinish_schedule(&insert_before_do, NULL, NULL, EINA_TRUE);
 }
 
 static void on_insert_after(void *data, Evas_Object *obj, void *event_info)
 {
-  bench_delay_start();
-  
   workerfinish_schedule(&insert_after_do, NULL, NULL, EINA_TRUE);
 }
 
@@ -2938,15 +2934,13 @@ void fc_gui_from_list(Eina_List *filters)
 void print_help(void)
 {
   printf("usage: limeview - scale invariant image editor/viewer\n");
-  printf("limeview [options] [filter1[:set1=val1[:set2=val2]]][,filter2] ... [inputfile/dir]\n");
-  printf("   where filter may be one of:\n   \"gauss\", \"sharpen\", \"denoise\", \"contrast\", \"exposure\", \"convert\", \"assert\"\n");
-  printf("   source and sink filter in the chain are set by the application\n");
+  printf("limeview [options] [inputfile/dir]\n");
   printf("options:\n");
   printf("   --help,           -h  show this help\n");
   printf("   --cache-size,     -s  set cache size in megabytes (default: 100)\n");
   printf("   --cache-metric,   -m  set cache cache metric (lru/dist/time/hits), \n                         can be repeated for a combined metric (default: lru)\n");
   printf("   --cache-strategy, -f  set cache strategy (rand/rapx/prob, default rapx)\n");
-  printf("   --bench,          -b  execute benchmark (global/pan/evaluate/redo/s0/s1/s2/s3)\n                         to off-screen buffer, prints resulting stats\n");
+//  printf("   --bench,          -b  execute benchmark (global/pan/evaluate/redo/s0/s1/s2/s3)\n                         to off-screen buffer, prints resulting stats\n");
   printf("   --verbose,        -v  prints some more information, mainly cache usage statistics\n");
 }
 
@@ -3289,7 +3283,8 @@ elm_main(int argc, char **argv)
   int winsize;
   preload_array = eina_array_new(64);
   
-  bench_start();
+  delay_cur = malloc(sizeof(struct timespec));
+  bench_delay_start(delay_cur);
   
   labelbuf = malloc(1024);
   bench = NULL;
@@ -3436,6 +3431,7 @@ elm_main(int argc, char **argv)
   evas_object_data_set(tab_group, "limeview,main_tab,refresh_cb", &refresh_group_tab);
   
   tab_tags = elm_box_add(win);
+  evas_object_data_set(tab_group, "limeview,main_tab,refresh_cb", &refresh_tab_tags);
   evas_object_size_hint_weight_set(tab_tags, EVAS_HINT_EXPAND, EVAS_HINT_EXPAND);
   evas_object_size_hint_align_set(tab_tags, EVAS_HINT_FILL, EVAS_HINT_FILL);
   
@@ -3605,9 +3601,9 @@ elm_main(int argc, char **argv)
   else
 	  elm_win_maximized_set(win, EINA_TRUE);
   
-  bench_time_mark(BENCHMARK_INIT);
+  //bench_time_mark(BENCHMARK_INIT);
   elm_run();
-  bench_time_mark(BENCHMARK_PROCESSING);
+  //bench_time_mark(BENCHMARK_PROCESSING);
   if (verbose)
     cache_stats_print();
   if (bench)
