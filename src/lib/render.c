@@ -643,6 +643,9 @@ void lime_render_area(Rect *area, Filter *f, int thread_id)
   Render_Node *job;
   Dim *ch_dim;
   
+  if (!f)
+    return;
+  
   lime_lock();
   
   lime_config_test(f);

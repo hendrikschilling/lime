@@ -131,7 +131,6 @@ char *pos_lbl_buf;
 int posx, posy;
 Evas_Object *slider_blur, *slider_contr, *gridbox = NULL;
 int cache_size;
-Dim size;
 Mat_Cache *mat_cache = NULL;
 Mat_Cache *mat_cache_old = NULL;
 int forbid_fill = 0;
@@ -176,6 +175,14 @@ static void fill_scroller(void);
 void workerfinish_schedule(void (*func)(void *data, Evas_Object *obj), void *data, Evas_Object *obj, Eina_Bool append);
 void filter_settings_create_gui(Eina_List *chain_node, Evas_Object *box);
 void step_image_do(void *data, Evas_Object *obj);
+
+Dim *config_size(Config_Data *config)
+{
+  if (!config || !config->sink)
+    return NULL;
+  
+  return filter_core_by_type(config->sink, MT_IMGSIZE);
+}
 
 int pending_action(void)
 {
@@ -234,73 +241,41 @@ typedef struct {
   int show_direct;
 } _Img_Thread_Data;
 
-void size_recalc(void)
-{  
-  Dim *size_ptr;
-  size_ptr = (Dim*)filter_core_by_type(config_curr->sink, MT_IMGSIZE);
-  if (size_ptr) {
-    size = *size_ptr;
-  }
-}
-
-Dim *size_recalc2(Filter *sink)
-{
-  if (!sink)
-    return NULL;
-  
-  return filter_core_by_type(sink, MT_IMGSIZE);
-}
-
 void grid_setsize(void)
 {
+  Dim *size;
   int x,y,w,h;
   
   if (!config_curr || !config_curr->sink )
     return;
-    
-  forbid_fill++;
   
-  size_recalc();
+  size = config_size(config_curr);
   
-  if (size.width && size.height) {
-    elm_grid_size_set(grid, size.width, size.height);
-    elm_grid_pack_set(clipper, 0, 0, size.width, size.height);
-    elm_box_recalculate(gridbox);
-  }
-  else {
-    /*elm_grid_size_set(grid, 200, 200);
-    elm_grid_pack_set(clipper, 0, 0, 200, 200);
-    elm_box_recalculate(gridbox);*/
-    forbid_fill--;
+  if (!size)
     return;
-  }
   
-  //FIXME useful?
-  //if (forbid_fill)
-    //return;
-  
+  //FIXME can any of these calls result in fill_area?
+  elm_grid_size_set(grid, size->width, size->height);
+  elm_grid_pack_set(clipper, 0, 0, size->width, size->height);
+  elm_box_recalculate(gridbox);
   
   if (fit) {
-
     elm_scroller_region_get(scroller,&x,&y,&w,&h);
 
     //FIXME!!!
     if (!w || !h) {
       printf("scroller has no area!\n");
-      forbid_fill--;
       return;
     }
     else {
-      scale_goal = (float)size.width / w;	
-      if ((float)size.height / h > scale_goal)
-	scale_goal = (float)size.height / h;
+      scale_goal = (float)size->width / w;	
+      if ((float)size->height / h > scale_goal)
+	scale_goal = (float)size->height / h;
     }
   }
     
-  evas_object_size_hint_min_set(grid,  size.width/scale_goal, size.height/scale_goal);
+  evas_object_size_hint_min_set(grid,  size->width/scale_goal, size->height/scale_goal);
   elm_box_recalculate(gridbox);
-  
-  forbid_fill--;
 }
 
 
@@ -322,7 +297,7 @@ void int_changed_do(void *data, Evas_Object *obj)
   
   delgrid();
   
-  size_recalc();
+  grid_setsize();
   
   forbid_fill--;
   
@@ -346,7 +321,7 @@ void float_changed_do(void *data, Evas_Object *obj)
   
   delgrid();
   
-  size_recalc();
+  grid_setsize();
   
   forbid_fill--;
   
@@ -440,8 +415,9 @@ void fc_insert_filter(Filter *f, Eina_List *src, Eina_List *sink)
   delgrid();
   
   //FIXME do we need this, shouldn't size recalc trigger reconfigure?
+  
   lime_config_test(fc_sink->f);
-  size_recalc();
+  grid_setsize();
   //size_recalc();
 }
 
@@ -783,23 +759,18 @@ void mat_cache_obj_stack(Mat_Cache *mat_cache, Evas_Object *obj, int scale)
   mat_cache->high_of_layer[scale] = obj;
 }
 
-float actual_scale_get()
-{
-  int x,y,w,h,grid_w,grid_h;
-  
-  elm_scroller_region_get(scroller, &x, &y, &w, &h);
-  evas_object_size_hint_min_get(grid, &grid_w, &grid_h);
-    
-  return (float)size.width / grid_w;
-}
 float config_actual_scale_get(Config_Data *config)
 {
   int x,y,w,h,grid_w,grid_h;
+  Dim *size = config_size(config);
+  
+  if (!size)
+    return 0.0;
   
   elm_scroller_region_get(scroller, &x, &y, &w, &h);
   evas_object_size_hint_min_get(grid, &grid_w, &grid_h);
     
-  return (float)size_recalc2(config->sink)->width / grid_w;
+  return (float)size->width / grid_w;
 }
 
 void mat_free_func(void *user_data, void *cell_data)
@@ -1193,13 +1164,12 @@ int fill_area_blind(int xm, int ym, int wm, int hm, int minscale, Config_Data *c
   int scale_start;
   int actual_scale;
   _Img_Thread_Data *tdata;
-  Dim size = *size_recalc2(config->sink);
+  Dim *size = config_size(config);
 
   elm_scroller_region_get(scroller, &x, &y, &w, &h);
   
-  if (!w || !h) {
+  if (!w || !h || !size)
     return 0;
-  }
   
   actual_scalediv = config_actual_scale_get(config);
   
@@ -1221,13 +1191,13 @@ int fill_area_blind(int xm, int ym, int wm, int hm, int minscale, Config_Data *c
 
   minscale = actual_scale + minscale;
   
-  if (minscale > size.scaledown_max)
-    minscale = size.scaledown_max;
+  if (minscale > size->scaledown_max)
+    minscale = size->scaledown_max;
   
   scale_start = minscale + max_fast_scaledown;
   
-  if (scale_start > size.scaledown_max)
-    scale_start = size.scaledown_max;
+  if (scale_start > size->scaledown_max)
+    scale_start = size->scaledown_max;
   
   for(scale=scale_start;scale>=minscale;scale--) {
     //additional scaledown for preview
@@ -1235,7 +1205,7 @@ int fill_area_blind(int xm, int ym, int wm, int hm, int minscale, Config_Data *c
     for(j=y/TILE_SIZE/scalediv;j<(y+h+TILE_SIZE*scalediv-1)/TILE_SIZE/scalediv;j++)
       for(i=x/TILE_SIZE/scalediv;i<(x+w+TILE_SIZE*scalediv-1)/TILE_SIZE/scalediv;i++) {
 
-	if (i*TILE_SIZE*scalediv >= size.width || j*TILE_SIZE*scalediv >= size.height) {
+	if (i*TILE_SIZE*scalediv >= size->width || j*TILE_SIZE*scalediv >= size->height) {
 	  assert(j<=100 && i >= 0);
 	  continue;
 	  }
@@ -1251,11 +1221,11 @@ int fill_area_blind(int xm, int ym, int wm, int hm, int minscale, Config_Data *c
 	  if (miny < 0) {
 	    miny = 0;
 	  }
-	  if (maxx > size.width) {
-	    maxx = size.width;
+	  if (maxx > size->width) {
+	    maxx = size->width;
 	  }
-	  if (maxy > size.height) {
-	    maxy = size.height;
+	  if (maxy > size->height) {
+	    maxy = size->height;
 	  }
 	  
 	  area.corner.scale = scale;
@@ -1292,8 +1262,11 @@ int fill_area(int xm, int ym, int wm, int hm, int minscale, int preview)
   int scale_start;
   int actual_scale;
   int started = 0;
-  
   _Img_Thread_Data *tdata;
+  Dim *size = config_size(config_curr);
+  
+  if (!size)
+    return 0;
   
   if (forbid_fill)
     return 0;
@@ -1303,9 +1276,6 @@ int fill_area(int xm, int ym, int wm, int hm, int minscale, int preview)
   
   if (worker >= max_workers)
     return 0;
-  
-  /*if (pending_action())
-    return 0;*/
   
   if (!grid)
     return 0;
@@ -1317,7 +1287,7 @@ int fill_area(int xm, int ym, int wm, int hm, int minscale, int preview)
     return 0;
   }
   
-  actual_scalediv = actual_scale_get();
+  actual_scalediv = config_actual_scale_get(config_curr);
   
   x += xm;
   y += ym;
@@ -1337,13 +1307,13 @@ int fill_area(int xm, int ym, int wm, int hm, int minscale, int preview)
 
   minscale = actual_scale + minscale;
   
-  if (minscale > size.scaledown_max)
-    minscale = size.scaledown_max;
+  if (minscale > size->scaledown_max)
+    minscale = size->scaledown_max;
   
   scale_start = minscale + max_fast_scaledown;
   
-  if (scale_start > size.scaledown_max)
-    scale_start = size.scaledown_max;
+  if (scale_start > size->scaledown_max)
+    scale_start = size->scaledown_max;
   
   for(scale=scale_start;scale>=minscale;scale--) {
     //additional scaledown for preview
@@ -1353,7 +1323,7 @@ int fill_area(int xm, int ym, int wm, int hm, int minscale, int preview)
 
         cell = mat_cache_get(mat_cache, scale, i, j);
 	
-	if (i*TILE_SIZE*scalediv >= size.width || j*TILE_SIZE*scalediv >= size.height) {
+	if (i*TILE_SIZE*scalediv >= size->width || j*TILE_SIZE*scalediv >= size->height) {
 	  assert(j<=100 && i >= 0);
 	  continue;
 	  }
@@ -1370,11 +1340,11 @@ int fill_area(int xm, int ym, int wm, int hm, int minscale, int preview)
 	  if (miny < 0) {
 	    miny = 0;
 	  }
-	  if (maxx > size.width) {
-	    maxx = size.width;
+	  if (maxx > size->width) {
+	    maxx = size->width;
 	  }
-	  if (maxy > size.height) {
-	    maxy = size.height;
+	  if (maxy > size->height) {
+	    maxy = size->height;
 	  }
 	  
 	  //FIXME does not work, clipping is at the moment done uncoditionally in _image_insert
@@ -1444,24 +1414,22 @@ static void fill_scroller(void)
 {
   int x, y, w, h, grid_w, grid_h;
   float scale;
+  Dim *size;
   
-  if (!config_curr)
-    return;
-  
-  if (!grid)
+  if (!config_curr || !grid)
     return;
 
   evas_object_size_hint_min_get(grid, &grid_w, &grid_h);
   elm_scroller_region_get(scroller, &x, &y, &w, &h);
+  size = config_size(config_curr);
   
-  if (!w || !h) {
+  if (!w || !h || !size)
     return;
-  }
 
   if (grid_w && grid_h) {
-  scale = size.width / grid_w;	
-  if ((float)size.height / grid_h > scale)
-    scale = (float)size.height / grid_h;
+  scale = size->width / grid_w;	
+  if ((float)size->height / grid_h > scale)
+    scale = (float)size->height / grid_h;
   }
   else
     scale = INFINITY;
@@ -1491,9 +1459,9 @@ static void fill_scroller_blind(Config_Data *config)
 
   evas_object_size_hint_min_get(grid, &grid_w, &grid_h);
   elm_scroller_region_get(scroller, &x, &y, &w, &h);
-  size = size_recalc2(config->sink);
+  size = config_size(config);
   
-  if (!w || !h) {
+  if (!w || !h || !size) {
     return;
   }
 
@@ -1538,6 +1506,8 @@ void group_select_do(void *data, Evas_Object *obj)
   const char *filename;
   Elm_Object_Item *it;
   
+  abort();
+  
   delgrid();
     
   File_Group *group = tagfiles_get(files);
@@ -1574,7 +1544,7 @@ void group_select_do(void *data, Evas_Object *obj)
   }
   elm_list_item_selected_set(it, EINA_TRUE);
   
-  size_recalc();
+  grid_setsize();
 
   fill_scroller();
 }
@@ -1874,22 +1844,21 @@ void config_finish(void *data, Ecore_Thread *thread)
   Config_Data *config = data;
   _Img_Thread_Data *tdata = calloc(sizeof(_Img_Thread_Data), 1);
   uint8_t *buf;
+  Dim *size = config_size(config);
   
   worker_config--;
   config->running = EINA_FALSE;
   //config was deleted/invalidated
   if (!config->sink)
     lime_config_reset(config->load);
-  else if (config->failed) {
+  else if (config->failed || !size) {
     free(tdata);
   }
   else {
-    //FIXME free stuff on failed!
-    
-    tdata->scale =  size_recalc2(config->sink)->scaledown_max;
+    tdata->scale =  size->scaledown_max;
     tdata->area.corner.x = 0;
     tdata->area.corner.y = 0;
-    tdata->area.corner.scale = size_recalc2(config->sink)->scaledown_max;
+    tdata->area.corner.scale = size->scaledown_max;
     tdata->area.width = TILE_SIZE;
     tdata->area.height =  TILE_SIZE;
     tdata->config = config;
@@ -2147,7 +2116,6 @@ void step_image_do(void *data, Evas_Object *obj)
     
   //we start as early as possible with rendering!
   forbid_fill--;
-  size_recalc();
   if (quick_preview_only)
     first_preview = 1;
   printf("configuration delay: %f\n", bench_delay_get(delay_cur)); 
@@ -2392,28 +2360,36 @@ on_fit_image(void *data, Evas_Object *obj, void *event_info)
   int x,y,w,h;
   int grid_w, grid_h;
   float new_scaledown;
+  Dim *size = config_size(config_curr);
+  
   
   if (fit != 1) {
+    fit = 1;
+    
+    if (!size)
+      return;
+    
     elm_scroller_region_get(scroller, &x, &y, &w, &h);
     
     evas_object_size_hint_min_get(grid, &grid_w, &grid_h);
     
     fit = 1;
+    
 
     if (!w || !h) {
       scale_goal = 1.0;
     }
     else {
-      scale_goal = (float)size.width / w;	
-      if ((float)size.height / h > scale_goal)
-	scale_goal = (float)size.height / h;
+      scale_goal = (float)size->width / w;	
+      if ((float)size->height / h > scale_goal)
+	scale_goal = (float)size->height / h;
     }
     
-    new_scaledown = 1.0/actual_scale_get()*scale_goal;
+    new_scaledown = 1.0/config_actual_scale_get(config_curr)*scale_goal;
     
     trans = elm_transit_add();
     elm_transit_object_add(trans, grid);
-    elm_transit_effect_add(trans, &_trans_grid_zoom_trans_cb, _trans_grid_zoom_contex_new(grid_w, grid_h, size.width/scale_goal,size.height/scale_goal,x+w/2,y+h/2,x/new_scaledown+w/(new_scaledown*2),y/new_scaledown+h/(new_scaledown*2),w,h), &_trans_grid_zoom_contex_del);
+    elm_transit_effect_add(trans, &_trans_grid_zoom_trans_cb, _trans_grid_zoom_contex_new(grid_w, grid_h, size->width/scale_goal,size->height/scale_goal,x+w/2,y+h/2,x/new_scaledown+w/(new_scaledown*2),y/new_scaledown+h/(new_scaledown*2),w,h), &_trans_grid_zoom_contex_del);
     elm_transit_duration_set(trans, 0.5);
     elm_transit_tween_mode_set(trans, ELM_TRANSIT_TWEEN_MODE_SINUSOIDAL);
     elm_transit_repeat_times_set(trans, 0);
@@ -2448,19 +2424,24 @@ on_origscale_image(void *data, Evas_Object *obj, void *event_info)
   int x,y,w,h;
   int grid_w, grid_h;
   float new_scaledown;
+  Dim *size = config_size(config_curr);
   
   if (scale_goal != 1.0) {
+    fit = 0;
+    
+    if (!size)
+      return;
+    
     elm_scroller_region_get(scroller, &x, &y, &w, &h);
     
     evas_object_size_hint_min_get(grid, &grid_w, &grid_h);
     
-    fit = 0;
     scale_goal = 1.0;
-    new_scaledown = 1.0/actual_scale_get()*scale_goal;
+    new_scaledown = 1.0/config_actual_scale_get(config_curr)*scale_goal;
     
     trans = elm_transit_add();
     elm_transit_object_add(trans, grid);
-    elm_transit_effect_add(trans, &_trans_grid_zoom_trans_cb, _trans_grid_zoom_contex_new(grid_w, grid_h, size.width/scale_goal,size.height/scale_goal,x+w/2,y+h/2,x/new_scaledown+w/(new_scaledown*2),y/new_scaledown+h/(new_scaledown*2),w,h), &_trans_grid_zoom_contex_del);
+    elm_transit_effect_add(trans, &_trans_grid_zoom_trans_cb, _trans_grid_zoom_contex_new(grid_w, grid_h, size->width/scale_goal,size->height/scale_goal,x+w/2,y+h/2,x/new_scaledown+w/(new_scaledown*2),y/new_scaledown+h/(new_scaledown*2),w,h), &_trans_grid_zoom_contex_del);
     elm_transit_duration_set(trans, 0.5);
     elm_transit_tween_mode_set(trans, ELM_TRANSIT_TWEEN_MODE_SINUSOIDAL);
     elm_transit_repeat_times_set(trans, 0);
@@ -2504,23 +2485,28 @@ void zoom_in_do(void)
   int x,y,w,h;
   int grid_w, grid_h;
   float new_scaledown;
+  Dim *size = config_size(config_curr);
   
   if (scale_goal > 0.25) {
+    fit = 0;
+    
+    if (!size)
+      return;
+    
     elm_scroller_region_get(scroller, &x, &y, &w, &h);
     
     evas_object_size_hint_min_get(grid, &grid_w, &grid_h);
     
-    fit = 0;
     
     scale_goal /= 1.5;
     if (scale_goal < 0.25)
       scale_goal = 0.25;
     
-    new_scaledown = 1.0/actual_scale_get()*scale_goal;
+    new_scaledown = 1.0/config_actual_scale_get(config_curr)*scale_goal;
     
     trans = elm_transit_add();
     elm_transit_object_add(trans, grid);
-    elm_transit_effect_add(trans, &_trans_grid_zoom_trans_cb, _trans_grid_zoom_contex_new(grid_w, grid_h, size.width/scale_goal,size.height/scale_goal,x+w/2,y+h/2,x/new_scaledown+w/(new_scaledown*2),y/new_scaledown+h/(new_scaledown*2),w,h), &_trans_grid_zoom_contex_del);
+    elm_transit_effect_add(trans, &_trans_grid_zoom_trans_cb, _trans_grid_zoom_contex_new(grid_w, grid_h, size->width/scale_goal,size->height/scale_goal,x+w/2,y+h/2,x/new_scaledown+w/(new_scaledown*2),y/new_scaledown+h/(new_scaledown*2),w,h), &_trans_grid_zoom_contex_del);
     elm_transit_duration_set(trans, 0.5);
     elm_transit_tween_mode_set(trans, ELM_TRANSIT_TWEEN_MODE_SINUSOIDAL);
     elm_transit_repeat_times_set(trans, 0);
@@ -2540,6 +2526,7 @@ Eina_Bool _idle_progress_printer(void *data)
 {
   Tagfiles *tagfiles = data;
   char buf[64];
+  Dim *size;
   
   sprintf(buf, "scanned %d files in %d dirs", tagfiles_scanned_files(tagfiles), tagfiles_scanned_dirs(tagfiles));
   
@@ -2562,6 +2549,7 @@ Eina_Bool _idle_progress_printer(void *data)
     evas_object_show(file_slider);
     
     if (!gridbox) {
+      size = config_size(config_curr);
       gridbox = elm_box_add(win);
       elm_object_content_set(scroller, gridbox);
       evas_object_size_hint_weight_set(gridbox, EVAS_HINT_EXPAND, EVAS_HINT_EXPAND);
@@ -2570,8 +2558,14 @@ Eina_Bool _idle_progress_printer(void *data)
       
       grid = elm_grid_add(win);
       clipper = evas_object_rectangle_add(evas_object_evas_get(win));
-      elm_grid_pack(grid, clipper, 0, 0, size.width, size.height);
-      evas_object_size_hint_min_set(grid,  200, 200);
+      if (size) {
+	elm_grid_pack(grid, clipper, 0, 0, size->width, size->height);
+	evas_object_size_hint_min_set(grid,  size->width, size->height);
+      }
+      else {
+	elm_grid_pack(grid, clipper, 0, 0, 200, 200);
+	evas_object_size_hint_min_set(grid,  200, 200);
+      }
       elm_box_recalculate(gridbox);
       elm_box_pack_start(gridbox, grid);
       evas_object_show(grid);
@@ -2598,6 +2592,8 @@ static void _ls_progress_cb(Tagfiles *tagfiles, void *data)
 
 static void _ls_done_cb(Tagfiles *tagfiles, void *data)
 {
+  Dim *size;
+  
   evas_object_del(load_notify);
   
   if (idle_progress_print) {
@@ -2622,6 +2618,8 @@ static void _ls_done_cb(Tagfiles *tagfiles, void *data)
     evas_object_show(file_slider);
     
     if (!gridbox) {
+      size = config_size(config_curr);
+      
       gridbox = elm_box_add(win);
       elm_object_content_set(scroller, gridbox);
       evas_object_size_hint_weight_set(gridbox, EVAS_HINT_EXPAND, EVAS_HINT_EXPAND);
@@ -2630,8 +2628,14 @@ static void _ls_done_cb(Tagfiles *tagfiles, void *data)
       
       grid = elm_grid_add(win);
       clipper = evas_object_rectangle_add(evas_object_evas_get(win));
-      elm_grid_pack(grid, clipper, 0, 0, size.width, size.height);
-      evas_object_size_hint_min_set(grid,  200, 200);
+      if (size) {
+	elm_grid_pack(grid, clipper, 0, 0, size->width, size->height);
+	evas_object_size_hint_min_set(grid,  size->width, size->height);
+      }
+      else {
+	elm_grid_pack(grid, clipper, 0, 0, 200, 200);
+	evas_object_size_hint_min_set(grid,  200, 200);
+      }
       elm_box_recalculate(gridbox);
       elm_box_pack_start(gridbox, grid);
       evas_object_show(grid);
@@ -2685,6 +2689,10 @@ void zoom_out_do(void)
   int x,y,w,h;
   int grid_w, grid_h;
   float new_scaledown;
+  Dim *size = config_size(config_curr);
+  
+  if (!size)
+    return;
   
   elm_scroller_region_get(scroller, &x, &y, &w, &h);
   
@@ -2694,11 +2702,11 @@ void zoom_out_do(void)
   
   scale_goal *= 1.5;
   
-  new_scaledown = 1.0/actual_scale_get()*scale_goal;
+  new_scaledown = 1.0/config_actual_scale_get(config_curr)*scale_goal;
   
   trans = elm_transit_add();
   elm_transit_object_add(trans, grid);
-  elm_transit_effect_add(trans, &_trans_grid_zoom_trans_cb, _trans_grid_zoom_contex_new(grid_w, grid_h, size.width/scale_goal,size.height/scale_goal,x+w/2,y+h/2,x/new_scaledown+w/(new_scaledown*2),y/new_scaledown+h/(new_scaledown*2),w,h), &_trans_grid_zoom_contex_del);
+  elm_transit_effect_add(trans, &_trans_grid_zoom_trans_cb, _trans_grid_zoom_contex_new(grid_w, grid_h, size->width/scale_goal,size->height/scale_goal,x+w/2,y+h/2,x/new_scaledown+w/(new_scaledown*2),y/new_scaledown+h/(new_scaledown*2),w,h), &_trans_grid_zoom_contex_del);
   elm_transit_duration_set(trans, 0.5);
   elm_transit_tween_mode_set(trans, ELM_TRANSIT_TWEEN_MODE_SINUSOIDAL);
   elm_transit_repeat_times_set(trans, 0);

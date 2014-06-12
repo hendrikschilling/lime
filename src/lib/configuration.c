@@ -1294,12 +1294,16 @@ int lime_config_test(Filter *f_sink)
   Eina_Array *cons;
   Con *con_orig;
   Filter *f = f_sink;
-  Config *c = filter_chain_last_filter(f)->c;
+  Config *c;
+  
+  pthread_mutex_lock(&filter_chain_last_filter(f_sink)->lock);
+  
+  c = filter_chain_last_filter(f)->c;
   
   if (c && c->configured) {
+    pthread_mutex_unlock(&filter_chain_last_filter(f_sink)->lock);
     return 0;
   }
-  pthread_mutex_lock(&filter_chain_last_filter(f_sink)->lock);
   if (!c) {
     c = config_new();
     filter_chain_last_filter(f)->c = c;
