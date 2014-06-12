@@ -33,6 +33,7 @@
 struct _Config {
    int configured;
    int refcount;
+   int delete;
    Eina_Array *applied_metas;
    Eina_Array *new_fs;
    Eina_Inarray *succ_inserts;
@@ -73,6 +74,9 @@ void lime_filter_config_unref(Filter *f)
   assert(c->refcount);
   
   c->refcount--;
+  
+  if (!c->refcount && c->delete)
+    lime_config_reset(f);
 }
 
 void meta_dep_set_data_calc(Meta *m, void *dep_data)
@@ -1275,7 +1279,7 @@ void lime_config_reset(Filter *f)
   
   if (c->refcount) {
     pthread_mutex_unlock(&f->lock);
-    printf("FIXME config still has lingering ref (count %d)!\n", c->refcount);
+    c->delete = EINA_TRUE;
     return;
   }
   _config_reset_internal(f);
@@ -1302,6 +1306,7 @@ int lime_config_test(Filter *f_sink)
   }
   else {
     assert(!c->refcount);
+    assert(!c->delete);
     _config_reset_internal(f);
     c = config_new();
     filter_chain_last_filter(f)->c = c;

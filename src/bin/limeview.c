@@ -1557,6 +1557,7 @@ void group_select_do(void *data, Evas_Object *obj)
       continue;
     }
       
+    //FIXME we should use config_data_get!!!
     lime_setting_string_set(config_curr->load, "filename", filename);
     
     failed = lime_config_test(config_curr->sink);
@@ -1767,7 +1768,7 @@ void group_config_reset(File_Group *group)
   for(i=0;i<filegroup_count(group);i++)
   {
     config = filegroup_data_get(group, i);
-    if (config && config->sink) {
+    if (config && config != config_curr && config->sink && !config->running) {
       //FIXME free filters?
       if (!config->running)
 	lime_config_reset(config->sink);
@@ -1879,7 +1880,10 @@ void config_finish(void *data, Ecore_Thread *thread)
   //config was deleted/invalidated
   if (!config->sink)
     lime_config_reset(config->load);
-  else {   
+  else if (config->failed) {
+    free(tdata);
+  }
+  else {
     //FIXME free stuff on failed!
     
     tdata->scale =  size_recalc2(config->sink)->scaledown_max;
