@@ -1738,10 +1738,10 @@ void group_config_reset(File_Group *group)
   for(i=0;i<filegroup_count(group);i++)
   {
     config = filegroup_data_get(group, i);
+    //FIXME if config->running -> the config thread is still waiting to execute? cancel that thread?
     if (config && config != config_curr && config->sink && !config->running) {
       //FIXME free filters?
-      if (!config->running)
-	lime_config_reset(config->sink);
+      lime_config_reset(config->sink);
       config->sink = NULL;
     }
   }
@@ -1848,10 +1848,9 @@ void config_finish(void *data, Ecore_Thread *thread)
   
   worker_config--;
   config->running = EINA_FALSE;
-  //config was deleted/invalidated
-  if (!config->sink)
-    lime_config_reset(config->load);
-  else if (config->failed || !size) {
+  assert(config->sink);
+  
+  if (config->failed || !size) {
     free(tdata);
   }
   else {
