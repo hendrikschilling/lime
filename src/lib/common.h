@@ -50,4 +50,6 @@ typedef struct _Dim {
 
 int clip_u8(int a);
 
+#define DIV_SHIFT_ROUND_UP(V, S) ((V + (1u << S) - 1) >> S)
+
 #endif

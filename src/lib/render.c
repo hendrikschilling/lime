@@ -265,6 +265,7 @@ Render_Node *render_node_new(Filter *f, Tile *tile, Render_State *state)
   else
     node->mode = MODE_INPUT;
 
+  
   return node;
 }
 
@@ -370,6 +371,7 @@ void filter_render_tile(Render_Node *job, int thread_id)
    }*/
   
   clock_gettime(CLOCK_THREAD_CPUTIME_ID,&t_start);
+  
   job->f->mode_buffer->worker(job->f, job->inputs, channels, &job->tile->area, thread_id);
   clock_gettime(CLOCK_THREAD_CPUTIME_ID,&t_stop);
   
@@ -508,7 +510,6 @@ Render_Node *render_state_getjob( Render_State *state)
 
 	//don't incnode so parent node will recheck for this tile
 	//the parent will propably be added to tile->need
-	
 	return jobnode;
       }
       //node needs input tiles
@@ -654,13 +655,12 @@ void lime_render_area(Rect *area, Filter *f, int thread_id)
   
   ch_dim = meta_child_data_by_type(ea_data(f->node->con_ch_in, 0), MT_IMGSIZE);
   
-  assert(area->corner.x < ch_dim->width >> area->corner.scale);
-  assert(area->corner.y < ch_dim->height >> area->corner.scale);
+  assert(area->corner.x < DIV_SHIFT_ROUND_UP(ch_dim->width, area->corner.scale));
+  assert(area->corner.y < DIV_SHIFT_ROUND_UP(ch_dim->height, area->corner.scale));
   
   Render_State *state = render_state_new(area, f);
   
   while ((job = render_state_getjob(state))) {
-    
     assert(job->need == 0);
     
     if (job->mode == MODE_CLOBBER || job->mode == MODE_INPUT) {
