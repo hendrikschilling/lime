@@ -37,6 +37,8 @@ int _rot_lr_input_fixed(Filter *f)
     data->out_dim->height = in_dim->width;
     data->out_dim->scaledown_max = in_dim->scaledown_max;
   }
+  else
+    abort();
   
   return 0;
 }
@@ -120,7 +122,7 @@ static void _worker(Filter *f, Eina_Array *in, Eina_Array *out, Rect *area, int 
         }
       }
     else
-      printf("rotation not (yet) implemented: %d\n", data->rotation);
+      printf("FIXME simplerotate: not (yet) implemented: %d\n", data->rotation);
   }
 
 }
