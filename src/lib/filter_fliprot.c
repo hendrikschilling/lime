@@ -43,6 +43,7 @@ static int _input_fixed(Filter *f)
   }
   else {
     //outside of 1/8 is not allowed! case '1' should never invoke this filter!
+    printf("FIXME fliprot: invalid rotation?! %d\n", rot);
     return -1;
   }
   
@@ -85,8 +86,14 @@ static void _area_calc(Filter *f, Rect *in, Rect *out)
     out->width = in->height; //for interpolation
     out->height = in->width;
   }
-  else
-    printf("FIXME rotation not (yet) implemented: %d\n", rot);
+  else {
+    printf("FIXME fliprot: rotation not (yet) implemented: %d\n", rot);
+    out->corner.x = 0;
+    out->corner.y = 0;
+    out->corner.scale = in->corner.scale;
+    out->width = DEFAULT_TILE_SIZE;
+    out->height = DEFAULT_TILE_SIZE;
+  }
 }
 
 static uint8_t *tileptr8(Tiledata *tile, int x, int y)
@@ -132,8 +139,8 @@ static void _worker(Filter *f, Eina_Array *in, Eina_Array *out, Rect *area, int 
         }
       }
     else {
-      printf("FIXME rotation not (yet) implemented: %d\n", rot);
-      memcpy(out_td, in_td, DEFAULT_TILE_SIZE*DEFAULT_TILE_SIZE);
+      printf("FIXME fliprot: rotation not (yet) implemented: %d\n", rot);
+      memcpy(out_td->data, in_td->data, DEFAULT_TILE_SIZE*DEFAULT_TILE_SIZE);
     }
   }
 
