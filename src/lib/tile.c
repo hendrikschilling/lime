@@ -124,6 +124,7 @@ Tile *tile_new(Rect *area, Tilehash hash, Filter *f, Filter *f_req)
   tile->hash = hash;
   tile->fc = f->fc;
   tile->filterhash = filter_hash_value_get(f);
+  assert(hash_hash_value_get(hash.filterhash) == filter_hash_value_get(f));
   if (f_req)
     tile->fc_req = f_req->fc;
   tile->refs = 1;

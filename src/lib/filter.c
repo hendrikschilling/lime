@@ -510,7 +510,15 @@ uint32_t filter_hash_value_get(Filter *f)
 {
   assert(f->hash.len);
   
-  return &f->hash.hash;
+  return f->hash.hash;
+}
+
+//FIXME proper hash calculation!
+uint32_t hash_hash_value_get(Hash *h)
+{
+  assert(h->len);
+  
+  return h->hash;
 }
 
 //gives the predecessor according to channel
@@ -545,6 +553,7 @@ Tilehash tile_hash_calc(Filter *f, Rect *area)
   len = sprintf(buf, "%d%d%d%d%d%dtail", h.filterhash->hash, area->corner.x, area->corner.y, area->width, area->height, area->corner.scale);
   
   h.tilehash = eina_hash_superfast(buf, len);
+  h.area = *area;
   
   return h;
 }
