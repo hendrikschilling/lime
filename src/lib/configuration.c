@@ -71,6 +71,11 @@ void lime_filter_config_unref(Filter *f)
   
   assert(c);
     
+  if (!c->refcount) {
+    printf("FIXME lime_filter_config_unref called with refcount == 0!\n");
+    return;
+  }
+  
   assert(c->refcount);
   
   c->refcount--;

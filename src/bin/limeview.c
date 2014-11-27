@@ -56,7 +56,7 @@
 #define BENCHMARK_LENGTH 2000
 
 //FIXME adjust depending on speed!
-#define PRELOAD_CONFIG_RANGE 4
+#define PRELOAD_CONFIG_RANGE 32
 #define PRELOAD_IMG_RANGE 2
 #define PRELOAD_THRESHOLD 8
 
@@ -2098,13 +2098,13 @@ void step_image_do(void *data, Evas_Object *obj)
   
   if (config_curr) {
     //FIXME free ->filter_chain
-    fc_del_gui(config_curr->filter_chain);
+    //fc_del_gui(config_curr->filter_chain);
     config_curr->filter_chain = NULL;
     //config_curr->filters = NULL;
     //config_curr = NULL;
   }
   config_curr = config;
-  fc_gui_from_list(config_curr->filters);
+  //fc_gui_from_list(config_curr->filters);
   //FIXME free filter list
   //config_curr->filters = NULL;
   //FIXME get all filter handling from actual filter chain
@@ -3098,7 +3098,12 @@ static void on_tag_changed(void *data, Evas_Object *obj, void *event_info)
   sprintf(unit_fmt, "%%.0f/%d", filtered_image_count);
   elm_slider_unit_format_set(file_slider, unit_fmt); 
   
-  filegroup_filterchain_set(cur_group, lime_filter_chain_serialize(((Filter_Chain*)eina_list_data_get(eina_list_next(config_curr->filter_chain)))->f));
+  //assert(config_curr->filterchain);
+  
+  //we don't need this on tag changed right?
+  //filegroup_filterchain_set(cur_group, lime_filter_chain_serialize(((Filter_Chain*)eina_list_data_get(eina_list_next(config_curr->filter_chain)))->f));
+  
+  save_sidecar(cur_group);
   
   if (!group_in_filters(cur_group, tags_filter))
       workerfinish_schedule(&step_image_do, NULL, NULL, EINA_TRUE);
