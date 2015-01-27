@@ -15,7 +15,7 @@ link_directories(${JPEG_LIBRARY_DIRS})
 link_directories(${EXIF_LIBRARY_DIRS})
 link_directories(${SWSCALE_LIBRARY_DIRS})
 
-add_library(lime SHARED global.c common.c render.c tile.c filter.c meta.c filter_convert.c filter_contrast.c filter_comparator.c filter_load.c filter_savetiff.c filter_sharpen.c filters.c filter_denoise.c filter_loadjpeg.c cache.c meta_array.c filter_gauss.c filter_downscale.c configuration.c filter_memsink.c filter_loadtiff.c filter_pretend.c filter_crop.c filter_simplerotate.c filter_interleave.c filter_savejpeg.c filter_fliprot.c)
+add_library(lime SHARED global.c common.c render.c tile.c filter.c meta.c filter_convert.c filter_contrast.c filter_comparator.c filter_load.c filter_savetiff.c filter_sharpen.c filters.c filter_denoise.c filter_loadjpeg.c cache.c meta_array.c filter_gauss.c filter_downscale.c configuration.c filter_memsink.c filter_loadtiff.c filter_pretend.c filter_crop.c filter_simplerotate.c filter_interleave.c filter_savejpeg.c filter_fliprot.c filter_rotate.c)
 
 target_link_libraries(lime ${EINA_LIBRARIES} ${TIFF_LIBRARIES} ${JPEG_LIBRARIES} ${LCMS_LIBRARIES} ${EXIF_LIBRARIES} ${SWSCALE_LIBRARIES} m rt ${CMAKE_THREAD_LIBS_INIT})
 

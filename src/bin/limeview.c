@@ -44,6 +44,7 @@
 #include "filter_simplerotate.h"
 #include "filter_interleave.h"
 #include "filter_savejpeg.h"
+#include "filter_rotate.h"
 
 #define TILE_SIZE DEFAULT_TILE_SIZE
 
@@ -420,8 +421,8 @@ void fc_insert_filter(Filter *f, Eina_List *src, Eina_List *sink)
   //FIXME do we need this, shouldn't size recalc trigger reconfigure?
   
   lime_config_test(fc_sink->f);
-  grid_setsize();
-  //delgrid();
+  forbid_fill--;
+  delgrid();
 }
 
 void insert_before_do(void *data, Evas_Object *obj)
@@ -3575,7 +3576,8 @@ elm_main(int argc, char **argv)
   elm_hoversel_item_add(select_filter, "gauss", NULL, ELM_ICON_NONE, &on_select_filter_select, &filter_core_gauss);
   elm_hoversel_item_add(select_filter, "sharpen", NULL, ELM_ICON_NONE, &on_select_filter_select, &filter_core_sharpen);
   elm_hoversel_item_add(select_filter, "denoise", NULL, ELM_ICON_NONE, &on_select_filter_select, &filter_core_denoise);
-  elm_hoversel_item_add(select_filter, "rotate", NULL, ELM_ICON_NONE, &on_select_filter_select, &filter_core_simplerotate);
+  elm_hoversel_item_add(select_filter, "simple rotate", NULL, ELM_ICON_NONE, &on_select_filter_select, &filter_core_simplerotate);
+  elm_hoversel_item_add(select_filter, "rotate", NULL, ELM_ICON_NONE, &on_select_filter_select, &filter_core_rotate);
   elm_object_text_set(select_filter, "contrast");
   select_filter_func = filter_core_contrast.filter_new_f;
   evas_object_show(select_filter);
