@@ -262,6 +262,7 @@ Eina_List *lime_filter_chain_deserialize(char *str)
             if (strchr(tmp, ','))
               *strchr(tmp, ',') = '\0';
             lime_setting_string_set(f, setting, string_unescape_colon(tmp));
+	    printf("set %s to %s\n", setting, string_unescape_colon(tmp));
             free(tmp);
             break;
           default :

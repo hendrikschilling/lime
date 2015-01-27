@@ -543,7 +543,7 @@ static void _ls_main_cb(void *data, Eio_File *handler, const Eina_File_Direct_In
   if (!file)
     return;
 
-  if (info->type != EINA_FILE_DIR) {
+  if (info->type != EINA_FILE_DIR && info->type != EINA_FILE_LNK) {
     tagfiles->cur_dir_files_count++;
     tagfiles->scanned_files++;
     insert_file(tagfiles, file);
@@ -560,6 +560,7 @@ static void _ls_main_cb(void *data, Eio_File *handler, const Eina_File_Direct_In
   }
   else {
     tagfiles->scanned_dirs++;
+    //if (info->type == EINA_FILE_LNK)
     eina_inarray_push(tagfiles->dirs_ls, &file);
   }
 }

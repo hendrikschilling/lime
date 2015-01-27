@@ -381,13 +381,17 @@ void fc_insert_filter(Filter *f, Eina_List *src, Eina_List *sink)
   Filter_Chain *fc;
   fc = fc_new(f);
   Eina_List *chain_node = NULL;
-    
+  
+  forbid_fill++;
+  
   assert(cur_group);
   assert(config_curr);
   
   //we always have src or sink, but those might not have an elm_item!
   assert(src);
   assert(sink);
+  
+  delgrid();
   
   fc_src = eina_list_data_get(src);
   fc_sink = eina_list_data_get(sink);
@@ -412,13 +416,12 @@ void fc_insert_filter(Filter *f, Eina_List *src, Eina_List *sink)
   
   filegroup_filterchain_set(cur_group, lime_filter_chain_serialize(((Filter_Chain*)eina_list_data_get(eina_list_next(config_curr->filter_chain)))->f));
   
-  delgrid();
   
   //FIXME do we need this, shouldn't size recalc trigger reconfigure?
   
   lime_config_test(fc_sink->f);
   grid_setsize();
-  //size_recalc();
+  //delgrid();
 }
 
 void insert_before_do(void *data, Evas_Object *obj)
@@ -2098,13 +2101,14 @@ void step_image_do(void *data, Evas_Object *obj)
   
   if (config_curr) {
     //FIXME free ->filter_chain
-    //fc_del_gui(config_curr->filter_chain);
+    fc_del_gui(config_curr->filter_chain);
     config_curr->filter_chain = NULL;
     //config_curr->filters = NULL;
     //config_curr = NULL;
   }
   config_curr = config;
-  //fc_gui_from_list(config_curr->filters);
+  //create gui only if necessary (tab selected) or if filter_chain is needed?
+  fc_gui_from_list(config_curr->filters);
   //FIXME free filter list
   //config_curr->filters = NULL;
   //FIXME get all filter handling from actual filter chain

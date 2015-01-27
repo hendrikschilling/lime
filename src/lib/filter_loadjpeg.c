@@ -945,8 +945,6 @@ int _loadjpeg_input_fixed(Filter *f)
     return -1;
   }
   
-  //data->rot = _get_exif_orientation(data->filename);
-  
   jpeg_create_decompress(&cinfo);
   jpeg_stdio_src(&cinfo, file);
   jpeg_read_header(&cinfo, TRUE);
@@ -956,6 +954,9 @@ int _loadjpeg_input_fixed(Filter *f)
     printf("implement jpeg_color_space %d\n", cinfo.jpeg_color_space);
     return -1;
   }
+  
+  //default
+  data->rot = 1;
   
   get_exif_stuff(data->filename, &data->thumb_data, &data->thumb_len, &data->rot);
   
