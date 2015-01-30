@@ -19,6 +19,8 @@
 
 #include "filter_rotate.h"
 
+//TODO manipulate exif orientation to remove the extra rotation step
+
 typedef struct {
   Meta *dim_in_meta;
   Dim *out_dim;
@@ -40,14 +42,14 @@ int imax(int a, int b)
     return b;
 }
 
-float rx(_Data *data, int x, int y, int scale)
+float inline rx(_Data *data, int x, int y, int scale)
 {
     x -= data->offx_tgt >> scale;
     y -= data->offy_tgt >> scale;
     return data->cos_c*x-data->sin_c*y+(data->offx_src >> scale);
 }
 
-float ry(_Data *data, int x, int y, int scale)
+float inline ry(_Data *data, int x, int y, int scale)
 {
     x -= data->offx_tgt >> scale;
     y -= data->offy_tgt >> scale;
@@ -92,9 +94,41 @@ void calc_rot_src_area(_Data *data, Rect *target, Rect *src)
     
     src->corner.x = minx;
     src->corner.y = miny;
-    //+1 for max-min and +1 for interpolation
-    src->width =maxx-minx+2;
-    src->height = maxy-miny+2;
+    src->width =maxx-minx;
+    src->height = maxy-miny;
+}
+
+void lrec(float rad, int ow, int oh, int *w, int *h)
+{
+    int l, s;
+    if (ow >= oh) {
+        l = ow;
+        s = oh;
+    }
+    else {
+        l = oh;
+        s = ow;
+    }
+
+    float sina = fabs(sin(rad));
+    float cosa = fabs(cos(rad));
+    
+    if (s <= 2*sina*cosa*l) {
+        float x = 0.5*s;
+        if (ow >= oh) {
+            *w = x/sina;
+            *h = x/cosa;
+        }
+        else {
+            *w = x/cosa;
+            *h = x/sina;
+        }
+    }
+  else{
+    float cos2a = cosa*cosa - sina*sina;
+    *w = (ow*cosa - oh*sina)/cos2a;
+    *h = (oh*cosa - ow*sina)/cos2a;
+  }
 }
 
 static int _input_fixed(Filter *f)
@@ -102,25 +136,29 @@ static int _input_fixed(Filter *f)
   _Data *data = ea_data(f->data, 0);
   Dim *in_dim = data->dim_in_meta->data;
   Rect src, target;
+  int sw, sh;
   
-  data->sin_c = sin(*data->rot/180*M_PI);
-  data->cos_c = cos(*data->rot/180*M_PI);
+  data->sin_c = sin(-*data->rot/180*M_PI);
+  data->cos_c = cos(-*data->rot/180*M_PI);
   
   src.corner.x = in_dim->x;
-  src.corner.y = in_dim->x;
+  src.corner.y = in_dim->y;
+  src.corner.scale = 0;
   src.width = in_dim->width;
   src.height = in_dim->height;
   
   calc_rot_src_area(data, &src, &target);
   
-  *data->out_dim = *in_dim;
-  data->out_dim->width = target.width;
-  data->out_dim->height = target.height;
-  
   data->offx_src = in_dim->width/2;
   data->offy_src = in_dim->height/2;
-  data->offx_tgt = target.width/2;
-  data->offy_tgt = target.height/2;
+  lrec(-*data->rot/180.0*M_PI, in_dim->width, in_dim->height, &sw, &sh);
+  data->offx_tgt = target.width/2-(target.width-sw)/2;
+  data->offy_tgt = target.height/2-(target.height-sh)/2;
+  
+  *data->out_dim = *in_dim;
+  data->out_dim->width = sw;
+  data->out_dim->height = sh;
+  data->out_dim->scaledown_max = in_dim->scaledown_max;
     
   return 0;
 }
@@ -128,26 +166,28 @@ static int _input_fixed(Filter *f)
 static void _area_calc(Filter *f, Rect *in, Rect *out)
 {
     _Data *data = ea_data(f->data, 0);
-    float rot = *data->rot;
     
     calc_rot_src_area(data, in, out);
     out->corner.scale = in->corner.scale;
-    
-    printf("%dx%d %dx%d @%d\n",out->corner.x,out->corner.y,out->width,out->height,out->corner.scale);
+    out->width += 2;
+    out->height += 2;
 }
 
-static uint8_t *tileptr8(Tiledata *tile, int x, int y)
+static inline uint8_t *tileptr8(Tiledata *tile, int x, int y)
 { 
    return &((uint8_t*)tile->data)[(y-tile->area.corner.y)*tile->area.width + x-tile->area.corner.x];
 }
 
-static uint8_t interpolate(Tiledata *tile, float x, float y)
+static inline uint8_t interpolate(Tiledata *tile, float x, float y)
 { 
     int ix = x;
     int iy = y;
+    if (x < 0) ix--;
+    if (y < 0) iy--;
     float fx = x - ix;
     float fy = y - iy;
     uint8_t *ptr = tileptr8(tile,ix,iy);
+
     
   return ptr[0]*(1.0-fx)*(1.0-fy)
         +ptr[1]*(fx)*(1.0-fy)
@@ -281,8 +321,8 @@ static Filter *_new(void)
 }
 
 Filter_Core filter_core_rotate = {
-  "Rotate_tmp",
-  "rotate_tmp",
+  "Rotate Angle",
+  "rotate angle",
   "rotate image about an angle",
   &_new
 };

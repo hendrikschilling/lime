@@ -1,14 +1,6 @@
 cmake_minimum_required(VERSION 2.6)
 project(lime)
 
-INCLUDE(TestBigEndian)
-
-TEST_BIG_ENDIAN(BIGENDIAN)
-IF(${BIGENDIAN})
-     message(FATAL_ERROR "only little-endian architectures supported at the moment, contact the developer")
-ENDIF(${BIGENDIAN})
-
-
 INCLUDE(FindPkgConfig)
 
 PKG_CHECK_MODULES (EINA REQUIRED eina)
