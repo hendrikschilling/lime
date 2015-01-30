@@ -621,10 +621,11 @@ void _loadjpeg_worker_ijg(Filter *f, Eina_Array *in, Eina_Array *out, Rect *area
   data->serve_fakejpg = 0;
   data->iw = data->w / (data->mcu_w*data->rst_int);
   data->ih = data->h / data->mcu_h;
-  /*if (area->corner.x || area->corner.y) {
+  
+  if (area->corner.x<<area->corner.scale >= data->w || area->corner.y<<area->corner.scale >= data->h) {
     printf("FIXME: invalid tile requested in loadjpg: %dx%d\n", area->corner.x, area->corner.y);
     return;
-  }*/
+  }
   
   r = ((Tiledata*)ea_data(out, 0))->data;
   g = ((Tiledata*)ea_data(out, 1))->data;
