@@ -24,28 +24,116 @@ typedef struct {
   Dim *out_dim;
   Meta *rotate;
   float *rot;
+  float sin_c, cos_c;
+  int offx_src,offx_tgt, offy_src,offy_tgt;
 } _Data;
+
+int imin(int a, int b)
+{
+    if (a <= b) return a;
+    return b;
+}
+
+int imax(int a, int b)
+{
+    if (a >= b) return a;
+    return b;
+}
+
+float rx(_Data *data, int x, int y, int scale)
+{
+    x -= data->offx_tgt >> scale;
+    y -= data->offy_tgt >> scale;
+    return data->cos_c*x-data->sin_c*y+(data->offx_src >> scale);
+}
+
+float ry(_Data *data, int x, int y, int scale)
+{
+    x -= data->offx_tgt >> scale;
+    y -= data->offy_tgt >> scale;
+    return data->cos_c*y+data->sin_c*x+(data->offy_src >> scale);
+}
+
+void calc_rot_src_area(_Data *data, Rect *target, Rect *src)
+{
+    int minx,miny,maxx,maxy;
+    int x, y;
+    
+    minx = rx(data, target->corner.x, target->corner.y, target->corner.scale);
+    maxx = minx;
+    
+    x = rx(data, target->corner.x+target->width, target->corner.y, target->corner.scale);
+    minx = imin(x, minx);
+    maxx = imax(x, maxx);
+    
+    x = rx(data, target->corner.x, target->corner.y+target->height, target->corner.scale);
+    minx = imin(x, minx);
+    maxx = imax(x, maxx);
+    
+    x = rx(data, target->corner.x+target->width, target->corner.y+target->height, target->corner.scale);
+    minx = imin(x, minx);
+    maxx = imax(x, maxx);
+    
+    
+    miny = ry(data, target->corner.x, target->corner.y, target->corner.scale);
+    maxy = miny;
+    
+    y = ry(data, target->corner.x+target->width, target->corner.y, target->corner.scale);
+    miny = imin(y, miny);
+    maxy = imax(y, maxy);
+    
+    y = ry(data, target->corner.x, target->corner.y+target->height, target->corner.scale);
+    miny = imin(y, miny);
+    maxy = imax(y, maxy);
+    
+    y = ry(data, target->corner.x+target->width, target->corner.y+target->height, target->corner.scale);
+    miny = imin(y, miny);
+    maxy = imax(y, maxy);
+    
+    src->corner.x = minx;
+    src->corner.y = miny;
+    //+1 for max-min and +1 for interpolation
+    src->width =maxx-minx+2;
+    src->height = maxy-miny+2;
+}
 
 static int _input_fixed(Filter *f)
 {
   _Data *data = ea_data(f->data, 0);
   Dim *in_dim = data->dim_in_meta->data;
+  Rect src, target;
+  
+  data->sin_c = sin(*data->rot/180*M_PI);
+  data->cos_c = cos(*data->rot/180*M_PI);
+  
+  src.corner.x = in_dim->x;
+  src.corner.y = in_dim->x;
+  src.width = in_dim->width;
+  src.height = in_dim->height;
+  
+  calc_rot_src_area(data, &src, &target);
   
   *data->out_dim = *in_dim;
+  data->out_dim->width = target.width;
+  data->out_dim->height = target.height;
+  
+  data->offx_src = in_dim->width/2;
+  data->offy_src = in_dim->height/2;
+  data->offx_tgt = target.width/2;
+  data->offy_tgt = target.height/2;
     
   return 0;
 }
 
 static void _area_calc(Filter *f, Rect *in, Rect *out)
 {
-   _Data *data = ea_data(f->data, 0);
-   float rot = *data->rot;
-  
-    out->corner.x = 0;
-    out->corner.y = 0;
+    _Data *data = ea_data(f->data, 0);
+    float rot = *data->rot;
+    
+    calc_rot_src_area(data, in, out);
     out->corner.scale = in->corner.scale;
-    out->width = in->width;
-    out->height = in->height;
+    
+    printf("%dx%d %dx%d @%d\n",out->corner.x,out->corner.y,out->width,out->height,out->corner.scale);
 }
 
 static uint8_t *tileptr8(Tiledata *tile, int x, int y)
@@ -53,20 +141,39 @@ static uint8_t *tileptr8(Tiledata *tile, int x, int y)
    return &((uint8_t*)tile->data)[(y-tile->area.corner.y)*tile->area.width + x-tile->area.corner.x];
 }
 
+static uint8_t interpolate(Tiledata *tile, float x, float y)
+{ 
+    int ix = x;
+    int iy = y;
+    float fx = x - ix;
+    float fy = y - iy;
+    uint8_t *ptr = tileptr8(tile,ix,iy);
+    
+  return ptr[0]*(1.0-fx)*(1.0-fy)
+        +ptr[1]*(fx)*(1.0-fy)
+        +ptr[tile->area.width]*(1.0-fx)*(fy)
+        +ptr[tile->area.width+1]*(fx)*(fy);
+}
+
 static void _worker(Filter *f, Eina_Array *in, Eina_Array *out, Rect *area, int thread_id)
 {
-  int ch;
-  int i, j;
-  Tiledata *in_td, *out_td;
-  _Data *data = ea_data(f->data, 0);
+    int ch;
+    int i, j;
+    Tiledata *in_td, *out_td;
+    _Data *data = ea_data(f->data, 0);
   
-  assert(in && ea_count(in) == 3);
-  assert(out && ea_count(out) == 3);
+    assert(in && ea_count(in) == 3);
+    assert(out && ea_count(out) == 3);
     
-  for(ch=0;ch<3;ch++) {
-      memcpy(out_td->data, in_td->data, DEFAULT_TILE_SIZE*DEFAULT_TILE_SIZE);
-  }
-
+    for(ch=0;ch<3;ch++) {
+        in_td = (Tiledata*)ea_data(in, ch);
+        out_td = (Tiledata*)ea_data(out, ch);
+        for(j=0;j<out_td->area.height;j++)
+            //memcpy(tileptr8(out_td, out_td->area.corner.x, out_td->area.corner.y+j), tileptr8(in_td, in_td->area.corner.x, in_td->area.corner.y+j), out_td->area.width);
+            for(i=0;i<out_td->area.width;i++)
+                *tileptr8(out_td, out_td->area.corner.x+i, out_td->area.corner.y+j) = interpolate(in_td, rx(data,out_td->area.corner.x+i,out_td->area.corner.y+j,out_td->area.corner.scale), ry(data,out_td->area.corner.x+i,out_td->area.corner.y+j,out_td->area.corner.scale));
+                
+    }
 }
 
 static int _del(Filter *f)
@@ -138,12 +245,12 @@ static Filter *_new(void)
   meta_name_set(rotate, "rotation angle");
   eina_array_push(filter->settings, rotate);
   
-  bound = meta_new_data(MT_FLOAT, filter, malloc(sizeof(int)));
+  bound = meta_new_data(MT_FLOAT, filter, malloc(sizeof(float)));
   *(float*)bound->data = -360.0;
   meta_name_set(bound, "PARENT_SETTING_MIN");
   meta_attach(rotate, bound);
   
-  bound = meta_new_data(MT_FLOAT, filter, malloc(sizeof(int)));
+  bound = meta_new_data(MT_FLOAT, filter, malloc(sizeof(float)));
   *(float*)bound->data = 360.0;
   meta_name_set(bound, "PARENT_SETTING_MAX");
   meta_attach(rotate, bound);
@@ -174,7 +281,7 @@ static Filter *_new(void)
 }
 
 Filter_Core filter_core_rotate = {
-  "Rotate",
+  "Rotate_tmp",
   "rotate_tmp",
   "rotate image about an angle",
   &_new

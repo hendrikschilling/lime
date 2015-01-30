@@ -186,7 +186,7 @@ int parse_cli(int argc, char **argv, Eina_List **filters, Bench_Step **bench, in
   
   if (bench)
     *bench = 0;
-  *size = 25;
+  *size = 100;
   *metric = 0;
   *strategy = CACHE_F_RAPX;
   *verbose = 0;

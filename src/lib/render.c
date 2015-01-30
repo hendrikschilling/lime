@@ -165,6 +165,11 @@ void clobbertile_add(Tiledata *big, Tiledata *small)
   maxy = big->area.corner.y+big->area.height;
   if (small->area.corner.y + small->area.height < maxy) maxy = small->area.corner.y + small->area.height;
   
+  if (maxy <= miny || maxx <= minx) {
+      printf("TODO: fix negative coords?\n");
+      return;
+  }
+  
   //FIXME BITDEPTH!!!
   //assert(big->size = small->size);
   for(y=miny;y<maxy;y++) {
