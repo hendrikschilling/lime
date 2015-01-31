@@ -1778,15 +1778,10 @@ Config_Data *config_data_get(File_Group *group, int nth)
   Config_Data *config;
   
   filename = filegroup_nth(group, nth);
-  //FIXME better file ending list (no static file endings!)
-  if (!filename || (!eina_str_has_extension(filename, ".jpg") 
-   && !eina_str_has_extension(filename, ".JPG")
-    && !eina_str_has_extension(filename, ".tif")
-    && !eina_str_has_extension(filename, ".TIF")
-    && !eina_str_has_extension(filename, ".tiff")
-    && !eina_str_has_extension(filename, ".TIFF"))) {
+  //FIXME include some fast file compatibility checks!
+  if (!filename)
     return NULL;
-}
+
 
   config = filegroup_data_get(group, nth);
   if (config && config->sink) {
@@ -3052,7 +3047,7 @@ Evas_Object *settings_box_add(Evas_Object *parent)
   
   evas_object_size_hint_weight_set(spinner_hq, EVAS_HINT_EXPAND, 0);
   evas_object_size_hint_align_set(spinner_hq, EVAS_HINT_FILL, 0);
-  elm_spinner_min_max_set (spinner_hq, 0, 1000);
+  elm_spinner_min_max_set (spinner_hq, 0, 0);
   elm_spinner_step_set (spinner_hq, 10);
   elm_spinner_round_set(spinner_hq, 10);
   elm_spinner_value_set (spinner_hq, high_quality_delay);
@@ -3067,7 +3062,7 @@ Evas_Object *settings_box_add(Evas_Object *parent)
   
   evas_object_size_hint_weight_set(spinner_mr, EVAS_HINT_EXPAND, 0);
   evas_object_size_hint_align_set(spinner_mr, EVAS_HINT_FILL, 0);
-  elm_spinner_min_max_set (spinner_mr, 0, 1000);
+  elm_spinner_min_max_set (spinner_mr, 0, 0);
   elm_spinner_step_set (spinner_mr, 10);
   elm_spinner_round_set(spinner_mr, 10);
   elm_spinner_value_set (spinner_mr, max_reaction_delay);

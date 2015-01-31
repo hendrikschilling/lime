@@ -972,13 +972,13 @@ void add_group_sidecar(File_Group *group)
   //FIXME find a better way to find a xmp filename!
   EINA_INARRAY_FOREACH(group->files, file) {
     assert(file->filename);
-    if (!strcmp(file->filename+strlen(file->filename)-4, ".jpg") || !strcmp(file->filename+strlen(file->filename)-4, ".JPG")) {
+    //if (!strcmp(file->filename+strlen(file->filename)-4, ".jpg") || !strcmp(file->filename+strlen(file->filename)-4, ".JPG")) {
       buf = malloc(strlen(file->filename)+5);
       sprintf(buf, "%s.xmp", file->filename);
       group->sidecar = buf;
       file->sidecar = group->sidecar;
       return;
-    }
+    //}
   }
 
   file = eina_inarray_nth(group->files, 0);

@@ -24,6 +24,7 @@
 #include "filter_loadtiff.h"
 #include "filter_interleave.h"
 #include "filter_fliprot.h"
+#include "filter_loadraw.h"
 
 #define DEBUG_OUT_GRAPH 
 
@@ -1350,7 +1351,8 @@ int lime_config_test(Filter *f_sink)
   
   
   ea_push(insert_f, filter_core_interleave.filter_new_f);
-  ea_push(insert_f, filter_core_loadjpeg.filter_new_f);
+  //ea_push(insert_f, filter_core_loadjpeg.filter_new_f);
+  ea_push(insert_f, filter_core_loadraw.filter_new_f);
   ea_push(insert_f, filter_core_convert.filter_new_f);
   ea_push(insert_f, filter_core_loadtiff.filter_new_f);
   ea_push(insert_f, filter_core_fliprot.filter_new_f);
