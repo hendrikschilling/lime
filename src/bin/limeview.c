@@ -110,7 +110,6 @@ typedef struct {
   Filter *load, *sink;
   int running;
   Eina_List *filter_chain;
-  Eina_List *filters;
 } Config_Data;
 
 typedef struct {
@@ -417,10 +416,7 @@ void fc_insert_filter(Filter *f, Eina_List *src, Eina_List *sink)
   
   filegroup_filterchain_set(cur_group, lime_filter_chain_serialize(((Filter_Chain*)eina_list_data_get(eina_list_next(config_curr->filter_chain)))->f));
   
-  
-  //FIXME do we need this, shouldn't size recalc trigger reconfigure?
-  
-  lime_config_test(fc_sink->f);
+  lime_config_test(config_curr->sink);
   forbid_fill--;
   delgrid();
 }
@@ -995,7 +991,8 @@ Eina_Bool _display_preview(void *data)
   eina_array_free(finished_threads);
   finished_threads = NULL;
       
-  printf("final delay for preview: %f\n", bench_delay_get(delay_cur));
+  if (verbose)
+    printf("final delay for preview: %f\n", bench_delay_get(delay_cur));
 
   preview_timer = NULL;
 
@@ -1108,7 +1105,7 @@ _finished_tile(void *data, Ecore_Thread *th)
     }
   }
   
-  if (!worker)
+  if (!worker && verbose)
     printf("final delay: %f\n", bench_delay_get(delay_cur));
   
   _insert_image(tdata);
@@ -1117,7 +1114,8 @@ _finished_tile(void *data, Ecore_Thread *th)
   
   if (!worker && pending_action()) {
     if (mat_cache_old) {
-      printf("final delay preview: %f\n", bench_delay_get(delay_cur));
+      if (verbose)
+        printf("final delay preview: %f\n", bench_delay_get(delay_cur));
       _display_preview(NULL);
     }
     //this will schedule an idle enterer to only process func after we are finished with rendering
@@ -1775,6 +1773,7 @@ void filegroup_changed_cb(File_Group *group)
 
 Config_Data *config_data_get(File_Group *group, int nth)
 {
+  Eina_List *filters;
   char *filename;
   Config_Data *config;
   
@@ -1799,31 +1798,31 @@ Config_Data *config_data_get(File_Group *group, int nth)
   
   config = calloc(sizeof(Config_Data), 1);
   if (filegroup_tags_valid(group) && filegroup_filterchain(group)) {
-    config->filters = lime_filter_chain_deserialize(filegroup_filterchain(group));
+    filters = lime_filter_chain_deserialize(filegroup_filterchain(group));
     
     //FIXME select group according to load file 
-    config->load = eina_list_data_get(config->filters);
+    config->load = eina_list_data_get(filters);
     if (strcmp(config->load->fc->shortname, "load")) {
       config->load = lime_filter_new("load");
-      config->filters = eina_list_prepend(config->filters, config->load);
+      filters = eina_list_prepend(filters, config->load);
     }
-    config->sink = eina_list_data_get(eina_list_last(config->filters));
+    config->sink = eina_list_data_get(eina_list_last(filters));
     if (strcmp(config->sink->fc->shortname, "sink")) {
       config->sink = lime_filter_new("memsink");
       lime_setting_int_set(config->sink, "add alpha", 1);
-      config->filters = eina_list_append(config->filters, config->sink);
+      filters = eina_list_append(filters, config->sink);
     }
-    fc_connect_from_list(config->filters);
+    fc_connect_from_list(filters);
   }
   else {
     
     config->load = lime_filter_new("load");
-    config->filters = eina_list_append(NULL, config->load);
+    filters = eina_list_append(NULL, config->load);
     config->sink = lime_filter_new("memsink");
     lime_setting_int_set(config->sink, "add alpha", 1);
-    config->filters = eina_list_append(config->filters, config->sink);
+    filters = eina_list_append(filters, config->sink);
     
-    fc_connect_from_list(config->filters);
+    fc_connect_from_list(filters);
   } 
   
   //strcpy(image_file, filename);
@@ -1877,6 +1876,7 @@ void config_thread_start(File_Group *group, int nth)
 {
   char *filename;
   Config_Data *config;
+  Eina_List *filters;
   
   config = filegroup_data_get(group, nth);
   if (config)
@@ -1897,31 +1897,31 @@ void config_thread_start(File_Group *group, int nth)
   
   config = calloc(sizeof(Config_Data), 1);
   if (filegroup_tags_valid(group) && filegroup_filterchain(group)) {
-    config->filters = lime_filter_chain_deserialize(filegroup_filterchain(group));
+    filters = lime_filter_chain_deserialize(filegroup_filterchain(group));
     
     //FIXME select group according to load file 
-    config->load = eina_list_data_get(config->filters);
+    config->load = eina_list_data_get(filters);
     if (strcmp(config->load->fc->shortname, "load")) {
       config->load = lime_filter_new("load");
-      config->filters = eina_list_prepend(config->filters, config->load);
+      filters = eina_list_prepend(filters, config->load);
     }
-    config->sink = eina_list_data_get(eina_list_last(config->filters));
+    config->sink = eina_list_data_get(eina_list_last(filters));
     if (strcmp(config->sink->fc->shortname, "sink")) {
       config->sink = lime_filter_new("memsink");
       lime_setting_int_set(config->sink, "add alpha", 1);
-      config->filters = eina_list_append(config->filters, config->sink);
+      filters = eina_list_append(filters, config->sink);
     }
-    fc_connect_from_list(config->filters);
+    fc_connect_from_list(filters);
   }
   else {
     
     config->load = lime_filter_new("load");
-    config->filters = eina_list_append(NULL, config->load);
+    filters = eina_list_append(NULL, config->load);
     config->sink = lime_filter_new("memsink");
     lime_setting_int_set(config->sink, "add alpha", 1);
-    config->filters = eina_list_append(config->filters, config->sink);
+    filters = eina_list_append(filters, config->sink);
     
-    fc_connect_from_list(config->filters);
+    fc_connect_from_list(filters);
   }
   
   //strcpy(image_file, filename);
@@ -2000,7 +2000,8 @@ void step_image_preload_next(int n)
 	  config = config_data_get(group, group_idx);
 	  if (config && !config->failed) {
 	    fill_scroller_blind(config);
-	    printf("preload %s\n", filegroup_nth(group, group_idx));
+            if (verbose)
+                printf("preload %s\n", filegroup_nth(group, group_idx));
 	    succ = 1;
 	    break;
 	  }
@@ -2037,7 +2038,8 @@ void step_image_do(void *data, Evas_Object *obj)
   Elm_Object_Item *item;
   Config_Data *config = NULL;
   
-  printf("non-chancellation delay: %f\n", bench_delay_get(delay_cur));
+  if (verbose)
+    printf("non-chancellation delay: %f\n", bench_delay_get(delay_cur));
   
   assert(!worker);
   
@@ -2109,7 +2111,7 @@ void step_image_do(void *data, Evas_Object *obj)
   }
   config_curr = config;
   //create gui only if necessary (tab selected) or if filter_chain is needed?
-  fc_gui_from_list(config_curr->filters);
+  fc_gui_from_config(config_curr);
   //FIXME free filter list
   //config_curr->filters = NULL;
   //FIXME get all filter handling from actual filter chain
@@ -2122,7 +2124,9 @@ void step_image_do(void *data, Evas_Object *obj)
   forbid_fill--;
   if (quick_preview_only)
     first_preview = 1;
-  printf("configuration delay: %f\n", bench_delay_get(delay_cur)); 
+  
+  if (verbose)
+    printf("configuration delay: %f\n", bench_delay_get(delay_cur)); 
   fill_scroller();
   
   if (tab_current == tab_group)
@@ -2932,8 +2936,11 @@ void fc_gui_from_list(Eina_List *filters)
   assert(filters);
   assert(config_curr);
   
+  printf("gui from filter list\n");
+  
   last = NULL;
   EINA_LIST_FOREACH(filters, list_iter, f) {
+      printf("%s\n", f->fc->name);
     //filter chain
     fc = fc_new(f);
     config_curr->filter_chain = eina_list_append(config_curr->filter_chain, fc);
@@ -2943,6 +2950,34 @@ void fc_gui_from_list(Eina_List *filters)
       fc->item = elm_list_item_append(filter_list, f->fc->name, NULL, NULL, &_on_filter_select, eina_list_last(config_curr->filter_chain));
     
     last = f;
+  }
+  elm_list_go(filter_list);
+}
+
+
+void fc_gui_from_config(Config_Data *config)
+{
+  Filter *f, *last;
+  Eina_List *list_iter;
+  Filter_Chain *fc;
+  
+  assert(config);
+  
+  printf("gui from filter list\n");
+  
+  f = config->load;
+  while(f) {
+      printf("%s\n", f->fc->name);
+    //filter chain
+    fc = fc_new(f);
+    config_curr->filter_chain = eina_list_append(config_curr->filter_chain, fc);
+    
+    //create gui, but not for first and last filters
+    if (f != config->load && f != config->sink)
+      fc->item = elm_list_item_append(filter_list, f->fc->name, NULL, NULL, &_on_filter_select, eina_list_last(config_curr->filter_chain));
+    
+    last = f;
+    f = filter_chain_next_filter(f);
   }
   elm_list_go(filter_list);
 }

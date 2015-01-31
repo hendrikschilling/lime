@@ -335,6 +335,15 @@ Filter *filter_chain_last_filter(Filter *f)
   return f;
 }
 
+Filter *filter_chain_next_filter(Filter *f)
+{
+  if (f->node_orig->con_trees_out && ea_count(f->node_orig->con_trees_out)) {
+    return ((Con*)ea_data(f->node_orig->con_trees_out, 0))->sink->filter;
+  }
+  
+  return NULL;
+}
+
 //FIXME on sinks should replace old connection!
 Con *filter_connect(Filter *source, int out, Filter *sink, int in)
 {

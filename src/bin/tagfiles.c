@@ -55,6 +55,11 @@ struct _File_Group {
 };
 
 typedef struct {
+  char *path;
+  Tagfiles *tagfiles;
+} Ls_Info;
+
+typedef struct {
   File_Group *group;
   void (*cb)(File_Group *group);
 } Group_Changed_Cb_Data;
@@ -669,8 +674,9 @@ void xmp_gettags(File_Group *group, Ecore_Thread *thread)
 
 static void _ls_error_cb(void *data, Eio_File *handler, int error)
 {
+    Tagfiles *tagfiles = data;
   fprintf(stderr, "error: [%s]\n", strerror(error));
-  //abort();
+  abort();
   //FIXME implement error cb!
 }
 

@@ -149,6 +149,7 @@ char *lime_filter_chain_serialize(Filter *f)
   Meta *m;
   
   while (f) {
+    printf("add %s to string\n", f->fc->name);
     str += sprintf(str, "%s", f->fc->shortname);
     for(i=0;i<ea_count(f->settings);i++) {
       m = ea_data(f->settings, i);
@@ -224,6 +225,8 @@ Eina_List *lime_filter_chain_deserialize(char *str)
       lime_filter_connect(last_f, f);
     
     last_f = f;
+    
+    printf("add %s to chain\n", f->fc->name);
     
     filters = eina_list_append(filters, f);
     
