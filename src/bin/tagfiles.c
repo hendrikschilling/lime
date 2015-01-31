@@ -97,6 +97,7 @@ void save_sidecar(File_Group *group);
 static void _xmp_scanner(void *data, Ecore_Thread *th);
 static void _xmp_finish(void *data, Ecore_Thread *th);
 static void _xmp_notify(void *data, Ecore_Thread *thread, void *msg_data);
+static void _ls_done_cb(void *data, Eio_File *handler);
 
 /* eina_inarray_pop was returning wrong elements - higher thatn actually inserted! */
 void *eina_inarray_custom_pop(Eina_Inarray *ar)
@@ -421,6 +422,19 @@ char *filegroup_filterchain(File_Group *g)
   return g->last_fc;
 }
 
+Ls_Info *ls_info_new(const char *path, Tagfiles *files)
+{
+  Ls_Info *i = calloc(sizeof(Ls_Info), 1);
+  i->path = path;
+  i->tagfiles = files;
+  return i;
+}
+
+void ls_info_del(Ls_Info *i)
+{
+  free(i);
+}
+
 void filegroup_move_trash(File_Group *group)
 {
   int i;
@@ -541,7 +555,8 @@ void insert_file(Tagfiles *tagfiles, const char *file)
 
 static void _ls_main_cb(void *data, Eio_File *handler, const Eina_File_Direct_Info *info)
 {
-  Tagfiles *tagfiles = data;
+  Ls_Info *finfo = data;
+  Tagfiles *tagfiles = finfo->tagfiles;
   const char *file;
   
   file = eina_stringshare_add(info->path);
@@ -674,19 +689,15 @@ void xmp_gettags(File_Group *group, Ecore_Thread *thread)
 
 static void _ls_error_cb(void *data, Eio_File *handler, int error)
 {
-    Tagfiles *tagfiles = data;
-  fprintf(stderr, "error: [%s]\n", strerror(error));
-  abort();
-  //FIXME implement error cb!
+  Ls_Info *info = data;
+  fprintf(stderr, "error: [%s] - could not ls %s\n", strerror(error),info->path);
+  _ls_done_cb(data, handler);
 }
 
 int dir_strcmp_neg(const char **a, const char **b)
 {
   return -strcmp(*a, *b);
 }
-
-
-static void _ls_done_cb(void *data, Eio_File *handler);
 
 typedef struct {
   const char *filename;
@@ -732,18 +743,23 @@ void tagfiles_preload_headers(Tagfiles *tagfiles, int direction, int range, int 
 Eina_Bool _idle_ls_continue(void *data) 
 {
   Tagfiles *tagfiles = data;
+  char *dir;
   
   //FIXME do sort in extra thread instead of when idle?
   eina_inarray_sort(tagfiles->dirs_ls, (Eina_Compare_Cb)dir_strcmp_neg);
-  eio_file_direct_ls(*(char**)eina_inarray_custom_pop(tagfiles->dirs_ls), &_ls_filter_cb, &_ls_main_cb,&_ls_done_cb, &_ls_error_cb, tagfiles);
+  dir = *(char**)eina_inarray_custom_pop(tagfiles->dirs_ls);
+  eio_file_direct_ls(dir, &_ls_filter_cb, &_ls_main_cb,&_ls_done_cb, &_ls_error_cb, ls_info_new(dir, tagfiles));
     
   return ECORE_CALLBACK_CANCEL;
 }
 
 static void _ls_done_cb(void *data, Eio_File *handler)
 {
-  Tagfiles *tagfiles = data;
+  Ls_Info *info = data;
+  Tagfiles *tagfiles = info->tagfiles;
   File_Group *group;
+  
+  free(info);
 
   //we have already inserted files from this dir: always need to sort after insert
   if (tagfiles->unsorted_insert) {
@@ -789,6 +805,7 @@ Tagfiles *tagfiles_new_from_dir(const char *path, void (*progress_cb)(Tagfiles *
   char *dir;
   struct stat path_stat;
   Tagfiles *files;
+  Ls_Info *info;
   
   if (stat(path, &path_stat) < 0)
     return NULL;
@@ -817,7 +834,7 @@ Tagfiles *tagfiles_new_from_dir(const char *path, void (*progress_cb)(Tagfiles *
   files->dirs_ls = eina_inarray_new(sizeof(char *), 32);
   files->files_sorted = EINA_TRUE;
   
-  eio_file_direct_ls(dir, &_ls_filter_cb, &_ls_main_cb,&_ls_done_cb, &_ls_error_cb, files);
+  eio_file_direct_ls(dir, &_ls_filter_cb, &_ls_main_cb,&_ls_done_cb, &_ls_error_cb, ls_info_new(dir,files));
   
   return files;
 }
