@@ -1351,7 +1351,7 @@ int lime_config_test(Filter *f_sink)
   
   
   ea_push(insert_f, filter_core_interleave.filter_new_f);
-  //ea_push(insert_f, filter_core_loadjpeg.filter_new_f);
+  ea_push(insert_f, filter_core_loadjpeg.filter_new_f);
   ea_push(insert_f, filter_core_loadraw.filter_new_f);
   ea_push(insert_f, filter_core_convert.filter_new_f);
   ea_push(insert_f, filter_core_loadtiff.filter_new_f);

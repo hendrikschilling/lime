@@ -1514,7 +1514,8 @@ void group_select_do(void *data, Evas_Object *obj)
   const char *filename;
   Elm_Object_Item *it;
   
-  abort();
+  //abort();
+  printf("FIXME group select!\n");
   
   delgrid();
     

@@ -32,6 +32,8 @@
 #include "jerror.h"
 #include <libexif/exif-loader.h>
 
+#define RAW_TILING_BORDER 8
+
 
 /* Expanded data source object for stdio input */
 
@@ -89,6 +91,8 @@ static int imin(a, b)
 static void _worker(Filter *f, Eina_Array *in, Eina_Array *out, Rect *area, int thread_id)
 {
   int ch, i, j;
+  int tb;
+  int offx, offy;
   int w, h;
   _Data *data = ea_data(f->data, thread_id);
   _Data *tdata;
@@ -111,8 +115,8 @@ static void _worker(Filter *f, Eina_Array *in, Eina_Array *out, Rect *area, int 
       data->common->raw->params.output_bps = 8;
       
       //exposure
-      data->common->raw->params.exp_correc = 0.0;
-      data->common->raw->params.exp_shift = 1.5;
+      data->common->raw->params.exp_correc = 1.0;
+      data->common->raw->params.exp_shift = 2.0;
       data->common->raw->params.exp_preser = 1.0;
       
       //sRGB
@@ -134,23 +138,33 @@ static void _worker(Filter *f, Eina_Array *in, Eina_Array *out, Rect *area, int 
   
   assert(out && ea_count(out) == 3);
   data->raw->params.half_size = area->corner.scale;
-  data->raw->params.cropbox[0] = area->corner.x<<area->corner.scale;
-  data->raw->params.cropbox[1] = area->corner.y<<area->corner.scale;
-  data->raw->params.cropbox[2] = area->width<<area->corner.scale;
-  data->raw->params.cropbox[3] = area->height<<area->corner.scale;
+  
+  if (!area->corner.scale)
+    tb = RAW_TILING_BORDER;
+  else
+    tb = 0;
+
+  data->raw->params.cropbox[0] = imax((area->corner.x<<area->corner.scale)-tb, 0);
+  data->raw->params.cropbox[1] = imax((area->corner.y<<area->corner.scale)-tb, 0);
+  data->raw->params.cropbox[2] = (area->width<<area->corner.scale)+2*tb;
+  data->raw->params.cropbox[3] = (area->height<<area->corner.scale)+2*tb;
+  
+  offx = (area->corner.x<<area->corner.scale) - data->raw->params.cropbox[0];
+  offy = (area->corner.y<<area->corner.scale) - data->raw->params.cropbox[1];
   
   libraw_dcraw_process(data->raw);
   assert(data->raw->image);
   img = libraw_dcraw_make_mem_image(data->raw, &errcode);
   
-  w = imin(area->width, data->raw->sizes.width);
-  h = imin(area->height, data->raw->sizes.height);
+  w = imin(area->width, data->raw->sizes.width-offx);
+  h = imin(area->height, data->raw->sizes.height-offy);
+  
   
     for(ch=0;ch<3;ch++) {
         out_td = (Tiledata*)ea_data(out, ch);
         for(j=0;j<h;j++)
             for(i=0;i<w;i++)
-                *tileptr8(out_td, out_td->area.corner.x+i, out_td->area.corner.y+j) = img->data[(j*img->width+i)*3+ch];
+                *tileptr8(out_td, out_td->area.corner.x+i, out_td->area.corner.y+j) = img->data[((j+offy)*img->width+i+offx)*3+ch];
                 
     }
   
@@ -171,6 +185,7 @@ static int _input_fixed(Filter *f)
   //default
   data->rot = 1;
   switch (data->common->raw->sizes.flip) {
+    case 0 : data->rot = 1; break;
     case 5 : data->rot = 8; break;
     case 6 : data->rot = 6; break;
     default :
@@ -188,9 +203,9 @@ static int _input_fixed(Filter *f)
   f->th_s = realloc(f->th_s, sizeof(int)*(((Dim*)data->dim)->scaledown_max+1));
   
   f->tw_s[0] = DEFAULT_TILE_SIZE;
-  f->th_s[0] = DEFAULT_TILE_SIZE;
+  f->th_s[0] = 2*DEFAULT_TILE_SIZE;
   f->tw_s[1] = DEFAULT_TILE_SIZE;
-  f->th_s[1] = DEFAULT_TILE_SIZE;
+  f->th_s[1] = 2*DEFAULT_TILE_SIZE;
   
   data->common->unpacked = 0;
 
