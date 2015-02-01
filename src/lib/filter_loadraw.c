@@ -18,6 +18,7 @@
  */
 
 #include "filter_loadraw.h"
+#include "libraw_helpers.h"
 
 #include <libexif/exif-data.h>
 #include <jpeglib.h>
@@ -35,8 +36,9 @@
 /* Expanded data source object for stdio input */
 
 typedef struct {
-  int error;
-  int *index;
+  libraw_data_t *raw;
+  int unpacked;
+  pthread_mutex_t lock;
 } _Common;
 
 typedef struct {
@@ -67,7 +69,6 @@ typedef struct {
   ujImage uimg;
 #endif
   char *filename;
-  pthread_mutex_t *lock;
   Meta *fliprot;
   int thumb_len;
   uint8_t *thumb_data;
@@ -79,74 +80,131 @@ static inline uint8_t *tileptr8(Tiledata *tile, int x, int y)
    return &((uint8_t*)tile->data)[(y-tile->area.corner.y)*tile->area.width + x-tile->area.corner.x];
 }
 
-static void _worker(Filter *f, Eina_Array *in, Eina_Array *out, Rect *area, int thread_id)
-{
-  int ch, i, j;
-  _Data *data = ea_data(f->data, 0);
-  Tiledata *out_td;
-  
-  libraw_unpack(data->raw);
-  printf("upack %s\n", data->input->data);
-  //libraw_dcraw_process(data->raw);
-  
-  assert(out && ea_count(out) == 3);
-    
-    for(ch=0;ch<3;ch++) {
-        out_td = (Tiledata*)ea_data(out, ch);
-        for(j=0;j<out_td->area.height;j++)
-            for(i=0;i<out_td->area.width;i++)
-                *tileptr8(out_td, out_td->area.corner.x+i, out_td->area.corner.y+j) = (data->raw->rawdata.raw_image)[(j*data->raw->sizes.raw_width+i)] / ((data->raw->color.maximum+255)/256);
-                
-    }
-  
-}
-
-static int min(a, b) 
+static int imin(a, b) 
 {
   if (a<=b) return a;
   return b;
 }
 
+static void _worker(Filter *f, Eina_Array *in, Eina_Array *out, Rect *area, int thread_id)
+{
+  int ch, i, j;
+  int w, h;
+  _Data *data = ea_data(f->data, thread_id);
+  _Data *tdata;
+  Tiledata *out_td;
+  libraw_processed_image_t *img;
+  int errcode;
+  
+  if (!data->common->unpacked) {
+    pthread_mutex_lock(&data->common->lock);
+    if (!data->common->unpacked) {
+      
+      data->common->raw->params.use_rawspeed = 1;
+      data->common->raw->params.user_qual = 4;
+      data->common->raw->params.dcb_iterations = 2;
+      data->common->raw->params.dcb_enhance_fl = 1;
+      data->common->raw->params.adjust_maximum_thr = 0.0;
+      data->common->raw->params.no_auto_bright = 1;
+      data->common->raw->params.use_auto_wb = 0;
+      data->common->raw->params.use_camera_matrix = 1;
+      data->common->raw->params.output_bps = 8;
+      
+      //exposure
+      data->common->raw->params.exp_correc = 0.0;
+      data->common->raw->params.exp_shift = 1.5;
+      data->common->raw->params.exp_preser = 1.0;
+      
+      //sRGB
+      data->common->raw->params.output_color = 1;
+      //sRGB
+      data->common->raw->params.gamm[0]=1/2.4;
+      data->common->raw->params.gamm[1]=12.92;
+        
+      libraw_unpack(data->common->raw);
+      data->common->unpacked = 1;
+      
+      for(i=0;i<ea_count(f->data);i++) {
+        tdata = ea_data(f->data, i);
+        tdata->raw = libraw_data_copy(data->common->raw);
+      }
+    }
+    pthread_mutex_unlock(&data->common->lock);
+  }
+  
+  assert(out && ea_count(out) == 3);
+  data->raw->params.half_size = area->corner.scale;
+  data->raw->params.cropbox[0] = area->corner.x<<area->corner.scale;
+  data->raw->params.cropbox[1] = area->corner.y<<area->corner.scale;
+  data->raw->params.cropbox[2] = area->width<<area->corner.scale;
+  data->raw->params.cropbox[3] = area->height<<area->corner.scale;
+  
+  libraw_dcraw_process(data->raw);
+  assert(data->raw->image);
+  img = libraw_dcraw_make_mem_image(data->raw, &errcode);
+  
+  w = imin(area->width, data->raw->sizes.width);
+  h = imin(area->height, data->raw->sizes.height);
+  
+    for(ch=0;ch<3;ch++) {
+        out_td = (Tiledata*)ea_data(out, ch);
+        for(j=0;j<h;j++)
+            for(i=0;i<w;i++)
+                *tileptr8(out_td, out_td->area.corner.x+i, out_td->area.corner.y+j) = img->data[(j*img->width+i)*3+ch];
+                
+    }
+  
+}
+
 static int _input_fixed(Filter *f)
 {
+  int rot;
   _Data *data = ea_data(f->data, 0);
   
-  if (libraw_open_file(data->raw, data->input->data))
+  data->common->raw->params.use_camera_matrix = 1;
+  data->common->raw->params.use_camera_wb = 1;
+  data->common->raw->params.user_flip = 0;
+  
+  if (libraw_open_file(data->common->raw, data->input->data))
     return -1;
   
-  printf("size of %s: %dx%d\n", data->input->data, data->raw->sizes.width, data->raw->sizes.height);
-
   //default
   data->rot = 1;
+  switch (data->common->raw->sizes.flip) {
+    case 5 : data->rot = 8; break;
+    case 6 : data->rot = 6; break;
+    default :
+      printf("FIXME implemente rotation %d in raw!\n", data->common->raw->sizes.flip);
+  }
   
-  data->w = data->raw->sizes.width;
-  data->h = data->raw->sizes.height;
+  data->w = data->common->raw->sizes.width;
+  data->h = data->common->raw->sizes.height;
   
-  ((Dim*)data->dim)->scaledown_max = 0;
+  ((Dim*)data->dim)->scaledown_max = 1;
   ((Dim*)data->dim)->width = data->w;
   ((Dim*)data->dim)->height = data->h;
   
   f->tw_s = realloc(f->tw_s, sizeof(int)*(((Dim*)data->dim)->scaledown_max+1));
   f->th_s = realloc(f->th_s, sizeof(int)*(((Dim*)data->dim)->scaledown_max+1));
   
-  f->tw_s[0] = data->w;
-  f->th_s[0] = data->h;
+  f->tw_s[0] = DEFAULT_TILE_SIZE;
+  f->th_s[0] = DEFAULT_TILE_SIZE;
+  f->tw_s[1] = DEFAULT_TILE_SIZE;
+  f->th_s[1] = DEFAULT_TILE_SIZE;
+  
+  data->common->unpacked = 0;
 
   return 0;
 }
 
+//FIXME uhh ohh free thread stuff (c++ class instance!)
 static int _del(Filter *f)
 {
   _Data *data = ea_data(f->data, 0);
   int i;
   
   free(data->thumb_data);
-  free(data->lock);
-  free(data->size_pos);
-  
-  if (data->common->index)
-    free(data->common->index);
-  
+  free(data->size_pos);  
   free(data->common);
   
   for(i=0;i<ea_count(f->data);i++) {
@@ -158,6 +216,16 @@ static int _del(Filter *f)
   return 0;
 }
 
+static void *_data_new(Filter *f, void *data)
+{
+  _Data *newdata = calloc(sizeof(_Data), 1);
+  
+  *newdata = *(_Data*)data;
+  newdata->raw = libraw_data_copy(newdata->common->raw);
+  
+  return newdata;
+}
+
 static Filter *_new(void)
 {
   Filter *filter = filter_new(&filter_core_loadraw);
@@ -165,15 +233,15 @@ static Filter *_new(void)
   _Data *data = calloc(sizeof(_Data), 1);
   data->common = calloc(sizeof(_Common), 1);
   data->size_pos = calloc(sizeof(int*), 1);
-  data->lock = calloc(sizeof(pthread_mutex_t), 1);
-  assert(pthread_mutex_init(data->lock, NULL) == 0);
   data->dim = calloc(sizeof(Dim), 1);
-  data->raw = libraw_init(0);
+  data->common->raw = libraw_init(0);
+  pthread_mutex_init(&data->common->lock, NULL);
   
   filter->del = &_del;
   filter->mode_buffer = filter_mode_buffer_new();
   filter->mode_buffer->worker = &_worker;
   filter->mode_buffer->threadsafe = 1;
+  filter->mode_buffer->data_new = &_data_new;
   filter->input_fixed = &_input_fixed;
   filter->fixme_outcount = 3;
   ea_push(filter->data, data);

@@ -61,6 +61,8 @@
 #define PRELOAD_IMG_RANGE 2
 #define PRELOAD_THRESHOLD 8
 
+#define FIX_ENABLE_PRELOAD
+
 int high_quality_delay =  300;
 int max_reaction_delay =  1000;
 int fullscreen = 0;
@@ -1085,11 +1087,13 @@ _finished_tile(void *data, Ecore_Thread *th)
 	if (!worker) {
 	  _display_preview(NULL);
 	}
-
+	
+#ifndef FIX_ENABLE_PRELOAD
       if (worker < max_workers && preload_pending() < PRELOAD_THRESHOLD)
 	step_image_preload_next(PRELOAD_IMG_RANGE);
       else
 	run_preload_threads();
+#endif
 	
       first_preview = 0;
 
@@ -1122,12 +1126,14 @@ _finished_tile(void *data, Ecore_Thread *th)
     //workerfinish_schedule(pending_action, pending_data, pending_obj, EINA_TRUE);
     pending_exe();
   }
+#ifndef  FIX_ENABLE_PRELOAD
   else if (worker < max_workers && preload_pending() < PRELOAD_THRESHOLD) {
     step_image_preload_next(PRELOAD_IMG_RANGE);
   }
   else {
     run_preload_threads();
   }
+#endif
   
 #ifdef BENCHMARK
   if (!worker && !idle_render) {
