@@ -45,6 +45,7 @@
 #include "filter_interleave.h"
 #include "filter_savejpeg.h"
 #include "filter_rotate.h"
+#include "filter_curves.h"
 
 #define TILE_SIZE DEFAULT_TILE_SIZE
 
@@ -3615,6 +3616,8 @@ elm_main(int argc, char **argv)
   elm_hoversel_item_add(select_filter, "denoise", NULL, ELM_ICON_NONE, &on_select_filter_select, &filter_core_denoise);
   elm_hoversel_item_add(select_filter, "simple rotate", NULL, ELM_ICON_NONE, &on_select_filter_select, &filter_core_simplerotate);
   elm_hoversel_item_add(select_filter, "rotate", NULL, ELM_ICON_NONE, &on_select_filter_select, &filter_core_rotate);
+  elm_hoversel_item_add(select_filter, "curves", NULL, ELM_ICON_NONE, &on_select_filter_select, &filter_core_curves);
+
   elm_object_text_set(select_filter, "contrast");
   select_filter_func = filter_core_contrast.filter_new_f;
   evas_object_show(select_filter);

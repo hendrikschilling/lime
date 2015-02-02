@@ -79,7 +79,7 @@ typedef struct {
 
 static inline uint8_t *tileptr8(Tiledata *tile, int x, int y)
 { 
-   return &((uint8_t*)tile->data)[(y-tile->area.corner.y)*tile->area.width + x-tile->area.corner.x];
+   return &((uint8_t*)tile->data)[((y-tile->area.corner.y)*tile->area.width + x-tile->area.corner.x)*3];
 }
 
 static int imin(a, b) 
@@ -105,9 +105,7 @@ static void _worker(Filter *f, Eina_Array *in, Eina_Array *out, Rect *area, int 
     if (!data->common->unpacked) {
       
       data->common->raw->params.use_rawspeed = 1;
-      data->common->raw->params.user_qual = 4;
-      data->common->raw->params.dcb_iterations = 2;
-      data->common->raw->params.dcb_enhance_fl = 1;
+      data->common->raw->params.user_qual = 10;
       data->common->raw->params.adjust_maximum_thr = 0.0;
       data->common->raw->params.no_auto_bright = 1;
       data->common->raw->params.use_auto_wb = 0;
@@ -116,14 +114,14 @@ static void _worker(Filter *f, Eina_Array *in, Eina_Array *out, Rect *area, int 
       
       //exposure
       data->common->raw->params.exp_correc = 1.0;
-      data->common->raw->params.exp_shift = 2.0;
+      data->common->raw->params.exp_shift = 1.2;
       data->common->raw->params.exp_preser = 1.0;
       
       //sRGB
-      data->common->raw->params.output_color = 1;
+      data->common->raw->params.output_color = 0;
       //sRGB
-      data->common->raw->params.gamm[0]=1/2.4;
-      data->common->raw->params.gamm[1]=12.92;
+      data->common->raw->params.gamm[0]=1.0;///2.4;
+      data->common->raw->params.gamm[1]=1.0;//12.92;
         
       libraw_unpack(data->common->raw);
       data->common->unpacked = 1;
@@ -159,15 +157,15 @@ static void _worker(Filter *f, Eina_Array *in, Eina_Array *out, Rect *area, int 
   w = imin(area->width, data->raw->sizes.width-offx);
   h = imin(area->height, data->raw->sizes.height-offy);
   
+  hack_tiledata_fixsize(3, ea_data(out, 0));
+  out_td = (Tiledata*)ea_data(out, 0);
   
-    for(ch=0;ch<3;ch++) {
-        out_td = (Tiledata*)ea_data(out, ch);
-        for(j=0;j<h;j++)
-            for(i=0;i<w;i++)
-                *tileptr8(out_td, out_td->area.corner.x+i, out_td->area.corner.y+j) = img->data[((j+offy)*img->width+i+offx)*3+ch];
-                
+  for(j=0;j<h;j++)
+    for(i=0;i<w;i++) {
+      uint8_t *ptr = tileptr8(out_td, out_td->area.corner.x+i, out_td->area.corner.y+j);
+      for(ch=0;ch<3;ch++)
+        ptr[ch] = img->data[((j+offy)*img->width+i+offx)*3+ch];
     }
-  
 }
 
 static int _input_fixed(Filter *f)
@@ -184,13 +182,13 @@ static int _input_fixed(Filter *f)
   
   //default
   data->rot = 1;
-  switch (data->common->raw->sizes.flip) {
+  /*switch (data->common->raw->sizes.flip) {
     case 0 : data->rot = 1; break;
     case 5 : data->rot = 8; break;
     case 6 : data->rot = 6; break;
     default :
       printf("FIXME implemente rotation %d in raw!\n", data->common->raw->sizes.flip);
-  }
+  }*/
   
   data->w = data->common->raw->sizes.width;
   data->h = data->common->raw->sizes.height;
@@ -282,23 +280,7 @@ static Filter *_new(void)
   
   channel = meta_new_channel(filter, 1);
   color = meta_new_data(MT_COLOR, filter, malloc(sizeof(int)));
-  *(int*)(color->data) = CS_RGB_R;
-  meta_attach(channel, color);
-  meta_attach(channel, bitdepth);
-  meta_attach(channel, dim);
-  meta_attach(out, channel);
-  
-  channel = meta_new_channel(filter, 2);
-  color = meta_new_data(MT_COLOR, filter, malloc(sizeof(int)));
-  *(int*)(color->data) = CS_RGB_G;
-  meta_attach(channel, color);
-  meta_attach(channel, bitdepth);
-  meta_attach(channel, dim);
-  meta_attach(out, channel);
-  
-  channel = meta_new_channel(filter, 3);
-  color = meta_new_data(MT_COLOR, filter, malloc(sizeof(int)));
-  *(int*)(color->data) = CS_RGB_B;
+  *(int*)(color->data) = CS_INT_RGB;
   meta_attach(channel, color);
   meta_attach(channel, bitdepth);
   meta_attach(channel, dim);

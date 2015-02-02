@@ -38,6 +38,7 @@ Eina_Hash *lime_filters;
 #include "filter_interleave.h"
 #include "filter_savejpeg.h"
 #include "filter_rotate.h"
+#include "filter_curves.h"
 
 void lime_filters_init(void)
 {
@@ -61,6 +62,7 @@ void lime_filters_init(void)
   eina_hash_add(lime_filters, filter_core_simplerotate.shortname, &filter_core_simplerotate);
   eina_hash_add(lime_filters, filter_core_rotate.shortname, &filter_core_rotate);
   eina_hash_add(lime_filters, filter_core_savejpeg.shortname, &filter_core_savejpeg);
+  eina_hash_add(lime_filters, filter_core_curves.shortname, &filter_core_curves);
 }
 
 Filter *lime_filter_new(const char *shortname)

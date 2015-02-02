@@ -4,5 +4,6 @@
 #include "Lime.h"
 
 Filter_Core filter_core_interleave;
+Filter_Core filter_core_deinterleave;
 
 #endif

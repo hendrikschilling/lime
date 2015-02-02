@@ -648,3 +648,20 @@ void vizp_filter(FILE *file, Filter *filter)
   
   fprintf(file, "}\n");
 }
+
+
+void vizp_meta_tree(FILE *file, Meta *meta)
+{
+  int begun = 0;
+  fprintf(file, "subgraph cluster_%p {\n"
+  "label = \"%s\";\n"
+  "node [style=filled];\n"
+  "\"%p\" [label = \"{<type>%s ",
+  meta->filter, meta->filter->fc->name, meta->filter, meta->filter->fc->name);
+  
+  fprintf(file, "}}\"]\n");
+  
+  vizp_meta(file, meta);
+  
+  fprintf(file, "}\n");
+}

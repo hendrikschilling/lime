@@ -17,30 +17,11 @@
  * along with Lime.  If not, see <http://www.gnu.org/licenses/>.
  */
 
-#ifndef _LIME_FILTER_H
-#define _LIME_FILTER_H
+#ifndef _FILTER_CURVES_H
+#define _FILTER_CURVES_H
 
-#include "global.h"
-#include "filter_public.h"
+#include "Lime.h"
 
-struct _Filter_Core{
-  const char *name;
-  const char *shortname;
-  const char *description;
-  Filter *(*filter_new_f)(void);
-};
-
-//contains all filters, hashed by filters shortname
-Eina_Hash *filters;
-Filter *filter_new(Filter_Core *fc);
-void filter_del(Filter *f);
-void filter_hash_invalidate(Filter *f);
-uint32_t filter_hash_value_get(Filter *f);
-uint32_t hash_hash_value_get(Hash *h);
-Filter *filter_chain_first_filter(Filter *f);
-Filter *filter_chain_next_filter(Filter *f);
-Filter *filter_chain_last_filter(Filter *f);
-
-void vizp_meta_tree(FILE *file, Meta *meta);
+Filter_Core filter_core_curves;
 
 #endif
