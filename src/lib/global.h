@@ -33,4 +33,6 @@ void lime_unlock(void);
 int lime_init(void);
 void lime_shutdown(void);
 
+void *global_meta_check;
+
 #endif

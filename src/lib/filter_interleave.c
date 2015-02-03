@@ -26,6 +26,20 @@ typedef struct {
   Dim *out_dim;
 } _Data;
 
+static int _input_fixed(Filter *f)
+{
+  _Data *data = ea_data(f->data, 0);
+  Dim *in_dim = data->dim_in_meta->data;
+  
+  if (!in_dim)
+    return -1;
+  
+  *data->out_dim = *in_dim;
+    
+  return 0;
+}
+
+
 static void _interleave_worker(Filter *f, Eina_Array *in, Eina_Array *out, Rect *area, int thread_id)
 {
   int i, j;
@@ -69,14 +83,12 @@ static void _deinterleave_worker(Filter *f, Eina_Array *in, Eina_Array *out, Rec
   int *buf_int, *buf_max;
   _Data *data = ea_data(f->data, 0);
   
-  assert(in && ea_count(in) == 3);
+  assert(out && ea_count(out) == 3);
   
-  r = ((Tiledata*)ea_data(in, 0))->data;
-  g = ((Tiledata*)ea_data(in, 1))->data;
-  b = ((Tiledata*)ea_data(in, 2))->data;
-  
-  area = &((Tiledata*)ea_data(in, 0))->area;
-  
+  r = ((Tiledata*)ea_data(out, 0))->data;
+  g = ((Tiledata*)ea_data(out, 1))->data;
+  b = ((Tiledata*)ea_data(out, 2))->data;
+    
   if (*(int*)data->colorspace->data == CS_INT_ABGR) {
     abort();
   }
@@ -179,21 +191,28 @@ static Filter *filter_interleave_new(void)
 static Filter *filter_deinterleave_new(void)
 {
   Filter *filter = filter_new(&filter_core_deinterleave);
-  Meta *in, *out, *channel, *ch_in, *ch_out_first, *color, *color_out_first, *bitdepth;
+  Meta *in, *out, *channel, *ch_in, *size_in, *size_out, *ch_out_first, *color, *color_out_first, *bitdepth;
   Meta *ch_out, *tune_color;
   _Data *data = calloc(sizeof(_Data), 1);
+  data->out_dim = calloc(sizeof(Dim), 1);
   ea_push(filter->data, data);
   
   filter->del = &_del;
   filter->mode_buffer = filter_mode_buffer_new();
   filter->mode_buffer->threadsafe = 1;
   filter->mode_buffer->worker = &_deinterleave_worker;
+  filter->input_fixed = &_input_fixed;
   //filter->mode_buffer->area_calc = &_area_calc;
-  filter->fixme_outcount = 1;
+  filter->fixme_outcount = 3;
   
   bitdepth = meta_new_data(MT_BITDEPTH, filter, malloc(sizeof(int)));
   *(int*)(bitdepth->data) = BD_U8;
   bitdepth->replace = bitdepth;
+  
+  size_in = meta_new(MT_IMGSIZE, filter);
+  size_out = meta_new_data(MT_IMGSIZE, filter, data->out_dim);
+  data->dim_in_meta = size_in;
+  size_in->replace = size_out;
   
   out = meta_new(MT_BUNDLE, filter);
   eina_array_push(filter->out, out);
@@ -203,6 +222,7 @@ static Filter *filter_deinterleave_new(void)
   *(int*)(color->data) = CS_RGB_R;
   meta_attach(channel, color);
   meta_attach(channel, bitdepth);
+  meta_attach(channel, size_out);
   meta_attach(out, channel);
   ch_out_first = channel;
   color_out_first = color;
@@ -212,6 +232,7 @@ static Filter *filter_deinterleave_new(void)
   *(int*)(color->data) = CS_RGB_G;
   meta_attach(channel, color);
   meta_attach(channel, bitdepth);
+  meta_attach(channel, size_out);
   meta_attach(out, channel);
   
   channel = meta_new_channel(filter, 3);
@@ -219,6 +240,7 @@ static Filter *filter_deinterleave_new(void)
   *(int*)(color->data) = CS_RGB_B;
   meta_attach(channel, color);
   meta_attach(channel, bitdepth);
+  meta_attach(channel, size_out);
   meta_attach(out, channel);
   
   data->select_color = eina_array_new(2);
@@ -230,17 +252,20 @@ static Filter *filter_deinterleave_new(void)
   eina_array_push(filter->in, in);
   
   tune_color = meta_new_select(MT_COLOR, filter, data->select_color);
-  meta_name_set(tune_color, "Output Colorspace");
+  meta_name_set(tune_color, "Input Colorspace");
   tune_color->dep = tune_color;
   //FIXME should drop anything attached here!
   tune_color->replace = color_out_first;
   data->colorspace = tune_color;
+  //printf("Input Colorspace: %p\n", tune_color);
+  global_meta_check = tune_color;
   
   eina_array_push(filter->tune, tune_color);
   
   ch_in = meta_new_channel(filter, 1);
   meta_attach(ch_in, tune_color);
   meta_attach(ch_in, bitdepth);
+  meta_attach(ch_in, size_in);
   //FIXME should drop anything attached here!
   //FIXME ch_out_first is a hack because order of childs is changed by configuration with replace being first!
   ch_in->replace = ch_out_first;

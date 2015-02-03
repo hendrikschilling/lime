@@ -64,6 +64,8 @@ FILE *vizp_start(char *path)
 {
   FILE *file = fopen(path, "w");
   
+  assert(file);
+  
   fprintf(file, "digraph g {\n"
   "overlap = false;\n"
   "node [shape = record];\n");
@@ -155,7 +157,6 @@ Meta *meta_copy_tree(Meta *m, Eina_Array *copied_ar, Eina_Array *copy_ar, Config
   ea_push(copied_ar, m);
   ea_push(copy_ar, copy);
   
-  
   if (m->childs) {
     copy->childs = meta_array_new();
     for(i=0;i<m->childs->count;i++) {
@@ -182,25 +183,14 @@ void metas_pair_recursive(Eina_Array *matches, Meta *source, Meta *sink)
   int i;
   
   if (source->type == sink->type) {
-#ifdef DEBUG_SPECIAL
-    if (!strcmp(source->filter->fc->shortname, "deinterleave") && !strcmp(sink->filter->fc->shortname, "interleave")) {
-      FILE *file = vizp_start("debug.dot");
-      vizp_filter(file, source->filter);
-      vizp_filter(file, sink->filter);
-      vizp_stop(file);
-      
-      printf("possible pair:\n");
-      meta_print(source);
-      meta_print(sink);
-    }
-#endif
     eina_array_push(matches, source);
     return;
   }
   
   if (source->childs)
-    for(i=0;i<source->childs->count;i++)
+    for(i=0;i<source->childs->count;i++) {
       metas_pair_recursive(matches, source->childs->data[i], sink);
+    }
 }
  
  
@@ -208,22 +198,9 @@ int metas_not_kompat(Meta *source, Meta *sink)
 {
   int i, j;
   
-  //printf("cmp sink:"); meta_print(sink); printf(" src:"); meta_print(source); printf("\n");
-  
-  if (source->type != sink->type) {
-#ifdef DEBUG_SPECIAL
-    if (!strcmp(source->filter->fc->shortname, "deinterleave") && !strcmp(sink->filter->fc->shortname, "interleave"))
-    {
-      printf("types differ\n");
-      meta_print(source);
-      meta_print(sink);
-    }
-#endif
+  if (source->type != sink->type)
     return -1;
-  }
-  
-  //printf("cmp types\n");
-  
+
   //single data
   if (sink->data && source->data) {
     return meta_def_list[sink->type].cmp_data(source->data,sink->data);
@@ -268,77 +245,16 @@ int metas_not_kompat_rec_all(Meta *source, Meta *sink, Eina_Array *match_source,
   int found;
   int pre_count = ea_count(match_source);
   
-  if (!strcmp(source->filter->fc->shortname, "interleave") && !strcmp(sink->filter->fc->shortname, "memsink")) {
-      printf("cmp recursive\n");
-      meta_print(source);
-      meta_print(sink);
-      printf("\n\n");
-      
-      FILE *file = vizp_start("pair.dot");
-      vizp_meta_tree(file, source);
-      vizp_meta_tree(file, sink);
-      vizp_stop(file);
-      
-      file = vizp_start("source.dot");
-      vizp_filter(file, source->filter);
-      vizp_stop(file);
-      //exit(0);
-  }
-  
-    /*if (!strcmp(source->filter->fc->shortname, "deinterleave") && !strcmp(sink->filter->fc->shortname, "interleave")) {
-      printf("cmp recursive\n");
-      meta_print(source);
-      meta_print(sink);
-      printf("\n\n");
-      
-      FILE *file = vizp_start("pair.dot");
-      vizp_meta_tree(file, source);
-      vizp_meta_tree(file, sink);
-      vizp_stop(file);
-      
-      file = vizp_start("source.dot");
-      vizp_filter(file, source->filter);
-      vizp_stop(file);
-      exit(0);
-  }*/
-  
   cmp = metas_not_kompat(source, sink);
   
-  if (cmp) {
-#ifdef DEBUG_SPECIAL
-    if (!strcmp(source->filter->fc->shortname, "deinterleave") && !strcmp(sink->filter->fc->shortname, "interleave"))
-      printf("type no match\n");
-#endif
+  if (cmp)
     return -1;
-  }
-  
 
-
-  
   if (sink->childs) {
-#ifdef DEBUG_SPECIAL
-        if (!strcmp(source->filter->fc->shortname, "deinterleave") && !strcmp(sink->filter->fc->shortname, "interleave")) {
-
-      printf("source childs\n");
-    for(i=0;i<ma_count(source->childs);i++)
-      meta_print(ma_data(source->childs,i));
-    printf("\n");
-    
-      printf("sink childs\n");
-    for(i=0;i<ma_count(sink->childs);i++)
-      meta_print(ma_data(sink->childs,i));
-    printf("\n");
-        }
-#endif
-    
     for(i=0;i<ma_count(sink->childs);i++) {
       found = 0;
       for(j=0;j<ma_count(source->childs);j++)
 	if (metas_not_kompat_rec_all(ma_data(source->childs,j),ma_data(sink->childs,i), match_source, match_sink)==0) {
-#ifdef DEBUG_SPECIAL
-          if (!strcmp(source->filter->fc->shortname, "deinterleave") && !strcmp(sink->filter->fc->shortname, "interleave"))
-          printf("found compatible match\n");
-#endif
 	  found = 1;
 	  break;
 	}
@@ -352,25 +268,16 @@ int metas_not_kompat_rec_all(Meta *source, Meta *sink, Eina_Array *match_source,
       }
     }
   }
-    
-  /*if (sink->type == MT_CHANNEL)
-    ch_sink_source[(intptr_t)sink->data] = source;*/
+
   ea_push(match_source, source);
   ea_push(match_sink, sink);
-    
 
-  //printf("match!\n");
   return 0;
 }
  
 Eina_Array *get_sink_source_matches(Meta *source, Meta *sink, Eina_Array *match_source, Eina_Array *match_sink)
 {
   int i;
-  
-#ifdef DEBUG_SPECIAL
-  if (!strcmp(source->filter->fc->shortname, "deinterleave") && !strcmp(sink->filter->fc->shortname, "interleave"))
-    printf("\n\n");
-#endif
   
   Eina_Array *matches_possible = eina_array_new(8);
   Eina_Array *matches_compat = eina_array_new(8);
@@ -381,19 +288,11 @@ Eina_Array *get_sink_source_matches(Meta *source, Meta *sink, Eina_Array *match_
   if (!ea_count(matches_possible)) {
     eina_array_free(matches_possible);
     eina_array_free(matches_compat);
-#ifdef DEBUG_SPECIAL
-  if (!strcmp(source->filter->fc->shortname, "deinterleave") && !strcmp(sink->filter->fc->shortname, "interleave"))
-    printf("no possible mathces\n");
-#endif
     return NULL;
   }
   
   //vergleiche matches, und schmeiss inkompatible weg
   for(i=0;i<ea_count(matches_possible);i++) {
-#ifdef DEBUG_SPECIAL
-    if (!strcmp(source->filter->fc->shortname, "deinterleave") && !strcmp(sink->filter->fc->shortname, "interleave"))
-    printf("rec match!\n");
-#endif
     if (metas_not_kompat_rec_all(ea_data(matches_possible,i), sink, match_source, match_sink) == 0)
       eina_array_push(matches_compat, ea_data(matches_possible,i));
   }
@@ -401,24 +300,12 @@ Eina_Array *get_sink_source_matches(Meta *source, Meta *sink, Eina_Array *match_
   if (!ea_count(matches_compat)) {
     eina_array_free(matches_possible);
     eina_array_free(matches_compat);
-  if (!strcmp(source->filter->fc->shortname, "deinterleave") && !strcmp(sink->filter->fc->shortname, "interleave"))
-    printf("no copmaibl mathces\n");
     return NULL;
   }
-  
- /*for(i=0;i<ea_count(matches_compat);i++) {
-    printf("compatible match: ");
-    meta_print(ea_data(matches_compat, i));
-    printf("-> ");
-    meta_print(sink);
-    printf("\n");
-  }*/
+
+  assert(ea_count(matches_compat) == 1);
   
   eina_array_free(matches_possible);
-  
-  
-  if (!strcmp(source->filter->fc->shortname, "deinterleave") && !strcmp(sink->filter->fc->shortname, "interleave"))
-    printf("\n\n");
   
   return matches_compat;
 }
@@ -450,8 +337,6 @@ Eina_Array *get_sink_source_matches(Meta *source, Meta *sink, Eina_Array *match_
     
 }*/
 
-
-
 //vergleiche die zwei Bäume auf kompatibilität (expandiert nur sink!)
 int metas_not_kompat_rec(Meta *source, Meta *sink, Meta **ch_sink_source)
 {
@@ -461,22 +346,11 @@ int metas_not_kompat_rec(Meta *source, Meta *sink, Meta **ch_sink_source)
   
   cmp = metas_not_kompat(source, sink);
   
-  if (cmp) {
-    if (!strcmp(source->filter->fc->shortname, "deinterleave") && !strcmp(sink->filter->fc->shortname, "interleave"))
-      printf("type no match2\n");
-    //printf("type no match!\n");
+  if (cmp)
     return -1;
-  }
-
-  
-    if (!strcmp(source->filter->fc->shortname, "deinterleave") && !strcmp(sink->filter->fc->shortname, "interleave"))
-      printf("check childs\n");
     
   if (sink->childs) 
     for(i=0;i<ma_count(sink->childs);i++) {
-    if (!strcmp(source->filter->fc->shortname, "deinterleave") && !strcmp(sink->filter->fc->shortname, "interleave"))
-      printf("check child\n");
-      //printf("checking child %d\n", i);
       found = 0;
       for(j=0;j<ma_count(source->childs);j++)
 	if (metas_not_kompat_rec(ma_data(source->childs,j),ma_data(sink->childs,i), ch_sink_source)==0) {
@@ -484,16 +358,13 @@ int metas_not_kompat_rec(Meta *source, Meta *sink, Meta **ch_sink_source)
 	  break;
 	}
       if (!found) {
-	//printf("rec no  match\n");
 	return -1;
       }
     }
     
   if (sink->type == MT_CHANNEL)
     ch_sink_source[(intptr_t)sink->data] = source;
-    
 
-  //printf("match!\n");
   return 0;
 }
 
@@ -507,7 +378,7 @@ void restr_remove_value(Tune_Restriction *restr, int idx)
   void *my_data;
 
   restr->remain--;
-
+  
   if (restr->remain == 0) {
     printf("FIXME: tuning impossible!\n");
   }
@@ -551,12 +422,12 @@ void restr_remove_value(Tune_Restriction *restr, int idx)
     other_node->data = NULL;
     //other_restr->tune->data = NULL;
   }
+
   
   if (restr->remain == 1) {
     for(i=0;i<ea_count(restr->allowed_values);i++)
-      if (ea_data(restr->allowed_values, i)) {
+      if (ea_data(restr->allowed_values, i))
 	restr->tune->data = ea_data(restr->allowed_values, i);
-      }
   }
   else
     restr->tune->data = NULL;
@@ -630,9 +501,6 @@ void tunes_restrict(Meta *a, Meta *b, Eina_Array *restrictions, Config *c)
 	  restr_remove_value(found_a, i);
     }
     
-    a->data = NULL;
-    //a->dep->data = NULL;
-    
     return;
   }
   
@@ -642,13 +510,10 @@ void tunes_restrict(Meta *a, Meta *b, Eina_Array *restrictions, Config *c)
     for(i=0;i<ea_count(found_b->allowed_values);i++) 
       if (ea_data(found_b->allowed_values, i)) {
 	meta_dep_set_data_calc(b, ea_data(found_b->allowed_values, i));
-    
+
 	if (metas_not_kompat(a, b))
 	  restr_remove_value(found_b, i);
     }
-    
-    b->data = NULL;
-    //b->dep->data = NULL;
     
     return;
   }
@@ -684,9 +549,6 @@ void tunes_restrict(Meta *a, Meta *b, Eina_Array *restrictions, Config *c)
       restr_remove_value(found_a, i);
   }
   
-  a->data = NULL;
-  a->dep->data = NULL;
-  
   for(i=0;i<ea_count(found_b->allowed_values);i++) {
     if (!ea_data(found_b->allowed_values, i))
       continue;
@@ -708,9 +570,6 @@ void tunes_restrict(Meta *a, Meta *b, Eina_Array *restrictions, Config *c)
     if (!is_compatible)
       restr_remove_value(found_b, i);
   }
-  
-  b->data = NULL;
-  b->dep->data = NULL;
 }
 
 /*
@@ -730,35 +589,24 @@ Meta *out_tree_construct(Meta *source, Eina_Array *src_con, Eina_Array *sink_con
 	//nein: replace-Baum als Kind anhängen
       //dann: out_tree_contruct(kind, sink-entsprechung, replace-entsprchung, out-entspr,...)
       
-  int i;
+  int i, j;
   Meta *replace;
   Meta *sink;
   Meta *out;
   
-  /*if (!source->childs)
-    return;*/
+  replace = NULL;
+  out = NULL;
+  sink = NULL;
   
-  //out->childs = meta_array_new();
+  //durchsuche src_con nach source, setzte replace auf entsprechendes replace wenn gefunden
+  for(i=0;i<ea_count(src_con);i++)
+    if (ea_data(src_con, i) == source) {
+      sink = ea_data(sink_con, i);
+      replace = sink->replace;
     
-  //for(i=0;i<source->childs->count;i++) {
-    replace = NULL;
-    out = NULL;
-    sink = NULL;
-    
-    //durchsuche src_con nach source, setzte replace auf entsprechendes replace wenn gefunden
-    for(i=0;i<ea_count(src_con);i++)
-      if (ea_data(src_con, i) == source) {
-	sink = ea_data(sink_con, i);
-	replace = sink->replace;
-	
-	//assert(replace);
-  if (!replace) {
-    printf("!");
-    //printf("DEBUG: CONFIG: no replace for meta\n");
-    meta_print(sink);
-    //printf("\n");
-  }
-      }
+      if (!replace)
+        printf("!");
+    }
     
     if (!replace) {
       out = meta_copy(source, c);
@@ -768,76 +616,39 @@ Meta *out_tree_construct(Meta *source, Eina_Array *src_con, Eina_Array *sink_con
       
       //untersuche ob replace schon in out vorhanden ist
       for(i=0;i<ea_count(copied);i++)
-	if (replace == ea_data(copied, i)) {
-	  out = ea_data(copy, i);
-	  //printf("tunes merge: %p %p %p\n", source, sink, out);
-	  //tunes_merge(source, sink, out, tunes_copied, tunes_copy);
-	  //return out;
-	}
-	  //out = ea_data(copy, i);
-	
-      //müssen out_child erst mal kopieren
-      if (!out)
-	out = meta_copy_tree(replace, copied, copy, c);
-      //printf("tunes merge (tree): %p %p %p\n", source, sink, out);
-      //tunes_merge(source, sink, out, tunes_copied, tunes_copy);
+        if (replace == ea_data(copied, i)) {
+          out = ea_data(copy, i);
+        }
+        
+        //müssen out_child erst mal kopieren
+        //TODO why not meta_copy()?
+        if (!out)
+          out = meta_copy_tree(replace, copied, copy, c);
     }
-    
-    //meta_array_append(out->childs, out_child);
-    
-    //assert(sink);
     
     if (source->childs) {
-#ifdef DEBUG_SPECIAL
-      if (!strcmp(sink->filter->fc->shortname, "deinterleave")) {
-        printf("\n");
-        for(i=0;i<ma_count(out->childs);i++) {
-          printf("delete child ");
-          meta_print(ma_data(out->childs,i));
-        }
-        printf("\n");
-        printf("\n");
-      }
-#endif
-      /*if (out->childs)
-	meta_array_del(out->childs);
-      out->childs = meta_array_new();*/
-#ifdef DEBUG_SPECIAL
-      if (!strcmp(sink->filter->fc->shortname, "deinterleave")) {
-        printf("\n");
-        printf("father:");
-        meta_print(out);
-        printf("\n");
-      }
-#endif
       for(i=0;i<ma_count(source->childs);i++) {
-	Meta *child = out_tree_construct(source->childs->data[i], src_con, sink_con, copied, copy, c);
-#ifdef DEBUG_SPECIAL
-        if (!strcmp(sink->filter->fc->shortname, "deinterleave")) {
-          printf("more childs %d %p\n", i, child);
-          meta_print(child);
-          printf("\n");
+        Meta *child = out_tree_construct(source->childs->data[i], src_con, sink_con, copied, copy, c);
+        
+        if (child) {
+          for(j=0;j<ma_count(out->childs);j++)
+            if (ma_data(out->childs, j) == child) {
+              child = NULL;
+              break;
+            }
+            
+          if (child) {
+            if (!out->childs)
+              out->childs = meta_array_new();
+            meta_array_append(out->childs, child);
+          }
         }
-#endif
-	if (child)
-	  meta_array_append(out->childs, child);
-	
+        
       }
-
+      
     }
     
-    
-  //}
-    
-  
-  //assert(sink);
-  
-  /*if (sink) {
-     printf("tunes merge (after): %p %p %p\n", source, sink, out);
-    //tunes_merge(source, sink, out, tunes_copied, tunes_copy);
-  }*/
-  
-  return out;
+    return out;
 }
 
 /*
@@ -885,6 +696,14 @@ void _ea_metas_data_zero(Eina_Array *metas)
   
   while(ea_count(metas))
     ((Meta*)ea_pop(metas))->data = NULL;
+}
+
+
+void vizp_meta_tree_single(char *path, Meta *m)
+{
+  FILE *f = vizp_start(path);
+  vizp_meta_tree(f,m);
+  vizp_stop(f);
 }
 
 int test_filter_config_real(Filter *f, int write_graph, Config *c)
@@ -936,8 +755,6 @@ int test_filter_config_real(Filter *f, int write_graph, Config *c)
   
   out = ea_data(con->source->filter->out, 0);
   
-  printf("%s",con->source->filter->fc->shortname);
-  
   while (con) {
     if (write_graph)
       vizp_filter(filters, con->sink->filter);
@@ -955,8 +772,6 @@ int test_filter_config_real(Filter *f, int write_graph, Config *c)
     
     matches_compat = get_sink_source_matches(out, con->sink, match_source, match_sink);
     
-    printf("->%s", con->sink->filter->fc->shortname);
-    
     if (!matches_compat) {
       //printf("failed\n");
       _ea_metas_data_zero(c->applied_metas);
@@ -970,7 +785,6 @@ int test_filter_config_real(Filter *f, int write_graph, Config *c)
       //for(i=0;i<ea_count(trash);i++)
 	//free(ea_data(trash, i));
       eina_array_free(trash);
-      printf("-not compatible\n");
       return pos;
     }
     
@@ -996,7 +810,6 @@ int test_filter_config_real(Filter *f, int write_graph, Config *c)
 	//for(i=0;i<ea_count(trash);i++)
 	  //free(ea_data(trash, i));
 	eina_array_free(trash);
-        printf("-meta data copy failed\n");
 	return pos;
       }
    
@@ -1006,15 +819,10 @@ int test_filter_config_real(Filter *f, int write_graph, Config *c)
     else
       out = NULL;
     
-    if (out && old_out && !strcmp(con->sink->filter->fc->shortname, "deinterleave")) {
-      FILE *file = vizp_start("outtree.dot");
-      vizp_meta_tree(file, old_out);
-      vizp_meta_tree(file, out);
-      vizp_stop(file);
-    }
-    
-    for(i=0;i<ea_count(match_source);i++)
+    for(i=0;i<ea_count(match_source);i++) {
+      //printf("%d",i);   meta_print(global_meta_check); printf("\n");
       tunes_restrict(ea_data(match_source, i), ea_data(match_sink, i), restrictions, c);
+    }
     
     //FIXME clean on reconfiguration!
     con->sink->filter->node->con_ch_in = eina_array_new(4);
@@ -1053,8 +861,6 @@ int test_filter_config_real(Filter *f, int write_graph, Config *c)
     eina_array_free(matches_compat);
   }
   
-  printf("okay?\n");
-  
   int j;
   Tune_Restriction *restr;
   
@@ -1086,7 +892,7 @@ int test_filter_config_real(Filter *f, int write_graph, Config *c)
   }
   while (con) {
     if (con->sink->filter->tunes_fixed) {
-      //printf("fixed_tunings %s\n",con->sink->filter->name);
+      //printf("fixed_tunings %s\n",con->sink->filter->fc->name);
       con->sink->filter->tunes_fixed(con->sink->filter);
     }
     if (con->sink->filter->node->con_trees_out && ea_count(con->sink->filter->node->con_trees_out) == 1)
@@ -1453,8 +1259,6 @@ int lime_config_test(Filter *f_sink)
   Filter *f = f_sink;
   Config *c;
   
-  printf("test config\n");
-  
   pthread_mutex_lock(&filter_chain_last_filter(f_sink)->lock);
   
   c = filter_chain_last_filter(f)->c;
@@ -1523,6 +1327,10 @@ int lime_config_test(Filter *f_sink)
       return -1;
     }
   }
+   
+  printf("configured!!\n");
+  meta_print(global_meta_check);
+  printf("\n");
   
   c->configured = 1;
   

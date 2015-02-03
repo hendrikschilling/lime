@@ -55,8 +55,7 @@ void meta_array_del(Meta_Array *ar)
 //TODO check for ar == NULL, realloc fail
 int meta_array_append(Meta_Array *ar, Meta *meta)
 {
-  if (!ar)
-    return -1;
+  assert(ar);
   
   if (ar->count == ar->max) {
     if (ar->max == 1)
@@ -65,7 +64,7 @@ int meta_array_append(Meta_Array *ar, Meta *meta)
       	ar->max *= 2;
     ar->data = realloc(ar->data, sizeof(Meta*)*ar->max);
     if (!ar->data)
-      return -1;
+      abort();
   }
   
   //TODO mark array as sorted/unsorted!

@@ -219,7 +219,10 @@ void meta_print(Meta *m)
       printf("  {  ");
     if (meta_def_list[m->type].print_f)
       for(i=0;i<ea_count(m->select);i++) {
-	meta_def_list[m->type].print_f(str, ea_data(m->select, i));
+        if (ea_data(m->select, i))
+          meta_def_list[m->type].print_f(str, ea_data(m->select, i));
+        else
+          sprintf(str, "{}");
 	printf("%s ", str);
       }
     else

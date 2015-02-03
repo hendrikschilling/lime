@@ -2939,11 +2939,8 @@ void fc_gui_from_list(Eina_List *filters)
   assert(filters);
   assert(config_curr);
   
-  printf("gui from filter list\n");
-  
   last = NULL;
   EINA_LIST_FOREACH(filters, list_iter, f) {
-      printf("%s\n", f->fc->name);
     //filter chain
     fc = fc_new(f);
     config_curr->filter_chain = eina_list_append(config_curr->filter_chain, fc);
@@ -2966,11 +2963,8 @@ void fc_gui_from_config(Config_Data *config)
   
   assert(config);
   
-  printf("gui from filter list\n");
-  
   f = config->load;
   while(f) {
-      printf("%s\n", f->fc->name);
     //filter chain
     fc = fc_new(f);
     config_curr->filter_chain = eina_list_append(config_curr->filter_chain, fc);
