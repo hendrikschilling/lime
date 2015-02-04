@@ -123,11 +123,11 @@ static void _worker(Filter *f, Eina_Array *in, Eina_Array *out, Rect *area, int 
       //data->common->raw->params.gamm[0]=1.0/2.222;
       //data->common->raw->params.gamm[1]=4.5;
       //sRGB
-      data->common->raw->params.gamm[0]=1.0/2.4;
-      data->common->raw->params.gamm[1]=12.92;
+      //data->common->raw->params.gamm[0]=1.0/2.4;
+      //data->common->raw->params.gamm[1]=12.92;
         
-      //data->common->raw->params.gamm[0]=1.0;
-      //data->common->raw->params.gamm[1]=1.0;
+      data->common->raw->params.gamm[0]=1.0;
+      data->common->raw->params.gamm[1]=0.0;
       
       libraw_unpack(data->common->raw);
       data->common->unpacked = 1;

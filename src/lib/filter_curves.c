@@ -98,7 +98,7 @@ static int _input_fixed(Filter *f)
       {
         yi = gsl_spline_eval (spline, xi, acc);
         printf ("%.0f %.1f\n", xi*255, 255*yi);
-        data->lut[(int)(xi*255.0+0.001)] = lin2gamma(yi)*255.0+0.001;
+        data->lut[(int)(xi*255.0+0.001)] = lin2gamma(xi)*255.0+0.001;
       }
       int i;
     for (i = 0; i < 256; i++)
