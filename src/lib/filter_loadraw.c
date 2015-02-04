@@ -104,25 +104,31 @@ static void _worker(Filter *f, Eina_Array *in, Eina_Array *out, Rect *area, int 
     pthread_mutex_lock(&data->common->lock);
     if (!data->common->unpacked) {
       
-      data->common->raw->params.use_rawspeed = 1;
       data->common->raw->params.user_qual = 10;
       data->common->raw->params.adjust_maximum_thr = 0.0;
       data->common->raw->params.no_auto_bright = 1;
+      data->common->raw->params.no_auto_scale = 0;
       data->common->raw->params.use_auto_wb = 0;
-      data->common->raw->params.use_camera_matrix = 1;
+      data->common->raw->params.use_camera_matrix = 0;
       data->common->raw->params.output_bps = 8;
       
       //exposure
-      data->common->raw->params.exp_correc = 1.0;
-      data->common->raw->params.exp_shift = 1.2;
-      data->common->raw->params.exp_preser = 1.0;
+      data->common->raw->params.exp_correc = 0.0;
+      data->common->raw->params.exp_shift = 0.0;
+      data->common->raw->params.exp_preser = 0.0;
       
       //sRGB
-      data->common->raw->params.output_color = 0;
+      data->common->raw->params.output_color = 1;
+      //BT709
+      //data->common->raw->params.gamm[0]=1.0/2.222;
+      //data->common->raw->params.gamm[1]=4.5;
       //sRGB
-      data->common->raw->params.gamm[0]=1.0;///2.4;
-      data->common->raw->params.gamm[1]=1.0;//12.92;
+      data->common->raw->params.gamm[0]=1.0/2.4;
+      data->common->raw->params.gamm[1]=12.92;
         
+      //data->common->raw->params.gamm[0]=1.0;
+      //data->common->raw->params.gamm[1]=1.0;
+      
       libraw_unpack(data->common->raw);
       data->common->unpacked = 1;
       
@@ -173,22 +179,27 @@ static int _input_fixed(Filter *f)
   int rot;
   _Data *data = ea_data(f->data, 0);
   
-  data->common->raw->params.use_camera_matrix = 1;
+  data->common->raw->params.use_camera_matrix = 0;
   data->common->raw->params.use_camera_wb = 1;
   data->common->raw->params.user_flip = 0;
+  data->common->raw->params.use_rawspeed = 0;
+  
+  data->common->raw->params.camera_profile = "/usr/share/rawtherapee/dcpprofiles/Olympus E-M5.dcp";
   
   if (libraw_open_file(data->common->raw, data->input->data))
     return -1;
   
+  printf("raw profile: %s\n", data->common->raw->params.camera_profile);
+  
   //default
   data->rot = 1;
-  /*switch (data->common->raw->sizes.flip) {
+  switch (data->common->raw->sizes.flip) {
     case 0 : data->rot = 1; break;
     case 5 : data->rot = 8; break;
     case 6 : data->rot = 6; break;
     default :
       printf("FIXME implemente rotation %d in raw!\n", data->common->raw->sizes.flip);
-  }*/
+  }
   
   data->w = data->common->raw->sizes.width;
   data->h = data->common->raw->sizes.height;

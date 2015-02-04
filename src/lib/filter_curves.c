@@ -34,19 +34,28 @@ static void _worker(Filter *f, Eina_Array *in, Eina_Array *out, Rect *area, int 
   int i, j;
   uint8_t *input, *output;
   _Data *data = ea_data(f->data, 0);
-  int mult = 1024*data->c;
 
   assert(in && ea_count(in) == 1);
   assert(out && ea_count(out) == 1);
+  
+  hack_tiledata_fixsize(3, ea_data(out, 0));
   
   input = ((Tiledata*)ea_data(in, 0))->data;
   output = ((Tiledata*)ea_data(out, 0))->data;
 
   
   for(j=0;j<area->height;j++)
-    for(i=0;i<area->width;i++) {
-	output[j*area->width+i] = data->lut[input[j*area->width+i]];
+    for(i=0;i<area->width*3;i++) {
+	output[j*area->width*3+i] = data->lut[input[j*area->width*3+i]];
     }
+}
+
+double lin2gamma(double lin)
+{
+  if (lin <= 0.0031308)
+    return 12.92*lin;
+  else
+    return (1+0.055)*pow(lin,1/2.4)-0.055;
 }
 
 static int _input_fixed(Filter *f)
@@ -89,7 +98,7 @@ static int _input_fixed(Filter *f)
       {
         yi = gsl_spline_eval (spline, xi, acc);
         printf ("%.0f %.1f\n", xi*255, 255*yi);
-        data->lut[(int)(xi*255.0+0.001)] = yi*255.0+0.001;
+        data->lut[(int)(xi*255.0+0.001)] = lin2gamma(yi)*255.0+0.001;
       }
       int i;
     for (i = 0; i < 256; i++)
@@ -120,9 +129,6 @@ static Filter *_new(void)
   //tune color-space
   tune_color = meta_new_select(MT_COLOR, f, eina_array_new(3));
   pushint(tune_color->select, CS_INT_RGB);
-  pushint(tune_color->select, CS_LAB_L);
-  pushint(tune_color->select, CS_YUV_Y);
-  pushint(tune_color->select, CS_HSV_V);
   tune_color->replace = tune_color;
   tune_color->dep = tune_color;
   eina_array_push(f->tune, tune_color);
