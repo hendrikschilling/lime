@@ -30,11 +30,15 @@
 const int bord = 8;
 
 typedef struct {
-  float clip, compress, exp;
   int iterations;
   float radius;
   void *blur_b, *estimate_b, *fac_b;
   uint8_t lut[65536];
+} _Common;
+
+typedef struct {
+  _Common *common;
+  void *blur_b, *estimate_b, *fac_b;
 } _Data;
 
 static void simplegauss(Rect area, uint16_t *in, uint16_t *out, float rad)
@@ -72,12 +76,19 @@ static void _worker(Filter *f, Eina_Array *in, Eina_Array *out, Rect *area, int 
   int i, j;
   uint16_t *output;
   uint16_t *input;
-  _Data *data = ea_data(f->data, 0);
+  _Data *data = ea_data(f->data, thread_id);
   uint16_t *blur = data->blur_b,
            *estimate = data->estimate_b,
            *fac = data->fac_b;
   Tiledata *in_td;
   Rect in_area;
+  const int size = 3*sizeof(uint16_t)*(DEFAULT_TILE_SIZE+2*bord)*(DEFAULT_TILE_SIZE+2*bord);
+  
+  if (!data->blur_b) {
+    data->blur_b = malloc(size);
+    data->estimate_b = malloc(size);
+    data->fac_b = malloc(size);
+  }
 
   assert(in && ea_count(in) == 1);
   assert(out && ea_count(out) == 1);
@@ -96,10 +107,10 @@ static void _worker(Filter *f, Eina_Array *in, Eina_Array *out, Rect *area, int 
   
   memcpy(estimate, input, 3*sizeof(uint16_t)*in_area.width*in_area.height);
   
-  for(i=0;i<data->iterations;i++) {
-    simplegauss(in_area, estimate, blur, data->radius);
+  for(i=0;i<data->common->iterations;i++) {
+    simplegauss(in_area, estimate, blur, data->common->radius);
     lrdiv(in_area, input, blur, fac);
-    simplegauss(in_area, fac, fac, data->radius);
+    simplegauss(in_area, fac, fac, data->common->radius);
     lrmul(in_area, estimate, fac, estimate);
   }
   
@@ -135,13 +146,6 @@ static int _input_fixed(Filter *f)
 {
   _Data *data = ea_data(f->data, 0);
   
-  const int size = 3*sizeof(uint16_t)*(DEFAULT_TILE_SIZE+2*bord)*(DEFAULT_TILE_SIZE+2*bord);
-  
-  if (!data->blur_b) {
-    data->blur_b = malloc(size);
-    data->estimate_b = malloc(size);
-    data->fac_b = malloc(size);
-  }
   
   return 0;
 }
@@ -164,6 +168,15 @@ static int _del(Filter *f)
   return 0;
 }
 
+static void *_data_new(Filter *f, void *data)
+{
+  _Data *newdata = calloc(sizeof(_Data), 1);
+  
+  newdata->common = ((_Data*)data)->common;
+  
+  return newdata;
+}
+
 static Filter *_new(void)
 {
   Filter *f = filter_new(&filter_core_lrdeconv);
@@ -173,14 +186,16 @@ static Filter *_new(void)
   f->mode_buffer = filter_mode_buffer_new();
   f->mode_buffer->worker = _worker;
   f->mode_buffer->area_calc = _area_calc;
-  f->mode_buffer->threadsafe = 0;
+  f->mode_buffer->threadsafe = 1;
+  f->mode_buffer->data_new = &_data_new;
   f->input_fixed = _input_fixed;
   f->del = _del;
   ea_push(f->data, data);
   f->fixme_outcount = 1;
   
-  data->iterations = 30;
-  data->radius = 1.0;
+  data->common = calloc(sizeof(_Common), 1);
+  data->common->iterations = 30;
+  data->common->radius = 1.0;
   
   //tune color-space
   tune_color = meta_new_select(MT_COLOR, f, eina_array_new(3));
@@ -217,7 +232,7 @@ static Filter *_new(void)
   in->replace = out;
   
   //setting
-  setting = meta_new_data(MT_FLOAT, f, &data->radius);
+  setting = meta_new_data(MT_FLOAT, f, &data->common->radius);
   meta_name_set(setting, "radius");
   eina_array_push(f->settings, setting);
   
@@ -232,22 +247,7 @@ static Filter *_new(void)
   meta_attach(setting, bound);
   
   //setting
-  setting = meta_new_data(MT_FLOAT, f, &data->compress);
-  meta_name_set(setting, "highlight compression");
-  eina_array_push(f->settings, setting);
-  
-  bound = meta_new_data(MT_FLOAT, f, malloc(sizeof(float)));
-  *(float*)bound->data = 0.0;
-  meta_name_set(bound, "PARENT_SETTING_MIN");
-  meta_attach(setting, bound);
-  
-  bound = meta_new_data(MT_FLOAT, f, malloc(sizeof(float)));
-  *(float*)bound->data = 1.0;
-  meta_name_set(bound, "PARENT_SETTING_MAX");
-  meta_attach(setting, bound);
-  
-  //setting
-  setting = meta_new_data(MT_INT, f, &data->iterations);
+  setting = meta_new_data(MT_INT, f, &data->common->iterations);
   meta_name_set(setting, "iterations");
   eina_array_push(f->settings, setting);
   

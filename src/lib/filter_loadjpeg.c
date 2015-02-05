@@ -120,7 +120,7 @@ typedef my_source_mgr * my_src_ptr;
     } \
   }
   
-void get_exif_stuff(const char *file, uint8_t **preview, int *p_len, int *rotation)
+static void get_exif_stuff(const char *file, uint8_t **preview, int *p_len, int *rotation)
 {
   int orientation = 1;
   int len = 0;
@@ -568,7 +568,7 @@ my_error_exit (j_common_ptr cinfo)
   longjmp(myerr->setjmp_buffer, 1);
 }
 
-void *_data_new(Filter *f, void *data)
+static void *_data_new(Filter *f, void *data)
 {
   _Data *newdata = calloc(sizeof(_Data), 1);
   
@@ -580,7 +580,7 @@ void *_data_new(Filter *f, void *data)
   return newdata;
 }
 
-void _loadjpeg_worker_ijg(Filter *f, Eina_Array *in, Eina_Array *out, Rect *area, int thread_id)
+static void _loadjpeg_worker_ijg(Filter *f, Eina_Array *in, Eina_Array *out, Rect *area, int thread_id)
 {
   _Data *data = ea_data(f->data, thread_id);
   
@@ -708,7 +708,7 @@ void _loadjpeg_worker_ijg(Filter *f, Eina_Array *in, Eina_Array *out, Rect *area
   fclose(file);
 }
 
-void _loadjpeg_worker_ijg_original(Filter *f, Eina_Array *in, Eina_Array *out, Rect *area, int thread_id)
+static void _loadjpeg_worker_ijg_original(Filter *f, Eina_Array *in, Eina_Array *out, Rect *area, int thread_id)
 {
   _Data *data = ea_data(f->data, thread_id);
   
@@ -797,7 +797,7 @@ void _loadjpeg_worker_ijg_original(Filter *f, Eina_Array *in, Eina_Array *out, R
   fclose(file);
 }
 
-void simple_scale(int src_w, int src_h, int dst_w, int dst_h, uint8_t *src, uint8_t *dst)
+static void simple_scale(int src_w, int src_h, int dst_w, int dst_h, uint8_t *src, uint8_t *dst)
 {
   int i, j;
   
@@ -807,7 +807,7 @@ void simple_scale(int src_w, int src_h, int dst_w, int dst_h, uint8_t *src, uint
     }
 }
 
-void _loadjpeg_worker_ijg_thumb(Filter *f, Eina_Array *in, Eina_Array *out, Rect *area, int thread_id)
+static void _loadjpeg_worker_ijg_thumb(Filter *f, Eina_Array *in, Eina_Array *out, Rect *area, int thread_id)
 {
   _Data *data = ea_data(f->data, thread_id);
   
@@ -889,7 +889,7 @@ void _loadjpeg_worker_ijg_thumb(Filter *f, Eina_Array *in, Eina_Array *out, Rect
   jpeg_destroy_decompress(&cinfo);
 }
 
-void _loadjpeg_worker(Filter *f, Eina_Array *in, Eina_Array *out, Rect *area, int thread_id)
+static void _loadjpeg_worker(Filter *f, Eina_Array *in, Eina_Array *out, Rect *area, int thread_id)
 {
   _Data *data = ea_data(f->data, thread_id);
   
