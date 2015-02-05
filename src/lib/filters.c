@@ -270,7 +270,10 @@ Eina_List *lime_filter_chain_deserialize(char *str)
             free(tmp);
             break;
           default :
-            printf("FIXME implement type %s settings parsing\n", mt_type_str(lime_setting_type_get(f, setting)));
+            if (lime_setting_type_get(f, setting) == -1)
+              printf("setting %s for filter %s not known (filter implementation changed?)\n", setting, f->fc->name);
+            else
+              printf("FIXME implement type %s settings parsing\n", mt_type_str(lime_setting_type_get(f, setting)));
         }
           
           next = next_single_colon(cur);

@@ -25,14 +25,15 @@
 
 
 typedef struct {
-  float c;
-  uint8_t lut[256];
+  float clip, compress, exp;
+  uint8_t lut[65536];
 } _Data;
 
 static void _worker(Filter *f, Eina_Array *in, Eina_Array *out, Rect *area, int thread_id)
 { 
   int i, j;
-  uint8_t *input, *output;
+  uint8_t *output;
+  uint16_t *input;
   _Data *data = ea_data(f->data, 0);
 
   assert(in && ea_count(in) == 1);
@@ -61,18 +62,16 @@ double lin2gamma(double lin)
 static int _input_fixed(Filter *f)
 {
   _Data *data = ea_data(f->data, 0);
-  
+  gsl_spline *spline_exp;
   int i;
-  double xi, yi, x[4], y[4];
-
-  printf ("#m=0,S=2\n");
-
-  /*for (i = 0; i < 10; i++)
-    {
-      x[i] = i + 0.5 * sin (i);
-      y[i] = i + cos (i * i);
-      printf ("%g %g\n", x[i], y[i]);
-    }*/
+  double ye, yc, x[4], y[4], ex[4], ey[4];  
+  double exp;
+  double clip;
+  double compress;
+  
+  exp = pow(2.0, data->exp);
+  compress = data->compress;
+  clip = data->clip;
   
   x[0] = 0.0;
   y[0] = 0.0;
@@ -84,30 +83,62 @@ static int _input_fixed(Filter *f)
   
   x[2] = 0.454545;
   y[2] = 0.493506;
-  printf ("#m=1,S=0\n");
+  
+  
+  ex[0] = 0.0;
+  ey[0] = 0.0;
+  ex[1] = 1.0/exp*(1.0-compress);
+  ey[1] = 1.0-compress;
+  ex[2] = ex[1]+(1.0-1.0/exp)*(1.0-clip);
+  ey[2] = 1.0;
+  ex[3] = 1.0;
+  ey[3] = 1.0;
 
-  {
-    gsl_interp_accel *acc 
-      = gsl_interp_accel_alloc ();
-    gsl_spline *spline 
-      = gsl_spline_alloc (gsl_interp_cspline, 4);
-
-    gsl_spline_init (spline, x, y, 4);
-
-    for (xi = x[0]; xi <= x[3]; xi += 1.0/255.0)
-      {
-        yi = gsl_spline_eval (spline, xi, acc);
-        printf ("%.0f %.1f\n", xi*255, 255*yi);
-        data->lut[(int)(xi*255.0+0.001)] = lin2gamma(xi)*255.0+0.001;
-      }
-      int i;
-    for (i = 0; i < 256; i++)
-    {
-      printf("%d %d\n", i, data->lut[i]);
-    }
-    gsl_spline_free (spline);
-    gsl_interp_accel_free (acc);
+  gsl_interp_accel *acc = gsl_interp_accel_alloc();
+  gsl_spline *spline = gsl_spline_alloc(gsl_interp_cspline, 4);
+  gsl_spline_init(spline, x, y, 4);
+  
+  gsl_interp_accel *acc_exp = gsl_interp_accel_alloc();
+  if (exp <= 1.0) {
+    ex[1] = 1.0;
+    ey[1] = exp;
+    spline_exp = gsl_spline_alloc(gsl_interp_linear, 2);
+    gsl_spline_init(spline_exp, ex, ey, 2);
   }
+  else if (compress == 1.0) {
+    ex[1] = 1.0;
+    ey[1] = 1.0;
+    spline_exp = gsl_spline_alloc(gsl_interp_linear, 2);
+    gsl_spline_init(spline_exp, ex, ey, 2);
+  }
+  else if (clip == 1.0) {
+    ex[1] = 1.0/exp;
+    ey[1] = 1.0;
+    ex[2] = 1.0;
+    ey[2] = 1.0;
+    spline_exp = gsl_spline_alloc(gsl_interp_linear, 3);
+    gsl_spline_init(spline_exp, ex, ey, 3);
+  }
+  else if (clip == 0.0) {
+    ex[2] = ex[3];
+    ey[2] = ey[3];
+    spline_exp = gsl_spline_alloc(gsl_interp_linear, 3);
+    gsl_spline_init(spline_exp, ex, ey, 3);
+  }
+  else {
+    spline_exp = gsl_spline_alloc(gsl_interp_linear, 4);
+    gsl_spline_init(spline_exp, ex, ey, 4);
+  }
+  
+  for (i = 0; i < 65536; i++)
+  {
+    ye = lin2gamma(gsl_spline_eval(spline_exp, i*(1.0/65536.0), acc_exp));
+    //ye = lin2gamma(i*(1.0/65536.0));
+    yc = gsl_spline_eval(spline, ye, acc);
+    data->lut[i] = imin((int)(yc*256.0),255);
+  }
+  gsl_spline_free (spline);
+  gsl_interp_accel_free (acc);
     
   return 0;
 }
@@ -116,14 +147,13 @@ static Filter *_new(void)
 {
   Filter *f = filter_new(&filter_core_curves);
   
-  Meta *in, *out, *setting, *tune_bitdepth, *tune_color, *bound;
+  Meta *in, *out, *setting, *bd_in, *bd_out, *tune_color, *bound;
   _Data *data = calloc(sizeof(_Data), 1);
   f->mode_buffer = filter_mode_buffer_new();
   f->mode_buffer->worker = _worker;
   f->mode_buffer->threadsafe = 1;
   f->input_fixed = &_input_fixed;
   ea_push(f->data, data);
-  data->c = 4.0;
   f->fixme_outcount = 1;
   
   //tune color-space
@@ -134,38 +164,75 @@ static Filter *_new(void)
   eina_array_push(f->tune, tune_color);
   
   //tune bitdepth
-  tune_bitdepth = meta_new_select(MT_BITDEPTH, f, eina_array_new(2));
-  pushint(tune_bitdepth->select, BD_U16);
-  pushint(tune_bitdepth->select, BD_U8);
-  tune_bitdepth->replace = tune_bitdepth;
-  tune_bitdepth->dep = tune_bitdepth;
-  eina_array_push(f->tune, tune_bitdepth);
+  bd_out = meta_new_select(MT_BITDEPTH, f, eina_array_new(2));
+  //pushint(bd_out->select, BD_U16);
+  pushint(bd_out->select, BD_U8);
+  bd_out->dep = bd_out;
+  eina_array_push(f->tune, bd_out);
+  
+  bd_in = meta_new_select(MT_BITDEPTH, f, eina_array_new(2));
+  pushint(bd_in->select, BD_U16);
+  //pushint(bd_in->select, BD_U8);
+  bd_in->replace = bd_out;
+  bd_in->dep = bd_in;
+  eina_array_push(f->tune, bd_in);
   
   //output
   out = meta_new_channel(f, 1);
   meta_attach(out, tune_color);
-  meta_attach(out, tune_bitdepth);
+  meta_attach(out, bd_out);
   eina_array_push(f->out, out);
   
   //input
   in = meta_new_channel(f, 1);
   meta_attach(in, tune_color);
-  meta_attach(in, tune_bitdepth);
+  meta_attach(in, bd_in);
   eina_array_push(f->in, in);
   in->replace = out;
   
   //setting
-  setting = meta_new_data(MT_FLOAT, f, &data->c);
-  meta_name_set(setting, f->fc->shortname);
+  setting = meta_new_data(MT_FLOAT, f, &data->exp);
+  data->exp = 0.0;
+  meta_name_set(setting, "exposure compensation");
   eina_array_push(f->settings, setting);
   
   bound = meta_new_data(MT_FLOAT, f, malloc(sizeof(float)));
-  *(float*)bound->data = -10.0;
+  *(float*)bound->data = -20.0;
   meta_name_set(bound, "PARENT_SETTING_MIN");
   meta_attach(setting, bound);
   
   bound = meta_new_data(MT_FLOAT, f, malloc(sizeof(float)));
-  *(float*)bound->data = 10.0;
+  *(float*)bound->data = 20.0;
+  meta_name_set(bound, "PARENT_SETTING_MAX");
+  meta_attach(setting, bound);
+  
+  //setting
+  setting = meta_new_data(MT_FLOAT, f, &data->compress);
+  meta_name_set(setting, "highlight compression");
+  eina_array_push(f->settings, setting);
+  
+  bound = meta_new_data(MT_FLOAT, f, malloc(sizeof(float)));
+  *(float*)bound->data = 0.0;
+  meta_name_set(bound, "PARENT_SETTING_MIN");
+  meta_attach(setting, bound);
+  
+  bound = meta_new_data(MT_FLOAT, f, malloc(sizeof(float)));
+  *(float*)bound->data = 1.0;
+  meta_name_set(bound, "PARENT_SETTING_MAX");
+  meta_attach(setting, bound);
+  
+  //setting
+  setting = meta_new_data(MT_FLOAT, f, &data->clip);
+  meta_name_set(setting, "highlight clipping");
+  eina_array_push(f->settings, setting);
+  
+  bound = meta_new_data(MT_FLOAT, f, malloc(sizeof(float)));
+  *(float*)bound->data = 0.0;
+  meta_name_set(bound, "PARENT_SETTING_MIN");
+  meta_attach(setting, bound);
+  
+  bound = meta_new_data(MT_FLOAT, f, malloc(sizeof(float)));
+  *(float*)bound->data = 1.0;
   meta_name_set(bound, "PARENT_SETTING_MAX");
   meta_attach(setting, bound);
   

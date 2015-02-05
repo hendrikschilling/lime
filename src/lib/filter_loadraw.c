@@ -82,6 +82,11 @@ static inline uint8_t *tileptr8(Tiledata *tile, int x, int y)
    return &((uint8_t*)tile->data)[((y-tile->area.corner.y)*tile->area.width + x-tile->area.corner.x)*3];
 }
 
+static inline uint8_t *tileptr16(Tiledata *tile, int x, int y)
+{ 
+   return &((uint16_t*)tile->data)[((y-tile->area.corner.y)*tile->area.width + x-tile->area.corner.x)*3];
+}
+
 static int imin(a, b) 
 {
   if (a<=b) return a;
@@ -110,7 +115,7 @@ static void _worker(Filter *f, Eina_Array *in, Eina_Array *out, Rect *area, int 
       data->common->raw->params.no_auto_scale = 0;
       data->common->raw->params.use_auto_wb = 0;
       data->common->raw->params.use_camera_matrix = 0;
-      data->common->raw->params.output_bps = 8;
+      data->common->raw->params.output_bps = 16;
       
       //exposure
       data->common->raw->params.exp_correc = 0.0;
@@ -163,14 +168,14 @@ static void _worker(Filter *f, Eina_Array *in, Eina_Array *out, Rect *area, int 
   w = imin(area->width, data->raw->sizes.width-offx);
   h = imin(area->height, data->raw->sizes.height-offy);
   
-  hack_tiledata_fixsize(3, ea_data(out, 0));
+  hack_tiledata_fixsize(6, ea_data(out, 0));
   out_td = (Tiledata*)ea_data(out, 0);
   
   for(j=0;j<h;j++)
     for(i=0;i<w;i++) {
-      uint8_t *ptr = tileptr8(out_td, out_td->area.corner.x+i, out_td->area.corner.y+j);
+      uint16_t *ptr = tileptr16(out_td, out_td->area.corner.x+i, out_td->area.corner.y+j);
       for(ch=0;ch<3;ch++)
-        ptr[ch] = img->data[((j+offy)*img->width+i+offx)*3+ch];
+        ptr[ch] = ((uint16_t*)img->data)[((j+offy)*img->width+i+offx)*3+ch];
     }
 }
 
@@ -184,12 +189,12 @@ static int _input_fixed(Filter *f)
   data->common->raw->params.user_flip = 0;
   data->common->raw->params.use_rawspeed = 0;
   
-  data->common->raw->params.camera_profile = "/usr/share/rawtherapee/dcpprofiles/Olympus E-M5.dcp";
+  //data->common->raw->params.camera_profile = "/usr/share/rawtherapee/dcpprofiles/Olympus E-M5.dcp";
   
   if (libraw_open_file(data->common->raw, data->input->data))
     return -1;
   
-  printf("raw profile: %s\n", data->common->raw->params.camera_profile);
+  //printf("raw profile: %s\n", data->common->raw->params.camera_profile);
   
   //default
   data->rot = 1;
@@ -271,7 +276,7 @@ static Filter *_new(void)
   ea_push(filter->data, data);
   
   bitdepth = meta_new_data(MT_BITDEPTH, filter, malloc(sizeof(int)));
-  *(int*)(bitdepth->data) = BD_U8;
+  *(int*)(bitdepth->data) = BD_U16;
   
   dim = meta_new_data(MT_IMGSIZE, filter, data->dim);
   eina_array_push(filter->core, dim);
