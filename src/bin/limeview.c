@@ -46,6 +46,7 @@
 #include "filter_savejpeg.h"
 #include "filter_rotate.h"
 #include "filter_curves.h"
+#include "filter_lrdeconv.h"
 
 #define TILE_SIZE DEFAULT_TILE_SIZE
 
@@ -1802,6 +1803,8 @@ Config_Data *config_data_get(File_Group *group, int nth)
   config = calloc(sizeof(Config_Data), 1);
   if (filegroup_tags_valid(group) && filegroup_filterchain(group)) {
     filters = lime_filter_chain_deserialize(filegroup_filterchain(group));
+    
+    assert(filters);
     
     //FIXME select group according to load file 
     config->load = eina_list_data_get(filters);
@@ -3611,6 +3614,7 @@ elm_main(int argc, char **argv)
   elm_hoversel_item_add(select_filter, "simple rotate", NULL, ELM_ICON_NONE, &on_select_filter_select, &filter_core_simplerotate);
   elm_hoversel_item_add(select_filter, "rotate", NULL, ELM_ICON_NONE, &on_select_filter_select, &filter_core_rotate);
   elm_hoversel_item_add(select_filter, "curves", NULL, ELM_ICON_NONE, &on_select_filter_select, &filter_core_curves);
+  elm_hoversel_item_add(select_filter, "deconv", NULL, ELM_ICON_NONE, &on_select_filter_select, &filter_core_lrdeconv);
 
   elm_object_text_set(select_filter, "contrast");
   select_filter_func = filter_core_contrast.filter_new_f;

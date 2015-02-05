@@ -18,6 +18,7 @@
  */
 
 #include "filter_gauss.h"
+#include "opencv_helpers.h"
 
 #include "math.h"
 

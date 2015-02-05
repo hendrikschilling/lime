@@ -39,6 +39,7 @@ Eina_Hash *lime_filters;
 #include "filter_savejpeg.h"
 #include "filter_rotate.h"
 #include "filter_curves.h"
+#include "filter_lrdeconv.h"
 
 void lime_filters_init(void)
 {
@@ -63,6 +64,7 @@ void lime_filters_init(void)
   eina_hash_add(lime_filters, filter_core_rotate.shortname, &filter_core_rotate);
   eina_hash_add(lime_filters, filter_core_savejpeg.shortname, &filter_core_savejpeg);
   eina_hash_add(lime_filters, filter_core_curves.shortname, &filter_core_curves);
+  eina_hash_add(lime_filters, filter_core_lrdeconv.shortname, &filter_core_lrdeconv);
 }
 
 Filter *lime_filter_new(const char *shortname)
@@ -211,7 +213,7 @@ Eina_List *lime_filter_chain_deserialize(char *str)
     f = lime_filter_new(cur);
     
     if (!f) {
-      //printf("no filter for %s\n", cur);
+      printf("no filter for %s\n", cur);
       return NULL;
     }
     
@@ -241,8 +243,10 @@ Eina_List *lime_filter_chain_deserialize(char *str)
           assert(next+1 < last);
           cur = next+1;
   
-        if (!ea_count(f->settings))
+        if (!ea_count(f->settings)) {
+          printf("no settings for %s\n", f->fc->name);
           return NULL;
+        }
   
         for(i=0;i<ea_count(f->settings);i++) {
           m = ea_data(f->settings, i);

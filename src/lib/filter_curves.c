@@ -51,7 +51,7 @@ static void _worker(Filter *f, Eina_Array *in, Eina_Array *out, Rect *area, int 
     }
 }
 
-double lin2gamma(double lin)
+static double lin2gamma(double lin)
 {
   if (lin <= 0.0031308)
     return 12.92*lin;
