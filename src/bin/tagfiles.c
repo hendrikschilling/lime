@@ -38,7 +38,8 @@ struct _Tagged_File {
   const char *dirname;
   const char *filename;
   const char *sidecar;
-  Eina_Array *tags;
+  char *last_fc; //serialization of the last filter chain
+  //Eina_Array *tags;
   void *data;
 };
 
@@ -46,10 +47,9 @@ struct _File_Group {
   int state;
   Tagfiles *tagfiles;
   Eina_Inarray *files; //tagged files
-  const char *sidecar; //sidecar file used for the image group
+  //const char *sidecar; //sidecar file used for the image group
   const char *basename;
-  char *last_fc; //serialization of the last filter chain
-  Eina_Hash *tags; //all tags of the group or a file in the group
+  Eina_Hash *tags; //all tags of the group
   int32_t tag_rating;
   //Eina_Array *group_tags; //tags that are assigned specifically to the group
 };
@@ -92,7 +92,7 @@ struct _Tagfiles {
   Eina_List *group_changed_cb;
 };
 
-void xmp_gettags(File_Group *group, Ecore_Thread *thread);
+void filegroup_gettags(File_Group *group, Ecore_Thread *thread);
 void save_sidecar(File_Group *group);
 static void _xmp_scanner(void *data, Ecore_Thread *th);
 static void _xmp_finish(void *data, Ecore_Thread *th);
@@ -193,8 +193,13 @@ void filegroup_rating_set(File_Group *group, int rating)
   if (rating != group->tag_rating) {
     group->tag_rating = rating;
     
-    save_sidecar(group);
+    filegroup_save_sidecars(group);
   }
+}
+
+void tagged_file_sidecar_set(Tagged_File *f, const char *name)
+{
+  f->sidecar = name;
 }
 
 void run_scanner(Tagfiles *tagfiles)
@@ -245,7 +250,7 @@ static void _xmp_scanner(void *data, Ecore_Thread *th)
   Tagfiles *tagfiles = data;
   
   while (tagfiles->xmp_scanned_idx < eina_inarray_count(tagfiles->files) && tagfiles->xmp_scanned_idx < tagfiles->full_dir_inserted_idx) {
-    xmp_gettags(*(File_Group**)eina_inarray_nth(tagfiles->files, tagfiles->xmp_scanned_idx),  th);
+    filegroup_gettags(*(File_Group**)eina_inarray_nth(tagfiles->files, tagfiles->xmp_scanned_idx),  th);
     tagfiles->xmp_scanned_idx++;
   }
 }
@@ -388,11 +393,21 @@ int tagfiles_count(Tagfiles *files)
   return eina_inarray_count(files->files)+eina_inarray_count(files->files_ls);
 }
 
-const char *filegroup_nth(File_Group *g, int n)
+Tagged_File *filegroup_nth(File_Group *g, int n)
 {
   assert(n < eina_inarray_count(g->files));
   
-  return ((Tagged_File*)eina_inarray_nth(g->files, n))->filename;
+  return ((Tagged_File*)eina_inarray_nth(g->files, n));
+}
+
+const char *tagged_file_name(Tagged_File *f)
+{
+  return f->filename;
+}
+
+const char *tagged_file_sidecar(Tagged_File *f)
+{
+  return f->sidecar;
 }
 
 void filegroup_data_attach(File_Group *g, int n, void *data)
@@ -414,12 +429,11 @@ int filegroup_count(File_Group *g)
   return eina_inarray_count(g->files);
 }
 
-char *filegroup_filterchain(File_Group *g)
+char *tagged_file_filterchain(Tagged_File *f)
 {
-  if (g->state != GROUP_LOADED)
-    printf("FIXME xmp not loaded for %s (%s)\n", g->basename, g->sidecar);
+  //FIXME check group state == GROUP_LOADED?
   
-  return g->last_fc;
+  return f->last_fc;
 }
 
 Ls_Info *ls_info_new(const char *path, Tagfiles *files)
@@ -438,23 +452,29 @@ void ls_info_del(Ls_Info *i)
 void filegroup_move_trash(File_Group *group)
 {
   int i;
+  Tagged_File *f;
   Efreet_Uri uri;
   uri.protocol = "file";
   uri.hostname = NULL;
   
   for(i=0;i<filegroup_count(group);i++) {
-    if (!filegroup_nth(group, i))
+    f = filegroup_nth(group, i);
+    if (!tagged_file_name(f))
       continue;
-    if (filegroup_nth(group, i)) {
-      uri.path = filegroup_nth(group, i);
+    uri.path = tagged_file_name(f);
+    if (efreet_trash_delete_uri(&uri, 0) != 1)
+      printf("delete failed for %s\n", tagged_file_name(f));
+    if (tagged_file_sidecar(f)) {
+      uri.path = tagged_file_sidecar(f);
       if (efreet_trash_delete_uri(&uri, 0) != 1)
-	printf("delete failed for %s\n", filegroup_nth(group, i));
+        printf("delete failed for %s\n", tagged_file_sidecar(f));
     }
-    if (group->sidecar) {
+
+    /*if (group->sidecar) {
       uri.path = group->sidecar;
       if (efreet_trash_delete_uri(&uri, 0) != 1)
 	printf("delete failed for %s\n", group->sidecar);
-    }
+    }*/
   }
 }
 
@@ -467,23 +487,32 @@ _ls_filter_cb(void *data, Eio_File *handler, const Eina_File_Direct_Info *info)
   return EINA_FALSE;
 }
 
-
+//TODO don't create empty sidecar files?
 Tagged_File tag_file_new(Tagfiles *tagfiles, File_Group *group, const char *name)
 {
+  int i;
+  Tagged_File *f;
   Tagged_File file = {NULL, NULL, NULL};
   
   if (eina_str_has_extension(name, ".xmp")) {
-    //FIXME only one sidecar per group for now
-    if (group->sidecar)
-      printf("FIXME multiple sidecar: %s\n", name);
-    else
-      group->sidecar = name;
-    assert(!file.sidecar);
-    file.sidecar = name;
-    //xmp_gettags(tagfiles, name, group);
+    for(i=0;i<filegroup_count(group);i++) {
+      f = filegroup_nth(group, i);
+      if (tagged_file_name(f) && !strncmp(tagged_file_name(f),name,strlen(tagged_file_name(f))))
+        tagged_file_sidecar_set(f, name);
+    }
+    tagged_file_sidecar_set(&file, name);
   }
-  else 
+  else {
+    for(i=0;i<filegroup_count(group);i++) {
+      f = filegroup_nth(group, i);
+      if (tagged_file_sidecar(f) && !strncmp(tagged_file_sidecar(f),name,strlen(name))) {
+        if (tagged_file_sidecar(&file))
+          printf("FIXME: multiple sidecars per file %s vs %s\n", tagged_file_sidecar(&file), tagged_file_sidecar(f));
+        tagged_file_sidecar_set(&file, tagged_file_sidecar(f));
+      }
+    }
     file.filename = name;
+  }
 
   return file;
 }
@@ -501,25 +530,18 @@ File_Group *file_group_new(Tagfiles *tagfiles, const char *name, const char *bas
   eina_hash_add(tagfiles->files_hash, basename, group);
   
   file_new = tag_file_new(tagfiles, group, name);
+
   eina_inarray_push(group->files, &file_new);
-  
   return group;
 }
 
 void file_group_add(Tagfiles *tagfiles, File_Group *group, const char *name)
 {
   Tagged_File file_new;
-  //FIXME handel fitting sidecar and images
   
-  if (eina_str_has_extension(name, ".xmp")) {
-    if (group->sidecar)
-      printf("FIXME: multiple sidecar files per group!\n");
-    group->sidecar = name;
-  }
-  else {
-    file_new = tag_file_new(tagfiles, group, name);
-    eina_inarray_push(group->files, &file_new);
-  }
+  file_new = tag_file_new(tagfiles, group, name);
+  printf("add new file name: %s\n", file_new.filename);
+  eina_inarray_push(group->files, &file_new);
 }
 
 void insert_file(Tagfiles *tagfiles, const char *file)
@@ -595,7 +617,7 @@ void tagfiles_shutdown(void)
   xmp_terminate();
 }
 
-void xmp_gettags(File_Group *group, Ecore_Thread *thread)
+void tagfile_xmp_gettags(File_Group *group, Tagged_File *file, Ecore_Thread *thread)
 {
   int len;
   FILE *f;
@@ -606,21 +628,13 @@ void xmp_gettags(File_Group *group, Ecore_Thread *thread)
   XmpStringPtr propValue;
   Scanner_Feedback_Data *feedback_data = calloc(sizeof(Scanner_Feedback_Data), 1);
   
-  group->state = GROUP_LOADED;
-  
-  if (!group->sidecar) {
-    //FIXME check in thread if we have to do any call!
-    feedback_data->group = group;
-    ecore_thread_feedback(thread, feedback_data);
-    return;
-  }
-  
   buf = malloc(MAX_XMP_FILE);
   
-  f = fopen(group->sidecar, "r");
+  f = fopen(file->sidecar, "r");
   
   if (!f) {
     //FIXME check in thread if we have to do any call!
+    //FIXME feedback for file only?
     feedback_data->group = group;
     ecore_thread_feedback(thread, feedback_data);
     return;
@@ -672,9 +686,9 @@ void xmp_gettags(File_Group *group, Ecore_Thread *thread)
   {
     propValue = xmp_string_new();
     if (xmp_get_property(xmp, "http://technik-stinkt.de/lime/0.1/", "lime:lastFilterChain", propValue, NULL))
-      group->last_fc = strdup(xmp_string_cstr(propValue));
+      file->last_fc = strdup(xmp_string_cstr(propValue));
     else
-      group->last_fc = NULL;
+      file->last_fc = NULL;
     xmp_string_free(propValue);
   }
   
@@ -684,6 +698,25 @@ void xmp_gettags(File_Group *group, Ecore_Thread *thread)
 
   feedback_data->group = group;
   ecore_thread_feedback(thread, feedback_data);  
+}
+
+void filegroup_gettags(File_Group *group, Ecore_Thread *thread)
+{
+  int i;
+  group->state = GROUP_LOADED;
+  
+  //FIXME why was this here?
+  /*if (!group->sidecar) {
+    //FIXME check in thread if we have to do any call!
+    feedback_data->group = group;
+    ecore_thread_feedback(thread, feedback_data);
+    return;
+  }*/
+  
+  for(i=0;i<filegroup_count(group);i++)
+    if (tagged_file_sidecar(filegroup_nth(group, i)))
+      tagfile_xmp_gettags(group, filegroup_nth(group, i), thread);
+  
   return;
 }
 
@@ -729,7 +762,7 @@ void tagfiles_preload_headers(Tagfiles *tagfiles, int direction, int range, int 
   //for(j=tagfiles_idx(tagfiles);j<tagfiles_idx(tagfiles)+range*direction;j+=direction) {
     group = tagfiles_nth(tagfiles, tagfiles_idx(tagfiles)+range*direction);
     for(i=0;i<filegroup_count(group);i++) {
-      filename = filegroup_nth(group, i);
+      filename = tagged_file_name(filegroup_nth(group, i));
       if (filename) {
 	preload = malloc(sizeof(Preload_Data));
 	preload->size = size;
@@ -920,7 +953,7 @@ Eina_Bool xmp_add_tags_dk_func(const Eina_Hash *hash, const void *key, void *dat
   return 1;
 }
 
-static void new_tag_file(File_Group *group)
+static void new_xmp_file(Tagged_File *file, File_Group *group)
 {
   FILE *f;
   const char *buf;
@@ -943,12 +976,14 @@ static void new_tag_file(File_Group *group)
     xmp_set_property_int32(xmp, "http://ns.adobe.com/xap/1.0/", "xmp:Rating", group->tag_rating, 0);
   }
   
-  if (group->last_fc)
-    xmp_set_property(xmp, "http://technik-stinkt.de/lime/0.1/", "lime:lastFilterChain", group->last_fc, 0);
+  if (file->last_fc)
+    xmp_set_property(xmp, "http://technik-stinkt.de/lime/0.1/", "lime:lastFilterChain", file->last_fc, 0);
   
   xmp_serialize(xmp, xmp_buf, XMP_SERIAL_OMITPACKETWRAPPER | XMP_SERIAL_USECOMPACTFORMAT, 0);
   
-  f = fopen(group->sidecar, "w");
+  assert(file->sidecar);
+  
+  f = fopen(file->sidecar, "w");
   assert(f);
   buf = xmp_string_cstr(xmp_buf);
   fprintf(f, "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n%s\n", buf);
@@ -961,60 +996,46 @@ static void new_tag_file(File_Group *group)
 }
 
 
-void add_group_sidecar(File_Group *group)
+void tagged_file_new_sidecar(Tagged_File *file)
 {
-  Tagged_File *file;
   char *buf;
   
-  if (group->sidecar)
+  if (!tagged_file_name(file) || tagged_file_sidecar(file))
     return;
-  
-  //FIXME find a better way to find a xmp filename!
-  EINA_INARRAY_FOREACH(group->files, file) {
-    assert(file->filename);
-    //if (!strcmp(file->filename+strlen(file->filename)-4, ".jpg") || !strcmp(file->filename+strlen(file->filename)-4, ".JPG")) {
-      buf = malloc(strlen(file->filename)+5);
-      sprintf(buf, "%s.xmp", file->filename);
-      group->sidecar = buf;
-      file->sidecar = group->sidecar;
-      return;
-    //}
-  }
-
-  file = eina_inarray_nth(group->files, 0);
-  buf = malloc(strlen(file->filename+5));
+  buf = malloc(strlen(file->filename)+5);
   sprintf(buf, "%s.xmp", file->filename);
-  group->sidecar = buf;
-  file->sidecar = group->sidecar;
+  file->sidecar = buf;
 }
 
-void save_sidecar(File_Group *group)
+//FIXME merge new tag file with tag save/new/read (xmp init/read)
+void tagged_file_sidecar_save(Tagged_File *file, File_Group *group)
 {
-  int len;
   FILE *f;
+  int len;
+  XmpPtr xmp = NULL;
   XmpStringPtr xmp_buf = xmp_string_new();
   char *buf = malloc(MAX_XMP_FILE);
-  XmpPtr xmp;
+  const char *tag;
+  XmpIteratorPtr iter;
+  XmpStringPtr propValue;
   
-  add_group_sidecar(group);
+  if (!file->sidecar)
+    tagged_file_new_sidecar(file);
+  
+  f = fopen(file->sidecar, "r");
+
+  if (f) {
+    len = fread(buf, 1, MAX_XMP_FILE, f);
+    fclose(f);
     
-  f = fopen(group->sidecar, "r");
-  
-  if (!f) {
-    new_tag_file(group);
-    return;
+    xmp = xmp_new(buf, len);
+    free(buf);
   }
-  
-  len = fread(buf, 1, MAX_XMP_FILE, f);
-  fclose(f);
-  
-  xmp = xmp_new(buf, len);
-  free(buf);
   
   if (!xmp) {
     printf("xmp parse failed, overwriting with new!\n");
     xmp_free(xmp);
-    new_tag_file(group);
+    new_xmp_file(file, group);
     return;
   }
   
@@ -1048,14 +1069,14 @@ void save_sidecar(File_Group *group)
     xmp_set_property_int32(xmp, "http://ns.adobe.com/xap/1.0/", "xmp:Rating", group->tag_rating, 0);
   }
 
-  if (group->last_fc)
-    xmp_set_property(xmp, "http://technik-stinkt.de/lime/0.1/", "lime:lastFilterChain", group->last_fc, 0);
+  if (file->last_fc)
+    xmp_set_property(xmp, "http://technik-stinkt.de/lime/0.1/", "lime:lastFilterChain", file->last_fc, 0);
       
   xmp_serialize(xmp, xmp_buf, XMP_SERIAL_OMITPACKETWRAPPER | XMP_SERIAL_USECOMPACTFORMAT, 0);
   
   buf = (char*)xmp_string_cstr(xmp_buf);
   
-  f = fopen(group->sidecar, "w");
+  f = fopen(file->sidecar, "w");
   assert(f);
   buf = (char*)xmp_string_cstr(xmp_buf);
   fprintf(f, "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n%s\n", buf);
@@ -1065,17 +1086,26 @@ void save_sidecar(File_Group *group)
   xmp_free(xmp);
 }
 
+void filegroup_save_sidecars(File_Group *group)
+{
+  int i;
+  Tagged_File *file;
+  
+  EINA_INARRAY_FOREACH(group->files, file)
+    tagged_file_sidecar_save(file, group);
+}
+
 //
 
-void filegroup_filterchain_set(File_Group *group, const char *fc)
+void tagged_file_filterchain_set(Tagged_File *file, File_Group *group, const char *fc)
 {    
-  group->last_fc = strdup(fc);
-  if (strstr(group->last_fc, ",memsink"))
-    *strstr(group->last_fc, ",memsink") = '\0';
-  else if (strstr(group->last_fc, "memsink") == group->last_fc) {
-    free(group->last_fc);
-    group->last_fc = NULL;
+  file->last_fc = strdup(fc);
+  if (strstr(file->last_fc, ",memsink"))
+    *strstr(file->last_fc, ",memsink") = '\0';
+  else if (strstr(file->last_fc, "memsink") == file->last_fc) {
+    free(file->last_fc);
+    file->last_fc = NULL;
   }
   
-  save_sidecar(group);
+  tagged_file_sidecar_save(file, group);
 }

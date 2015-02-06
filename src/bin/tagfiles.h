@@ -48,10 +48,13 @@ void tagfiles_group_changed_cb_insert(Tagfiles *tagfiles, File_Group *group, voi
 void tagfiles_group_changed_cb_flush(Tagfiles *files);
 void call_group_changed_cb(Tagfiles *files, File_Group *group);
 void filegroup_rating_set(File_Group *group, int rating);
-const char * filegroup_nth(File_Group *g, int n);
+Tagged_File *filegroup_nth(File_Group *g, int n);
+const char *tagged_file_name(Tagged_File *file);
+const char *tagged_file_sidecar(Tagged_File *f);
+void filegroup_save_sidecars(File_Group *group);
 int filegroup_count(File_Group *g);
-char *filegroup_filterchain(File_Group *g);
-void filegroup_filterchain_set(File_Group *group, const char *fc);
+char *tagged_file_filterchain(Tagged_File *f);
+void tagged_file_filterchain_set(Tagged_File *file, File_Group *group, const char *fc);
 Eina_Bool filegroup_tags_valid(File_Group *group);
 File_Group *tagfiles_nth(Tagfiles *tagfiles, int idx);
 void tagfiles_preload_headers(Tagfiles *tagfiles, int direction, int range, int size);

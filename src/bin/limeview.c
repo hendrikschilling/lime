@@ -152,6 +152,7 @@ Ecore_Timer *preview_timer = NULL;
 void fc_new_from_filters(Eina_List *filters);
 int fixme_no_group_select = 0;
 File_Group *cur_group = NULL;
+Tagged_File *cur_file = NULL;
 
 int bench_idx = 0;
 
@@ -297,6 +298,20 @@ void grid_setsize(void)
   elm_box_recalculate(gridbox);
 }
 
+void fc_save_change_update_scroller(void)
+{
+  lime_config_test(config_curr->sink);
+  
+  tagged_file_filterchain_set(cur_file, cur_group, lime_filter_chain_serialize(((Filter_Chain*)eina_list_data_get(eina_list_next(config_curr->filter_chain)))->f));
+  
+  delgrid();
+  
+  grid_setsize();
+  
+  forbid_fill--;
+  
+  fill_scroller();
+}
 
 void int_changed_do(void *data, Evas_Object *obj)
 {
@@ -310,17 +325,7 @@ void int_changed_do(void *data, Evas_Object *obj)
   
   lime_setting_int_set(m->filter, m->name, (int)elm_spinner_value_get(obj));
   
-  lime_config_test(config_curr->sink);
-  
-  filegroup_filterchain_set(cur_group, lime_filter_chain_serialize(((Filter_Chain*)eina_list_data_get(eina_list_next(config_curr->filter_chain)))->f));
-  
-  delgrid();
-  
-  grid_setsize();
-  
-  forbid_fill--;
-  
-  fill_scroller();
+  fc_save_change_update_scroller();
 }
 
 void float_changed_do(void *data, Evas_Object *obj)
@@ -334,17 +339,7 @@ void float_changed_do(void *data, Evas_Object *obj)
   
   lime_setting_float_set(m->filter, m->name, (float)elm_spinner_value_get(obj));
   
-  lime_config_test(config_curr->sink);
-  
-  filegroup_filterchain_set(cur_group, lime_filter_chain_serialize(((Filter_Chain*)eina_list_data_get(eina_list_next(config_curr->filter_chain)))->f));
-  
-  delgrid();
-  
-  grid_setsize();
-  
-  forbid_fill--;
-  
-  fill_scroller();
+  fc_save_change_update_scroller();
 }
 
 void del_filter_settings(void);
@@ -376,14 +371,7 @@ void remove_filter_do(void *data, Evas_Object *obj)
   elm_object_item_del(fc->item);
   config_curr->filter_chain = eina_list_remove_list(config_curr->filter_chain, chain_node);
   
-  lime_config_test(config_curr->sink);
- 
-  filegroup_filterchain_set(cur_group, lime_filter_chain_serialize(((Filter_Chain*)eina_list_data_get(eina_list_next(config_curr->filter_chain)))->f));
-  
-  forbid_fill--;
-  
-  //FIXME just call fill_...?
-  step_image_do(NULL, NULL);
+  fc_save_change_update_scroller();
 }
 
 void _on_filter_select(void *data, Evas_Object *obj, void *event_info)
@@ -433,11 +421,7 @@ void fc_insert_filter(Filter *f, Eina_List *src, Eina_List *sink)
   filter_connect(fc_src->f, 0, f, 0);
   filter_connect(f, 0, fc_sink->f, 0);
   
-  filegroup_filterchain_set(cur_group, lime_filter_chain_serialize(((Filter_Chain*)eina_list_data_get(eina_list_next(config_curr->filter_chain)))->f));
-  
-  lime_config_test(config_curr->sink);
-  forbid_fill--;
-  delgrid();
+  fc_save_change_update_scroller();
 }
 
 void insert_before_do(void *data, Evas_Object *obj)
@@ -1758,7 +1742,8 @@ Config_Data *config_data_get(File_Group *group, int nth)
   char *filename;
   Config_Data *config;
   
-  filename = filegroup_nth(group, nth);
+  filename = tagged_file_name(filegroup_nth(group, nth));
+  printf("config for %s\n", filename);
   //FIXME include some fast file compatibility checks!
   if (!filename)
     return NULL;
@@ -1773,8 +1758,8 @@ Config_Data *config_data_get(File_Group *group, int nth)
   tagfiles_group_changed_cb_insert(files, group, filegroup_changed_cb);
   
   config = calloc(sizeof(Config_Data), 1);
-  if (filegroup_tags_valid(group) && filegroup_filterchain(group)) {
-    filters = lime_filter_chain_deserialize(filegroup_filterchain(group));
+  if (filegroup_tags_valid(group) && tagged_file_filterchain(filegroup_nth(group, nth))) {
+    filters = lime_filter_chain_deserialize(tagged_file_filterchain(filegroup_nth(group, nth)));
     
     assert(filters);
     
@@ -1860,7 +1845,7 @@ void config_thread_start(File_Group *group, int nth)
   if (config)
     return;
   
-  filename = filegroup_nth(group, nth);
+  filename = tagged_file_name(filegroup_nth(group, nth));
   //FIXME better file ending list (no static file endings!)
   if (!filename || (!eina_str_has_extension(filename, ".jpg") 
    && !eina_str_has_extension(filename, ".JPG")
@@ -1874,8 +1859,8 @@ void config_thread_start(File_Group *group, int nth)
   tagfiles_group_changed_cb_insert(files, group, filegroup_changed_cb);
   
   config = calloc(sizeof(Config_Data), 1);
-  if (filegroup_tags_valid(group) && filegroup_filterchain(group)) {
-    filters = lime_filter_chain_deserialize(filegroup_filterchain(group));
+  if (filegroup_tags_valid(group) && tagged_file_filterchain(filegroup_nth(group, nth))) {
+    filters = lime_filter_chain_deserialize(tagged_file_filterchain(filegroup_nth(group, nth)));
     
     //FIXME select group according to load file 
     config->load = eina_list_data_get(filters);
@@ -1979,7 +1964,7 @@ void step_image_preload_next(int n)
 	  if (config && !config->failed) {
 	    fill_scroller_blind(config);
             if (verbose)
-                printf("preload %s\n", filegroup_nth(group, group_idx));
+                printf("preload %s\n", tagged_file_name(filegroup_nth(group, group_idx)));
 	    succ = 1;
 	    break;
 	  }
@@ -2057,16 +2042,15 @@ void step_image_do(void *data, Evas_Object *obj)
     start_group_idx = group_idx;
     
     if (group_in_filters(group, tags_filter)) {
-      while(!config || config->failed) {	
-          printf("try %d/%d\n", tagfiles_idx(files), group_idx);
+      while(!config || config->failed) {
           
 	  config = config_data_get(group, group_idx);
 	  
 	  if (!config || config->failed) {
-	    //FIXME del filters
+	    //FIXME del filters?
 	    //free(config);
 	    //config = NULL;
-	    printf("failed to find valid configuration for %s\n", filegroup_nth(group, group_idx));
+	    printf("failed to find valid configuration for %s\n", tagged_file_name(filegroup_nth(group, group_idx)));
 	    group_idx = (group_idx + 1) % filegroup_count(group);
             if (group_idx == start_group_idx)
               break;
@@ -2091,7 +2075,7 @@ void step_image_do(void *data, Evas_Object *obj)
     }
   }
   
-  printf("success! file %s\n", filegroup_nth(group, group_idx));
+  printf("success! file %s\n", tagged_file_name(filegroup_nth(group, group_idx)));
   
   if (config_curr) {
     //FIXME free ->filter_chain
@@ -2109,6 +2093,7 @@ void step_image_do(void *data, Evas_Object *obj)
   //filegroup_data_attach(group, group_idx, NULL);
   
   cur_group = group;
+  cur_file = filegroup_nth(cur_group, group_idx);
   delgrid();
     
   //we start as early as possible with rendering!
@@ -2330,13 +2315,13 @@ on_exe_images_rsync(void *data, Evas_Object *obj, void *event_info)
     group = tagfiles_nth(files, i);
     if (group_in_filters(group, tags_filter)) {
       for(j=0;j<filegroup_count(group);j++) {
-	filename = filegroup_nth(group, j);
+	filename = tagged_file_name(filegroup_nth(group, j));
 	if (filename && (!export->extensions || (strstr(filename, export->extensions) && strlen(strstr(filename, export->extensions)) == strlen (export->extensions) ))) {
 	  if (!export->list)
 	    export->list = eina_array_new(32);
 	  job = malloc(sizeof(Export_Job));
 	  job->filename = filename;
-	  job->filterchain = filegroup_filterchain(group);
+	  job->filterchain = tagged_file_filterchain(filegroup_nth(group, j));
 	  job->export = export;
 	  eina_array_push(export->list, job);
 	}
@@ -2741,11 +2726,11 @@ void refresh_group_tab(void)
   
   elm_list_clear(group_list);
   for(i=0;i<filegroup_count(cur_group);i++)
-    if (filegroup_nth(cur_group, i)) {
+    if (tagged_file_name(filegroup_nth(cur_group, i))) {
       //FIXME free on refresh!
       idx_cp = malloc(sizeof(int));
       *idx_cp = i;
-      item = elm_list_item_append(group_list, filegroup_nth(cur_group, i), NULL, NULL, &on_group_select, idx_cp);
+      item = elm_list_item_append(group_list, tagged_file_name(filegroup_nth(cur_group, i)), NULL, NULL, &on_group_select, idx_cp);
       if (group_idx == i) {
 	fixme_no_group_select = EINA_TRUE;
 	elm_list_item_selected_set(item, EINA_TRUE);
@@ -3131,7 +3116,7 @@ static void on_tag_changed(void *data, Evas_Object *obj, void *event_info)
   //we don't need this on tag changed right?
   //filegroup_filterchain_set(cur_group, lime_filter_chain_serialize(((Filter_Chain*)eina_list_data_get(eina_list_next(config_curr->filter_chain)))->f));
   
-  save_sidecar(cur_group);
+  filegroup_save_sidecars(cur_group);
   
   if (!group_in_filters(cur_group, tags_filter))
       workerfinish_schedule(&step_image_do, NULL, NULL, EINA_TRUE);
