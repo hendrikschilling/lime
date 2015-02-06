@@ -77,16 +77,6 @@ typedef struct {
   libraw_data_t *raw;
 } _Data;
 
-static inline uint8_t *tileptr8(Tiledata *tile, int x, int y)
-{ 
-   return &((uint8_t*)tile->data)[((y-tile->area.corner.y)*tile->area.width + x-tile->area.corner.x)*3];
-}
-
-static inline uint8_t *tileptr16(Tiledata *tile, int x, int y)
-{ 
-   return &((uint16_t*)tile->data)[((y-tile->area.corner.y)*tile->area.width + x-tile->area.corner.x)*3];
-}
-
 static int imin(a, b) 
 {
   if (a<=b) return a;
@@ -173,7 +163,7 @@ static void _worker(Filter *f, Eina_Array *in, Eina_Array *out, Rect *area, int 
   
   for(j=0;j<h;j++)
     for(i=0;i<w;i++) {
-      uint16_t *ptr = tileptr16(out_td, out_td->area.corner.x+i, out_td->area.corner.y+j);
+      uint16_t *ptr = tileptr16_3(out_td, out_td->area.corner.x+i, out_td->area.corner.y+j);
       for(ch=0;ch<3;ch++)
         ptr[ch] = ((uint16_t*)img->data)[((j+offy)*img->width+i+offx)*3+ch];
     }

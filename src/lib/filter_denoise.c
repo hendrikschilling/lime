@@ -21,12 +21,12 @@
 
 #include <math.h>
 
-#define MAX_MATCH_COUNT 20
-#define MAX_AVG_COUNT 10
+#define MAX_MATCH_COUNT 40
+#define MAX_AVG_COUNT 20
 
-#define MAX_SCALE_DIFF 20
+#define MAX_SCALE_DIFF 100
 
-#define SEARCH_SIZE 8
+#define SEARCH_SIZE 16
 
 #define TILE_SIZE DEFAULT_TILE_SIZE
 
@@ -76,14 +76,9 @@ static void _area_calc(Filter *f, Rect *in, Rect *out)
     *out = *in;
 }
 
-int cmp_mtach(const void * a, const void * b)
+static inline int cmp_mtach(const void * a, const void * b)
 {
   return (((_Match*)a)->diff - ((_Match*)b)->diff);
-}
-
-static uint8_t *tileptr8(Tiledata *tile, int x, int y)
-{ 
-  return &((uint8_t*)tile->data)[(y-tile->area.corner.y)*tile->area.width + x-tile->area.corner.x];
 }
 
 static void add_diff(_Data *data, _Match *m, int x, int y, Rect *area, Tiledata *td, int ch)
@@ -350,11 +345,11 @@ static void avg_matches(_Data *data, Eina_Array *in, Eina_Array *out, Rect *area
   int n;
   int ch;
   int i, j;
-  int sum;
+  float sum;
   Tiledata *in_td, *out_td;
   _Match m;
   int max;
-  int count;
+  float count;
   int origins[3] = {0, 0, 0};
   int orig_sum;
   int rough;
@@ -374,15 +369,16 @@ static void avg_matches(_Data *data, Eina_Array *in, Eina_Array *out, Rect *area
 	in_td = (Tiledata*)ea_data(in, ch);
 	out_td = (Tiledata*)ea_data(out, ch);
 	
-	sum = tileptr8(in_td, area->corner.x + i, area->corner.y + j)[0] 
+	sum = tileptr8(in_td, area->corner.x + i, area->corner.y + j)[ch] 
 	      - data->avgs[((area->corner.y + j - in_td->area.corner.y)*in_td->area.width + area->corner.x + i - in_td->area.corner.x)*3+ch];
-	count = 1;
+	count = 1.0/(max_diff+0.00000001);
+        sum *= count;
 	rough = abs(sum);
 	
 	for(n=0;n<max;n++) {
 	  m = data->matches[(j*TILE_SIZE + i)*MAX_MATCH_COUNT + n];
 	  
-	  if (ch) {
+	  /*if (ch) {
 	    if (m.diff*m.diff < max_diff_c*(rough+10)*10) {
 	      origins[m.origin]++;
 	      sum += tileptr8(in_td, area->corner.x + i + m.x, area->corner.y + j + m.y)[0] 
@@ -390,14 +386,15 @@ static void avg_matches(_Data *data, Eina_Array *in, Eina_Array *out, Rect *area
 	      count++;
 	    }
 	  }
-	  else {
-	    if (m.diff*m.diff < max_diff*(rough+10)*10) {
+	  else {*/
+	    //if (m.diff*m.diff < max_diff*(rough+10)*10) {
 	      origins[m.origin]++;
-	      sum += clip_u8(tileptr8(in_td, area->corner.x + i + m.x, area->corner.y + j + m.y)[0]
+              float mul = 1.0/fmax(m.diff, max_diff);
+	      sum += mul*clip_u8(tileptr8(in_td, area->corner.x + i + m.x, area->corner.y + j + m.y)[0]
 	      - data->avgs[((area->corner.y + j + m.y - in_td->area.corner.y)*in_td->area.width + area->corner.x + i + m.x - in_td->area.corner.x)*3+ch]);
-	      count++;
-	    }
-	  }
+	      count += mul;
+	    //}
+	  //}
 	}
 	
 	tileptr8(out_td, area->corner.x + i, area->corner.y + j)[0] = clip_u8(sum / count
@@ -416,7 +413,7 @@ static void _worker(Filter *f, Eina_Array *in, Eina_Array *out, Rect *area, int 
   int i, j;
   int k;
   Tiledata *in_td, *out_td;
-  _Data *data = ea_data(f->data, thread_id);
+  _Data *data = ea_data(f->data, 0);
   int max_diff = *data->max_diff*9*255*3*0.001;
   int max_diff_c = *data->max_diff_c*9*255*3*0.001;
   float dist_mult = log(SEARCH_SIZE)/(*data->iters)/log(2);
@@ -472,13 +469,13 @@ static void _worker(Filter *f, Eina_Array *in, Eina_Array *out, Rect *area, int 
       for(i=TILE_SIZE-1;i>=0;i--)
       {
 	match_rand(data, i, j, in, area, dist);
-	match_rand(data, i, j, in, area, dist);
-	match_rand(data, i, j, in, area, dist);
+	//match_rand(data, i, j, in, area, dist);
+	//match_rand(data, i, j, in, area, dist);
 	if (j<TILE_SIZE-1) match_rand_from(data, i, j, 0, 1, in, area);
 	if (i<TILE_SIZE-1) match_rand_from(data, i, j, 1, 0, in, area);
 	if (i<TILE_SIZE-1 && j<TILE_SIZE-1) match_rand_from(data, i, j, 1, 1, in, area);
-	for(k=0;k<n/2;k++)
-	  match_rand_from_match(data, i, j, in, area);
+	//for(k=0;k<n/2;k++)
+	//  match_rand_from_match(data, i, j, in, area);
 	sort_matches(data, i, j);
     }
     
@@ -511,7 +508,7 @@ static Filter *filter_denoise_new(void)
   filter->tile_height = TILE_SIZE;
 
   filter->mode_buffer = filter_mode_buffer_new();
-  filter->mode_buffer->threadsafe = 1;
+  filter->mode_buffer->threadsafe = 0;
   filter->mode_buffer->worker = &_worker;
   filter->mode_buffer->area_calc = &_area_calc;
   filter->mode_buffer->data_new = &_denoise_data_new;

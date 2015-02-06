@@ -23,6 +23,7 @@ typedef struct {
   Meta *colorspace;
   Eina_Array *select_color;
   Meta *dim_in_meta;
+  Meta *bd_in;
   Dim *out_dim;
 } _Data;
 
@@ -80,6 +81,7 @@ static void _deinterleave_worker(Filter *f, Eina_Array *in, Eina_Array *out, Rec
 {
   int i, j;
   uint8_t *buf, *r, *g, *b;
+  uint16_t *buf2;
   int *buf_int, *buf_max;
   _Data *data = ea_data(f->data, 0);
   
@@ -93,15 +95,29 @@ static void _deinterleave_worker(Filter *f, Eina_Array *in, Eina_Array *out, Rec
     abort();
   }
   else {
-    buf = ((Tiledata*)ea_data(in, 0))->data;
-    
-    for(j=0;j<area->height;j++)
-      for(i=0;i<area->width;i++) {
-        r[j*area->width+i] = buf[(j*area->width+i)*3+0];
-        g[j*area->width+i] = buf[(j*area->width+i)*3+1];
-        b[j*area->width+i] = buf[(j*area->width+i)*3+2];
+    if (*(int*)data->bd_in->data == BD_U8) {
+      buf = ((Tiledata*)ea_data(in, 0))->data;
+      
+      for(j=0;j<area->height;j++)
+        for(i=0;i<area->width;i++) {
+          r[j*area->width+i] = buf[(j*area->width+i)*3+0];
+          g[j*area->width+i] = buf[(j*area->width+i)*3+1];
+          b[j*area->width+i] = buf[(j*area->width+i)*3+2];
+        }
+    }
+    else if (*(int*)data->bd_in->data == BD_U16) {
+      //output bitdepth ist still 8bit!
+      //FIXME gamma correction is missing!
+      buf2 = ((Tiledata*)ea_data(in, 0))->data;
+      
+      for(j=0;j<area->height;j++)
+        for(i=0;i<area->width;i++) {
+          r[j*area->width+i] = buf2[(j*area->width+i)*3+0]/256;
+          g[j*area->width+i] = buf2[(j*area->width+i)*3+1]/256;
+          b[j*area->width+i] = buf2[(j*area->width+i)*3+2]/256;
+        }
       }
-  }
+    }
 }
 
 
@@ -191,7 +207,7 @@ static Filter *filter_interleave_new(void)
 static Filter *filter_deinterleave_new(void)
 {
   Filter *filter = filter_new(&filter_core_deinterleave);
-  Meta *in, *out, *channel, *ch_in, *size_in, *size_out, *ch_out_first, *color, *color_out_first, *bitdepth;
+  Meta *in, *out, *channel, *ch_in, *size_in, *size_out, *ch_out_first, *color, *color_out_first, *bitdepth, *bd_in;
   Meta *ch_out, *tune_color;
   _Data *data = calloc(sizeof(_Data), 1);
   data->out_dim = calloc(sizeof(Dim), 1);
@@ -208,6 +224,14 @@ static Filter *filter_deinterleave_new(void)
   bitdepth = meta_new_data(MT_BITDEPTH, filter, malloc(sizeof(int)));
   *(int*)(bitdepth->data) = BD_U8;
   bitdepth->replace = bitdepth;
+  
+  bd_in = meta_new_select(MT_BITDEPTH, filter, eina_array_new(2));
+  pushint(bd_in->select, BD_U16);
+  pushint(bd_in->select, BD_U8);
+  bd_in->replace = bitdepth;
+  bd_in->dep = bd_in;
+  eina_array_push(filter->tune, bd_in);
+  data->bd_in = bd_in;
   
   size_in = meta_new(MT_IMGSIZE, filter);
   size_out = meta_new_data(MT_IMGSIZE, filter, data->out_dim);
@@ -264,7 +288,7 @@ static Filter *filter_deinterleave_new(void)
   
   ch_in = meta_new_channel(filter, 1);
   meta_attach(ch_in, tune_color);
-  meta_attach(ch_in, bitdepth);
+  meta_attach(ch_in, bd_in);
   meta_attach(ch_in, size_in);
   //FIXME should drop anything attached here!
   //FIXME ch_out_first is a hack because order of childs is changed by configuration with replace being first!

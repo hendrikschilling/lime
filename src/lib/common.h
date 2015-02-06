@@ -48,7 +48,17 @@ typedef struct _Dim {
   int scaledown_max;
 } Dim;
 
-int clip_u8(int a);
+static inline int clip_u8(int a) {
+  if (a <= 0) return 0;
+  if (a >= 255) return 255;
+  return a;
+}
+
+static inline int clip_u16(int a) {
+  if (a <= 0) return 0;
+  if (a >= 65535) return 65535;
+  return a;
+}
 
 #define DIV_SHIFT_ROUND_UP(V, S) ((V + (1u << S) - 1) >> S)
 

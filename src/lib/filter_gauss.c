@@ -81,11 +81,6 @@ static void _area_calc(Filter *f, Rect *in, Rect *out)
   out->height = in->height + 2*render_r*3;
 }
 
-static void *tileptr8(Tiledata *tile, int x, int y)
-{ 
-  return &((uint8_t*)tile->data)[(y-tile->area.corner.y)*tile->area.width + x-tile->area.corner.x];
-}
-
 void _accu_blur(int x, int y, Tiledata *in, Tiledata *out, int rad, int extra, int in_step, int out_step, uint32_t frac)
 {
   int i;

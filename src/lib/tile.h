@@ -56,6 +56,27 @@ struct _Tile {
   uint64_t generation;
 };
 
+static inline uint8_t *tileptr8(Tiledata *tile, int x, int y)
+{ 
+   return &((uint8_t*)tile->data)[(y-tile->area.corner.y)*tile->area.width + x-tile->area.corner.x];
+}
+
+static inline uint8_t *tileptr16(Tiledata *tile, int x, int y)
+{ 
+   return &((uint16_t*)tile->data)[(y-tile->area.corner.y)*tile->area.width + x-tile->area.corner.x];
+}
+
+static inline uint8_t *tileptr8_3(Tiledata *tile, int x, int y)
+{ 
+   return &((uint8_t*)tile->data)[((y-tile->area.corner.y)*tile->area.width + x-tile->area.corner.x)*3];
+}
+
+static inline uint8_t *tileptr16_3(Tiledata *tile, int x, int y)
+{ 
+   return &((uint16_t*)tile->data)[((y-tile->area.corner.y)*tile->area.width + x-tile->area.corner.x)*3];
+}
+
+
 Tiledata *tiledata_new(Rect *area, int size, Tile *parent);
 void hack_tiledata_fixsize(int size, Tiledata *tile);
 Tile *tile_new(Rect *area, Tilehash hash, Filter *f, Filter *f_req);

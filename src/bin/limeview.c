@@ -124,6 +124,12 @@ typedef struct {
   Eina_Array **imgs;
 } Mat_Cache;
 
+
+typedef struct {
+  int step;
+  int group_idx;
+} Filelist_Pos;
+
 int max_workers;
 int max_thread_id;
 Evas_Object *clipper, *win, *scroller, *file_slider, *filter_list, *select_filter, *pos_label, *fsb, *load_progress, *load_label, *load_notify;

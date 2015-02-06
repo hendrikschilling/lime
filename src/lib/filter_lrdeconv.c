@@ -27,7 +27,7 @@
 
 #include "opencv_helpers.h"
 
-const int bord = 8;
+const int bord = 16;
 
 typedef struct {
   int iterations;
@@ -54,7 +54,7 @@ static void lrdiv(Rect area, uint16_t *observed, uint16_t *blur, uint16_t *out)
     for(i=0;i<area.width*3;i++) {
       int pos = j*area.width*3+i;
       if (blur[pos])
-        out[pos] = imin((int)observed[pos]*16384/blur[pos], 65535);
+        out[pos] = imin(observed[pos]*256/blur[pos], 65535);
       else
         out[pos] = 0;
     }
@@ -67,7 +67,7 @@ static void lrmul(Rect area, uint16_t *a, uint16_t *b, uint16_t *out)
   for(j=bord/2;j<area.height-bord/2;j++)
     for(i=bord/2;i<area.width*3-3*bord/2;i++) {
       int pos = j*area.width*3+i;
-      out[pos] = imin(a[pos]*b[pos]/16384, 65535);
+      out[pos] = imin(a[pos]*b[pos]/256, 65535);
     }
 }
 
@@ -76,11 +76,11 @@ static void _worker(Filter *f, Eina_Array *in, Eina_Array *out, Rect *area, int 
   int i, j;
   uint16_t *output;
   uint16_t *input;
-  _Data *data = ea_data(f->data, thread_id);
+  _Data *data = ea_data(f->data, 0);
   uint16_t *blur = data->blur_b,
            *estimate = data->estimate_b,
            *fac = data->fac_b;
-  Tiledata *in_td;
+  Tiledata *in_td, *out_td;
   Rect in_area;
   const int size = 3*sizeof(uint16_t)*(DEFAULT_TILE_SIZE+2*bord)*(DEFAULT_TILE_SIZE+2*bord);
   
@@ -98,12 +98,33 @@ static void _worker(Filter *f, Eina_Array *in, Eina_Array *out, Rect *area, int 
   in_td = ((Tiledata*)ea_data(in, 0));
   in_area = in_td->area;
   input = in_td->data;
-  output = ((Tiledata*)ea_data(out, 0))->data;
+  out_td = ((Tiledata*)ea_data(out, 0));
+  output = out_td->data;
+  
   
   if (area->corner.scale) {
     memcpy(output,input,3*sizeof(uint16_t)*in_td->area.width*in_td->area.height);
     return;
   }
+  
+  //16bit sharpen
+  /*float s = 1.0;
+  uint16_t *buf_out, *buf_in1, *buf_in2, *buf_in3;
+  for(j=0;j<area->height;j++) {
+    buf_out = tileptr16_3(out_td, area->corner.x, area->corner.y+j);
+    buf_in1 = tileptr16_3(in_td, in_area.corner.x+bord, in_area.corner.y+bord+j-1);
+    buf_in2 = tileptr16_3(in_td, in_area.corner.x+bord, in_area.corner.y+bord+j);
+    buf_in3 = tileptr16_3(in_td, in_area.corner.x+bord, in_area.corner.y+bord+j+1);
+    for(i=0;i<area->width*3;i++) {
+      *buf_out =  clip_u16(((1.0+4*s)*buf_in2[0] - s*(buf_in1[0] + buf_in2[-3] + buf_in2[3] + buf_in3[0])));
+      buf_out++;
+      buf_in1++;
+      buf_in2++;
+      buf_in3++;
+    }
+  }*/
+  
+  uint16_t *newestimate = malloc(size);
   
   memcpy(estimate, input, 3*sizeof(uint16_t)*in_area.width*in_area.height);
   
@@ -111,8 +132,11 @@ static void _worker(Filter *f, Eina_Array *in, Eina_Array *out, Rect *area, int 
     simplegauss(in_area, estimate, blur, data->common->radius);
     lrdiv(in_area, input, blur, fac);
     simplegauss(in_area, fac, fac, data->common->radius);
-    lrmul(in_area, estimate, fac, estimate);
+    lrmul(in_area, estimate, fac, newestimate);
+    memcpy(estimate, newestimate, size);
   }
+  
+  free(newestimate);
   
   for(j=0;j<area->height;j++)
     for(i=0;i<area->width*3;i++) {
@@ -186,7 +210,7 @@ static Filter *_new(void)
   f->mode_buffer = filter_mode_buffer_new();
   f->mode_buffer->worker = _worker;
   f->mode_buffer->area_calc = _area_calc;
-  f->mode_buffer->threadsafe = 1;
+  f->mode_buffer->threadsafe = 0;
   f->mode_buffer->data_new = &_data_new;
   f->input_fixed = _input_fixed;
   f->del = _del;

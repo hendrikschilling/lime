@@ -45,7 +45,7 @@ static void _worker(Filter *f, Eina_Array *in, Eina_Array *out, Rect *area, int 
   cinfo.input_components = 3;
   cinfo.in_color_space   = JCS_RGB;
   jpeg_set_defaults(&cinfo);
-  jpeg_set_quality (&cinfo, 75, TRUE);
+  jpeg_set_quality (&cinfo, 97, TRUE);
   jpeg_start_compress(&cinfo, TRUE);
     
   while (cinfo.next_scanline < cinfo.image_height) {

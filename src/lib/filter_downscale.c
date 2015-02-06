@@ -38,11 +38,6 @@ static void _area_calc(Filter *f, Rect *in, Rect *out)
   }
 }
 
-static uint8_t *tileptr8(Tiledata *tile, int x, int y)
-{ 
-  return &((uint8_t*)tile->data)[(y-tile->area.corner.y)*tile->area.width + x-tile->area.corner.x];
-}
-
 static void _worker_gamma(Filter *f, Eina_Array *in, Eina_Array *out, Rect *area, int thread_id)
 {
   int ch;
