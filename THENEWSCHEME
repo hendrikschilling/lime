@@ -1,0 +1,38 @@
+The new scheme:
+
+filter provide their general structure as a fixed compile time filter structur which defines input/output trees, settings, configurations, all fixed.
+
+interface from lime to the filter is fixed, all filter functions are fixed.
+
+Filters get instanciated in three ways:
+  - for configuration
+  - for rendering
+  
+Configuration:
+Is completely controlled by library, filters only get asked what their output configuration is, depending on the input + settings + config metas.
+
+How?
+  inputs_fixed -> neuer name: create_output_config() ???
+  filter can query its configuration/settings.. nodes by name (using hashtable)
+  and set output nodes by name. Or fail.
+  
+For rendering filter has filter data callback to create filter data for:
+  - general setup (shared for all instances)
+  - by setting (shared between all instances with the same settings, independent of configuration) (How to implement in library?)
+  - by configuration (shared between all threads)
+  - by thread / actual rendering (per thread)
+  
+Questions:
+  How to implement pre/postprocessing
+  How to pass data backwards (same as forward but forward/backward must not influence each other? where do we act on failure?)
+  But filters get configured input to output? How should the passing work?
+  Two passes? set_output_config and later set_input_config? might actually work but what with the fastest path finding? Where to insert filters?
+  What to pass (tile areas? tile size limits? (size (choices)/img dim/max scaledown)
+  
+Specific cases:
+Insert scaledown filter when max scaledown is not low enough!)
+  -> alternative solution (Adaptively scale down internally?)
+Insert filter to allow arbitary tile sizes for savetiff?
+  -> always clobber for every request (suboptimal? speed penalty might come from filter interaction -> ignore!)
+Any other cases? In General: generic requirements made by a user/program, but not to specific filters (like which tile to render? The big solution: Configuration for every single reqest -> would easily solve above cases - keep the search graph to very easily find the optimal configuration?
+In that case how to find out where the problem is? Doesn't matter - build a huge graph? Or Trace where options came from and start there!

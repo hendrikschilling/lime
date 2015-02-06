@@ -1,0 +1,109 @@
+Performance tests:
+load directory with a bunch of images 1573 (14G) raw+jpeg, 16MP, display first preview of the first 100 groups:
+fastest of multiple runs:
+Default cache size 25MB
+Test on 18.03.2014 with -O3 at 056d14e29db1d7fb7a4c39fb00c45968f6e326bd
+
+time /home/hendrik/projects/lime/src/bin/limeview /home/hendrik/foto/*onst*
+
+Intel(R) Core(TM)2 Duo CPU     T5670  @ 1.80GHz
+real    0m3.286s
+user    0m1.769s
+sys     0m0.646s
+
+Memory usage according to massif:
+37.25MB max
+
+Command being timed: "/home/hendrik/projects/lime/src/bin/limeview /home/hendrik/foto/2013-03-09 Hochzeit Ariane und Konstantin"
+        User time (seconds): 1.71
+        System time (seconds): 0.70
+        Percent of CPU this job got: 73%
+        Elapsed (wall clock) time (h:mm:ss or m:ss): 0:03.27
+        Average shared text size (kbytes): 0
+        Average unshared data size (kbytes): 0
+        Average stack size (kbytes): 0
+        Average total size (kbytes): 0
+        Maximum resident set size (kbytes): 65344
+        Average resident set size (kbytes): 0
+        Major (requiring I/O) page faults: 0
+        Minor (reclaiming a frame) page faults: 99808
+        Voluntary context switches: 624
+        Involuntary context switches: 3304
+        Swaps: 0
+        File system inputs: 0
+        File system outputs: 616
+        Socket messages sent: 0
+        Socket messages received: 0
+        Signals delivered: 0
+        Page size (bytes): 4096
+        Exit status: 0
+
+        
+display 200 images:
+real    0m5.907s
+user    0m3.337s
+sys     0m1.021s
+
+massif:
+46.68MB
+
+User time (seconds): 3.33
+        System time (seconds): 1.01
+        Percent of CPU this job got: 73%
+        Elapsed (wall clock) time (h:mm:ss or m:ss): 0:05.88
+        Average shared text size (kbytes): 0
+        Average unshared data size (kbytes): 0
+        Average stack size (kbytes): 0
+        Average total size (kbytes): 0
+        Maximum resident set size (kbytes): 80544
+        Average resident set size (kbytes): 0
+        Major (requiring I/O) page faults: 0
+        Minor (reclaiming a frame) page faults: 166478
+        Voluntary context switches: 1179
+        Involuntary context switches: 6086
+        Swaps: 0
+        File system inputs: 0
+        File system outputs: 616
+        Socket messages sent: 0
+        Socket messages received: 0
+        Signals delivered: 0
+        Page size (bytes): 4096
+        Exit status: 0
+        
+300 images:
+real    0m8.328s
+user    0m4.404s
+sys     0m1.553s
+
+massif:
+47.33MB
+
+
+User time (seconds): 4.35
+        System time (seconds): 1.54
+        Percent of CPU this job got: 70%
+        Elapsed (wall clock) time (h:mm:ss or m:ss): 0:08.35
+        Average shared text size (kbytes): 0
+        Average unshared data size (kbytes): 0
+        Average stack size (kbytes): 0
+        Average total size (kbytes): 0
+        Maximum resident set size (kbytes): 78816
+        Average resident set size (kbytes): 0
+        Major (requiring I/O) page faults: 0
+        Minor (reclaiming a frame) page faults: 252746
+        Voluntary context switches: 1690
+        Involuntary context switches: 9278
+        Swaps: 0
+        File system inputs: 0
+        File system outputs: 616
+        Socket messages sent: 0
+        Socket messages received: 0
+        Signals delivered: 0
+        Page size (bytes): 4096
+        Exit status: 0
+
+300 images, cache size 5MB:
+massif:
+32.21MB
+
+100 images, full image 
