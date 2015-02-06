@@ -128,7 +128,7 @@ typedef struct {
 typedef struct {
   int step;
   int group_idx;
-} Filelist_Pos;
+} Tagfiles_Step;
 
 int max_workers;
 int max_thread_id;
@@ -185,6 +185,15 @@ static void fill_scroller(void);
 void workerfinish_schedule(void (*func)(void *data, Evas_Object *obj), void *data, Evas_Object *obj, Eina_Bool append);
 void filter_settings_create_gui(Eina_List *chain_node, Evas_Object *box);
 void step_image_do(void *data, Evas_Object *obj);
+
+Tagfiles *tagfiles_step_new(int step, int group_idx)
+{
+  Tagfiles_Step *ts = malloc(sizeof(Tagfiles_Step));
+  ts->step = step;
+  ts->group_idx = group_idx;
+  
+  return ts;
+}
 
 Dim *config_size(Config_Data *config)
 {
@@ -862,7 +871,7 @@ Eina_Bool idle_run_render(void *data)
     if (tagfiles_idx(files) >= BENCHMARK_LENGTH)
       workerfinish_schedule(&elm_exit_do, NULL, NULL, EINA_TRUE);
     else
-      workerfinish_schedule(&step_image_do, (void*)(intptr_t)1, NULL, EINA_TRUE);
+      workerfinish_schedule(&step_image_do, tagfiles_step_new(1,0), NULL, EINA_TRUE);
   }
 #endif
   
@@ -873,7 +882,10 @@ void workerfinish_idle_run(void *data)
 { 
   workerfinish_idle = NULL;
   
-  assert(!worker);
+  if (worker) {
+    printf("FIXME: workerfinish_idle_run() still running workers!");
+    return ECORE_CALLBACK_CANCEL;
+  }
   
   pending_exe();
   
@@ -1067,7 +1079,7 @@ _finished_tile(void *data, Ecore_Thread *th)
   if (tagfiles_idx(files) >= BENCHMARK_LENGTH)
     workerfinish_schedule(&elm_exit_do, NULL, NULL, EINA_TRUE);
   else
-    workerfinish_schedule(&step_image_do, (void*)(intptr_t)1, NULL, EINA_TRUE);
+    workerfinish_schedule(&step_image_do, tagfiles_step_new(1,0), NULL, EINA_TRUE);
 #endif
   
   worker--;
@@ -1148,7 +1160,7 @@ _finished_tile(void *data, Ecore_Thread *th)
     if (tagfiles_idx(files) >= BENCHMARK_LENGTH)
       workerfinish_schedule(&elm_exit_do, NULL, NULL, EINA_TRUE);
     else
-      workerfinish_schedule(&step_image_do, (void*)(intptr_t)1, NULL, EINA_TRUE);
+      workerfinish_schedule(&step_image_do, tagfiles_step_new(1,0), NULL, EINA_TRUE);
   }
 #endif
   
@@ -1517,53 +1529,8 @@ on_done(void *data, Evas_Object *obj, void *event_info)
 
 void group_select_do(void *data, Evas_Object *obj)
 {
-  int group_idx;
-  int failed;
-  const char *filename;
-  Elm_Object_Item *it;
-  
-  //abort();
-  printf("FIXME group select!\n");
-  
-  delgrid();
-    
-  File_Group *group = tagfiles_get(files);
-  
-  group_idx = *(int*)data;
-    
-  failed = 1;
-  
-  while(failed) {
-    if (group_idx == filegroup_count(group)) {
-      group_idx = 0;
-    }
-    
-    filename = filegroup_nth(group, group_idx);
-    if (!filename) {
-      group_idx++;
-      continue;
-    }
-      
-    //FIXME we should use config_data_get!!!
-    lime_setting_string_set(config_curr->load, "filename", filename);
-    
-    failed = lime_config_test(config_curr->sink);
-    if (failed) {
-      group_idx++;
-      printf("could not configure: %s\n", filename);
-    }
-  }
-  
-  it = elm_list_first_item_get(group_list);
-  while (group_idx) {
-    it = elm_list_item_next(it);
-    group_idx--;
-  }
-  elm_list_item_selected_set(it, EINA_TRUE);
-  
-  grid_setsize();
-
-  fill_scroller();
+  step_image_do(tagfiles_step_new(0,*(int*)data), NULL);
+  free(data);
 }
 
 /*
@@ -1642,8 +1609,7 @@ static void on_jump_image(void *data, Evas_Object *obj, void *event_info)
 
 static void
 on_group_select(void *data, Evas_Object *obj, void *event_info)
-{ 
-  //FIXME no double select!
+{
   if (!fixme_no_group_select)
     workerfinish_schedule(&group_select_do, data, obj, EINA_TRUE);
 }
@@ -2041,7 +2007,8 @@ void refresh_tab_tags(void)
 void step_image_do(void *data, Evas_Object *obj)
 {
   int i;
-  int start_idx;
+  Tagfiles_Step *step = data;
+  int start_idx, start_group_idx;
   int group_idx;
   int *idx_cp;
   int failed;
@@ -2054,7 +2021,6 @@ void step_image_do(void *data, Evas_Object *obj)
     printf("non-chancellation delay: %f\n", bench_delay_get(delay_cur));
   
   assert(!worker);
-  
   assert(files);
   
   if (!tagfiles_count(files))
@@ -2063,9 +2029,10 @@ void step_image_do(void *data, Evas_Object *obj)
   //FIXME free stuff!
   preload_flush();
   
-  if (data) {
-    tagfiles_step(files, (intptr_t)data);
-    last_file_step = (intptr_t)data;
+  if (step) {
+    tagfiles_step(files, step->step);
+    if (step->step)
+      last_file_step = step->step;
   }
   
   if (last_file_step == 1 || last_file_step == -1)
@@ -2080,13 +2047,19 @@ void step_image_do(void *data, Evas_Object *obj)
   group = tagfiles_get(files);
   
   while (!config || config->failed) {
-    group_idx = 0;
+    if (!step)
+      group_idx = 0;
+    else {
+      group_idx = step->group_idx;
+      free(step);
+      step = NULL;
+    }
+    start_group_idx = group_idx;
     
     if (group_in_filters(group, tags_filter)) {
-      while(!config || config->failed) {
-	if (group_idx == filegroup_count(group))
-	  break;
-	
+      while(!config || config->failed) {	
+          printf("try %d/%d\n", tagfiles_idx(files), group_idx);
+          
 	  config = config_data_get(group, group_idx);
 	  
 	  if (!config || config->failed) {
@@ -2094,7 +2067,9 @@ void step_image_do(void *data, Evas_Object *obj)
 	    //free(config);
 	    //config = NULL;
 	    printf("failed to find valid configuration for %s\n", filegroup_nth(group, group_idx));
-	    group_idx++;
+	    group_idx = (group_idx + 1) % filegroup_count(group);
+            if (group_idx == start_group_idx)
+              break;
 	  }
       }
     }
@@ -2110,9 +2085,13 @@ void step_image_do(void *data, Evas_Object *obj)
     if (start_idx == tagfiles_idx(files)){
       printf("no valid configuration found for any file!\n");
       forbid_fill--;
+      //FIXME recheck config(s) on filegroup changed!
+      if (step) free(step);
       return;
     }
   }
+  
+  printf("success! file %s\n", filegroup_nth(group, group_idx));
   
   if (config_curr) {
     //FIXME free ->filter_chain
@@ -2157,6 +2136,8 @@ void step_image_do(void *data, Evas_Object *obj)
   elm_slider_value_set(file_slider, tagfiles_idx(files)+0.1);
   
   step_image_start_configs(PRELOAD_CONFIG_RANGE);
+  
+  if (step) free(step);
 }
 
 void del_file_done(void *data, Eio_File *handler)
@@ -2478,7 +2459,7 @@ on_next_image(void *data, Evas_Object *obj, void *event_info)
     if (mat_cache_old && !worker)
       _display_preview(NULL);
     //doesnt matter if true or false
-    workerfinish_schedule(&step_image_do, (void*)(intptr_t)1, NULL, EINA_TRUE);
+    workerfinish_schedule(&step_image_do, tagfiles_step_new(1,0), NULL, EINA_TRUE);
   }
 }
 
@@ -2495,7 +2476,7 @@ on_prev_image(void *data, Evas_Object *obj, void *event_info)
     if (mat_cache_old && !worker)
       _display_preview(NULL);
     //FIXME doesnt matter if true or false
-    workerfinish_schedule(&step_image_do, (void*)(intptr_t)-1, NULL, EINA_TRUE);
+    workerfinish_schedule(&step_image_do, tagfiles_step_new(-1,0), NULL, EINA_TRUE);
   }
 }
 
@@ -2761,6 +2742,7 @@ void refresh_group_tab(void)
   elm_list_clear(group_list);
   for(i=0;i<filegroup_count(cur_group);i++)
     if (filegroup_nth(cur_group, i)) {
+      //FIXME free on refresh!
       idx_cp = malloc(sizeof(int));
       *idx_cp = i;
       item = elm_list_item_append(group_list, filegroup_nth(cur_group, i), NULL, NULL, &on_group_select, idx_cp);

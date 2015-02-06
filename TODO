@@ -1,3 +1,10 @@
+CURRENT
+- invalidate (cached and current) configs on filter change! (e.g. incompatible filter chain (curves) blocks file view!)
+- mat cache invalidation (broken? old tiles?)
+- extra _prepare call to move calculations from _inputs_fixed which is called often in configuration!
+- filterchain für einzelne files!
+
+
 next:
 - add useful --help to limedo with full list of filters/settings
 - benchmarking and README
