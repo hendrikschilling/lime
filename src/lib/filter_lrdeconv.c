@@ -27,7 +27,7 @@
 
 #include "opencv_helpers.h"
 
-const int bord = 16;
+static const int bord = 16;
 
 typedef struct {
   int iterations;
@@ -76,10 +76,8 @@ static void _worker(Filter *f, Eina_Array *in, Eina_Array *out, Rect *area, int 
   int i, j;
   uint16_t *output;
   uint16_t *input;
-  _Data *data = ea_data(f->data, 0);
-  uint16_t *blur = data->blur_b,
-           *estimate = data->estimate_b,
-           *fac = data->fac_b;
+  _Data *data = ea_data(f->data, thread_id);
+  uint16_t *blur, *estimate, *fac;
   Tiledata *in_td, *out_td;
   Rect in_area;
   const int size = 3*sizeof(uint16_t)*(DEFAULT_TILE_SIZE+2*bord)*(DEFAULT_TILE_SIZE+2*bord);
@@ -89,6 +87,9 @@ static void _worker(Filter *f, Eina_Array *in, Eina_Array *out, Rect *area, int 
     data->estimate_b = malloc(size);
     data->fac_b = malloc(size);
   }
+  blur = data->blur_b,
+  estimate = data->estimate_b,
+  fac = data->fac_b;
 
   assert(in && ea_count(in) == 1);
   assert(out && ea_count(out) == 1);
@@ -210,7 +211,7 @@ static Filter *_new(void)
   f->mode_buffer = filter_mode_buffer_new();
   f->mode_buffer->worker = _worker;
   f->mode_buffer->area_calc = _area_calc;
-  f->mode_buffer->threadsafe = 0;
+  f->mode_buffer->threadsafe = 1;
   f->mode_buffer->data_new = &_data_new;
   f->input_fixed = _input_fixed;
   f->del = _del;

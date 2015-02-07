@@ -47,6 +47,7 @@
 #include "filter_rotate.h"
 #include "filter_curves.h"
 #include "filter_lrdeconv.h"
+#include "filter_lensfun.h"
 
 #define TILE_SIZE DEFAULT_TILE_SIZE
 
@@ -578,9 +579,6 @@ void filter_settings_create_gui(Eina_List *chain_node, Evas_Object *box)
   Evas_Object *vbox, *btn;
   Filter_Chain *fc = eina_list_data_get(chain_node);
   
-  if (!fc->f->settings || !ea_count(fc->f->settings))
-    return;
-  
   fc->frame = elm_frame_add(win);
   evas_object_size_hint_weight_set(fc->frame, EVAS_HINT_EXPAND, 0);
   evas_object_size_hint_align_set(fc->frame, EVAS_HINT_FILL, 0);
@@ -599,8 +597,8 @@ void filter_settings_create_gui(Eina_List *chain_node, Evas_Object *box)
   elm_box_pack_end(vbox, btn);
   evas_object_show(btn);
   
-  
-  for(i=0;i<ea_count(fc->f->settings);i++)
+  if (fc->f->settings)
+    for(i=0;i<ea_count(fc->f->settings);i++)
     setting_spinner_insert(vbox, ea_data(fc->f->settings, i));
   
   evas_object_show(vbox);
@@ -3588,6 +3586,7 @@ elm_main(int argc, char **argv)
   elm_hoversel_item_add(select_filter, "rotate", NULL, ELM_ICON_NONE, &on_select_filter_select, &filter_core_rotate);
   elm_hoversel_item_add(select_filter, "curves", NULL, ELM_ICON_NONE, &on_select_filter_select, &filter_core_curves);
   elm_hoversel_item_add(select_filter, "deconv", NULL, ELM_ICON_NONE, &on_select_filter_select, &filter_core_lrdeconv);
+  elm_hoversel_item_add(select_filter, "lensfun", NULL, ELM_ICON_NONE, &on_select_filter_select, &filter_core_lensfun);
 
   elm_object_text_set(select_filter, "contrast");
   select_filter_func = filter_core_contrast.filter_new_f;

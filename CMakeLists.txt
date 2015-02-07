@@ -15,12 +15,14 @@ PKG_CHECK_MODULES (SWSCALE REQUIRED libswscale)
 PKG_CHECK_MODULES (RAW REQUIRED libraw_r)
 PKG_CHECK_MODULES (GSL REQUIRED gsl)
 PKG_CHECK_MODULES (OPENCV REQUIRED opencv)
+PKG_CHECK_MODULES (LENSFUN REQUIRED lensfun)
+PKG_CHECK_MODULES (EXIV2 REQUIRED exiv2)
 FIND_PACKAGE(TIFF REQUIRED)
 FIND_PACKAGE(JPEG REQUIRED)
 
 find_package (Threads)
 
-set(CMAKE_C_FLAGS "-Wall -g -O0 -fno-omit-frame-pointer")
+set(CMAKE_C_FLAGS "-Wall -g -O3 -fno-omit-frame-pointer")
 set(CMAKE_CXX_FLAGS "-Wall -g -O3 -fno-omit-frame-pointer")
 
 add_subdirectory(src/lib)

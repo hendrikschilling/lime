@@ -40,6 +40,7 @@ Eina_Hash *lime_filters;
 #include "filter_rotate.h"
 #include "filter_curves.h"
 #include "filter_lrdeconv.h"
+#include "filter_lensfun.h"
 
 void lime_filters_init(void)
 {
@@ -65,6 +66,7 @@ void lime_filters_init(void)
   eina_hash_add(lime_filters, filter_core_savejpeg.shortname, &filter_core_savejpeg);
   eina_hash_add(lime_filters, filter_core_curves.shortname, &filter_core_curves);
   eina_hash_add(lime_filters, filter_core_lrdeconv.shortname, &filter_core_lrdeconv);
+  eina_hash_add(lime_filters, filter_core_lensfun.shortname, &filter_core_lensfun);
 }
 
 Filter *lime_filter_new(const char *shortname)
@@ -195,6 +197,7 @@ char *lime_filter_chain_serialize(Filter *f)
 Eina_List *lime_filter_chain_deserialize(char *str)
 {
   int i;
+  int checksettings;
   Meta *m;
   Filter *f, *last_f = NULL;
   Eina_List *filters = NULL;
@@ -203,14 +206,37 @@ Eina_List *lime_filter_chain_deserialize(char *str)
   
   char *last = str + strlen(str);
   char *next = str;
+  char *next_comma;
   char *cur = str;
   const char *setting;
   char *tmp;
   while (cur) {
     next = next_single_colon(cur);
-    if (next)
-      *next = '\0';
-    f = lime_filter_new(cur);
+    next_comma = strchr(cur, ',');
+    if (next || next_comma) {
+      if (next && (next < next_comma || !next_comma)) {
+        checksettings = 1;
+        *next = '\0';
+        f = lime_filter_new(cur);
+      }
+      else if (next_comma && (next > next_comma || !next)) {
+        checksettings = 0;
+        *next_comma = '\0';
+        f = lime_filter_new(cur);
+        cur = next_comma+1;
+        next = NULL;
+      }
+      else {
+        //FIXME  check rethink?
+        abort();
+      }
+    }
+    else {
+      checksettings = 0;
+      f = lime_filter_new(cur);
+      next = NULL;
+      cur = NULL;
+    }
     
     if (!f) {
       printf("no filter for %s\n", cur);
@@ -220,7 +246,7 @@ Eina_List *lime_filter_chain_deserialize(char *str)
     if (next && next+1 < last)
       cur = next+1;
     else
-      cur = NULL;
+      checksettings = 0;
     
     //f = fc->filter_new_f();
     
@@ -232,7 +258,7 @@ Eina_List *lime_filter_chain_deserialize(char *str)
     filters = eina_list_append(filters, f);
     
     //settings
-    if (cur) {
+    if (cur && checksettings) {
       next = strchr(cur, '=');
       if (strchr(cur, ',') && next > strchr(cur, ','))
         break;
@@ -291,15 +317,15 @@ Eina_List *lime_filter_chain_deserialize(char *str)
         
       }
       
+      if (cur)
+        cur = strchr(cur, ',');
+      if (cur)
+        cur++;
     }
+    
+    if (cur >= last)
+      cur = NULL;
       
-    if (cur)
-      cur = strchr(cur, ',');
-    if (cur) {
-      cur++;
-      if (cur >= last)
-        cur = NULL;
-    }
   }
   
   free(str);

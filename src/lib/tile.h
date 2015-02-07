@@ -61,7 +61,7 @@ static inline uint8_t *tileptr8(Tiledata *tile, int x, int y)
    return &((uint8_t*)tile->data)[(y-tile->area.corner.y)*tile->area.width + x-tile->area.corner.x];
 }
 
-static inline uint8_t *tileptr16(Tiledata *tile, int x, int y)
+static inline uint16_t *tileptr16(Tiledata *tile, int x, int y)
 { 
    return &((uint16_t*)tile->data)[(y-tile->area.corner.y)*tile->area.width + x-tile->area.corner.x];
 }
@@ -71,7 +71,7 @@ static inline uint8_t *tileptr8_3(Tiledata *tile, int x, int y)
    return &((uint8_t*)tile->data)[((y-tile->area.corner.y)*tile->area.width + x-tile->area.corner.x)*3];
 }
 
-static inline uint8_t *tileptr16_3(Tiledata *tile, int x, int y)
+static inline uint16_t *tileptr16_3(Tiledata *tile, int x, int y)
 { 
    return &((uint16_t*)tile->data)[((y-tile->area.corner.y)*tile->area.width + x-tile->area.corner.x)*3];
 }
