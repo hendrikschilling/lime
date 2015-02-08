@@ -154,6 +154,7 @@ void fc_new_from_filters(Eina_List *filters);
 int fixme_no_group_select = 0;
 File_Group *cur_group = NULL;
 Tagged_File *cur_file = NULL;
+int cur_group_idx = 0;
 
 int bench_idx = 0;
 
@@ -1592,7 +1593,7 @@ static void on_jump_image(void *data, Evas_Object *obj, void *event_info)
 static void
 on_group_select(void *data, Evas_Object *obj, void *event_info)
 {
-  if (!fixme_no_group_select)
+  if (!fixme_no_group_select)    
     workerfinish_schedule(&group_select_do, data, obj, EINA_TRUE);
 }
 
@@ -2091,6 +2092,7 @@ void step_image_do(void *data, Evas_Object *obj)
   //filegroup_data_attach(group, group_idx, NULL);
   
   cur_group = group;
+  cur_group_idx = group_idx;
   cur_file = filegroup_nth(cur_group, group_idx);
   delgrid();
     
@@ -2735,12 +2737,14 @@ static void on_insert_after(void *data, Evas_Object *obj, void *event_info)
 
 void refresh_group_tab(void) 
 {
-  int i, group_idx;
+  int i;
   int *idx_cp;
   Elm_Object_Item *item;
   
   if (!cur_group)
     return;
+  
+  printf("refresh group tab!\n");
   
   elm_list_clear(group_list);
   for(i=0;i<filegroup_count(cur_group);i++)
@@ -2749,7 +2753,7 @@ void refresh_group_tab(void)
       idx_cp = malloc(sizeof(int));
       *idx_cp = i;
       item = elm_list_item_append(group_list, tagged_file_name(filegroup_nth(cur_group, i)), NULL, NULL, &on_group_select, idx_cp);
-      if (group_idx == i) {
+      if (cur_group_idx == i) {
 	fixme_no_group_select = EINA_TRUE;
 	elm_list_item_selected_set(item, EINA_TRUE);
 	fixme_no_group_select = EINA_FALSE;
@@ -3532,6 +3536,7 @@ elm_main(int argc, char **argv)
   evas_object_show(tab_box);
   
   group_list =  elm_list_add(win);
+  elm_object_tree_focus_allow_set(group_list, EINA_FALSE);
   evas_object_size_hint_weight_set(group_list, EVAS_HINT_EXPAND, EVAS_HINT_EXPAND);
   evas_object_size_hint_align_set(group_list, EVAS_HINT_FILL, EVAS_HINT_FILL);
 
@@ -3539,7 +3544,7 @@ elm_main(int argc, char **argv)
   evas_object_data_set(tab_group, "limeview,main_tab,refresh_cb", &refresh_group_tab);
   
   tab_tags = elm_box_add(win);
-  evas_object_data_set(tab_group, "limeview,main_tab,refresh_cb", &refresh_tab_tags);
+  evas_object_data_set(tab_tags, "limeview,main_tab,refresh_cb", &refresh_tab_tags);
   evas_object_size_hint_weight_set(tab_tags, EVAS_HINT_EXPAND, EVAS_HINT_EXPAND);
   evas_object_size_hint_align_set(tab_tags, EVAS_HINT_FILL, EVAS_HINT_FILL);
   
