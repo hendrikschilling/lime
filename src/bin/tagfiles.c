@@ -540,7 +540,6 @@ void file_group_add(Tagfiles *tagfiles, File_Group *group, const char *name)
   Tagged_File file_new;
   
   file_new = tag_file_new(tagfiles, group, name);
-  printf("add new file name: %s\n", file_new.filename);
   eina_inarray_push(group->files, &file_new);
 }
 

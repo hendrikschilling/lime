@@ -97,9 +97,13 @@ Meta_Spec meta_def_list[MT_MAX] =
     &meta_print_imgdim,
     NULL,
     {}},
-  {"MT_INT",
+  {"MT_FLIPROT",
     &meta_print_int,
     &Cmp_Int,
+    {}},
+  {"MT_OBJ",
+    NULL,
+    NULL,
     {}}
 };
 
@@ -188,6 +192,11 @@ Meta *meta_new_select(int type, Filter *filter, Eina_Array *select)
 void meta_name_set(Meta *meta, const char *name)
 {
   meta->name = name;
+}
+
+void meta_type_str_set(Meta *meta, const char *type_str)
+{
+  meta->type_str = type_str;
 }
 
 void meta_attach(Meta *parent, Meta *child)

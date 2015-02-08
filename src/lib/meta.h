@@ -80,6 +80,7 @@ typedef enum {
  MT_INT,
  MT_IMGSIZE,
  MT_FLIPROT,
+ MT_OBJ,
  MT_MAX
 } Meta_Type;
 
@@ -91,6 +92,7 @@ struct _Meta
 {
    int type;
    const char *name;
+   const char *type_str; //further defines type (derive types)
    Meta *dep; //type: Meta, tuning this meta depends on
    Meta *replace; //the node that appears in the output instead of this input-node
    Meta_Array *childs; //type: Meta
@@ -108,6 +110,7 @@ Meta *meta_new_data(int type, Filter *filter, void *data);
 Meta *meta_new_channel(Filter *filter, int idx);
 Meta *meta_new_select(int type, Filter *filter, Eina_Array *select);
 void meta_name_set(Meta *meta, const char *name);
+void meta_type_str_set(Meta *meta, const char *type_str);
 void meta_attach(Meta *parent, Meta *child);
 void meta_print(Meta *m);
 void meta_data_calc(Meta *m);

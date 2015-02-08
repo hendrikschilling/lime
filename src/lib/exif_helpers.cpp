@@ -22,21 +22,21 @@
 
 #include "exif_helpers.h"
 
-struct _lime_exif_handle {
+struct _lime_exif {
   const char *path;
   Exiv2::Image::AutoPtr img;
 };
 
-lime_exif_handle *lime_exif_handle_new_from_file(const char *path)
+lime_exif *lime_exif_handle_new_from_file(const char *path)
 {
-  lime_exif_handle *h = (lime_exif_handle*)calloc(sizeof(lime_exif_handle), 1);
+  lime_exif *h = (lime_exif*)calloc(sizeof(lime_exif), 1);
   
   h->path = path;
   
   return h;
 }
 
-float lime_exif_handle_find_float_by_tagname(lime_exif_handle *h, const char *tagname)
+float lime_exif_handle_find_float_by_tagname(lime_exif *h, const char *tagname)
 {
   if (!h->img.get()) {
     h->img = Exiv2::ImageFactory::open(h->path);
@@ -52,11 +52,33 @@ float lime_exif_handle_find_float_by_tagname(lime_exif_handle *h, const char *ta
     if (i->typeId() == Exiv2::unsignedRational && !i->tagName().compare(tagname))
       return i->getValue()->toFloat();
 
+  return -1.0;
+}
+
+const char *lime_exif_handle_find_str_by_tagname(lime_exif *h, const char *tagname)
+{
+  std::string str;
+  if (!h->img.get()) {
+    h->img = Exiv2::ImageFactory::open(h->path);
+    assert(h->img.get() != 0);
+    h->img->readMetadata();
+  }
+  
+  Exiv2::ExifData &exifData = h->img->exifData();
+  assert (!exifData.empty());
+  
+  Exiv2::ExifData::const_iterator end = exifData.end();
+  for (Exiv2::ExifData::const_iterator i = exifData.begin(); i != end; ++i)
+    if ((i->typeId() == Exiv2::unsignedByte || i->typeId() == Exiv2::asciiString) && !i->tagName().compare(tagname)) {
+      str = i->print(&exifData);
+      return str.c_str();
+    }
+
   return NULL;
 }
 
 
-lime_exif_handle *lime_exif_handle_destroy(lime_exif_handle *h)
+lime_exif *lime_exif_handle_destroy(lime_exif *h)
 {
   if (h->img.get())
     h->img.reset();

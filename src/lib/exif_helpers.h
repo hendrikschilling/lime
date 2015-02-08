@@ -21,14 +21,16 @@
 
 struct _lime_exif_handle;
   
-typedef struct _lime_exif_handle lime_exif_handle; 
+typedef struct _lime_exif lime_exif; 
 
 #ifdef __cplusplus
 extern "C" {
 #endif
   
-lime_exif_handle *lime_exif_handle_new_from_file(const char *path);
-lime_exif_handle *lime_exif_handle_destroy(lime_exif_handle *h);
+lime_exif *lime_exif_handle_new_from_file(const char *path);
+lime_exif *lime_exif_handle_destroy(lime_exif *h);
+float lime_exif_handle_find_float_by_tagname(lime_exif *h, const char *tagname);
+const char *lime_exif_handle_find_str_by_tagname(lime_exif *h, const char *tagname);
   
 #ifdef __cplusplus
 }

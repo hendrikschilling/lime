@@ -1,6 +1,6 @@
 CURRENT
 - invalidate (cached and current) configs on filter change! (e.g. incompatible filter chain (curves) blocks file view!)
-- mat cache invalidation (broken? old tiles?)
+- mat cache invalidation (broken? old tiles at lower scales?)
 - extra _prepare call to move calculations from _inputs_fixed which is called often in configuration!
 - filterchain für einzelne files!
 

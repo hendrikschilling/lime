@@ -215,11 +215,13 @@ Eina_List *lime_filter_chain_deserialize(char *str)
     next_comma = strchr(cur, ',');
     if (next || next_comma) {
       if (next && (next < next_comma || !next_comma)) {
+        printf("%s with settings\n", cur);
         checksettings = 1;
         *next = '\0';
         f = lime_filter_new(cur);
       }
       else if (next_comma && (next > next_comma || !next)) {
+        printf("%s no settings\n", cur);
         checksettings = 0;
         *next_comma = '\0';
         f = lime_filter_new(cur);
@@ -232,6 +234,7 @@ Eina_List *lime_filter_chain_deserialize(char *str)
       }
     }
     else {
+      printf("%s last filter no settings\n", cur);
       checksettings = 0;
       f = lime_filter_new(cur);
       next = NULL;

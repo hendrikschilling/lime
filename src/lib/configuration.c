@@ -183,8 +183,16 @@ void metas_pair_recursive(Eina_Array *matches, Meta *source, Meta *sink)
   int i;
   
   if (source->type == sink->type) {
-    eina_array_push(matches, source);
-    return;
+    if (source->type_str && sink->type_str) {
+      if (!strcmp(sink->type_str, source->type_str)) {
+        eina_array_push(matches, source);
+        return;
+      }
+    }
+    else {
+      eina_array_push(matches, source);
+      return;
+    }
   }
   
   if (source->childs)

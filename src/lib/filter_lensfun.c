@@ -18,6 +18,7 @@
  */
 
 #include "filter_lensfun.h"
+#include "exif_helpers.h"
 
 #include <lensfun.h>
 #include <float.h>
@@ -26,15 +27,76 @@ const int bord = 16;
 
 typedef struct {
   Meta *dim_in_meta;
+  Meta *exif;
   const lfLens *lens;
-  const lfDatabase *db;
+  lfDatabase *db;
   Dim out_dim;
+  float f, f_dist, f_num;
+  const char *lens_model;
+  int exif_loaded;
 } _Common;
 
 typedef struct {
   _Common *common;
   void *blur_b, *estimate_b, *fac_b;
 } _Data;
+
+
+static int check_exif(_Data *data)
+{
+  const lfLens **lenses;
+  const lfLens *lens;
+  lime_exif *exif = data->common->exif->data;
+  
+  if (data->common->exif_loaded == 1)
+    return 0;
+  else if (data->common->exif_loaded == -1)
+    return -1;
+  
+  printf("exe!\n");
+  
+  data->common->lens_model = lime_exif_handle_find_str_by_tagname(exif, "LensType");
+  if (!data->common->lens_model)
+    data->common->lens_model = lime_exif_handle_find_str_by_tagname(exif, "LensModel");
+  if (!data->common->lens_model) {
+    data->common->exif_loaded = -1;
+    return -1;
+  }
+  data->common->lens_model = strdup(data->common->lens_model);
+  data->common->f = lime_exif_handle_find_float_by_tagname(exif, "FocalLength");
+  data->common->f_dist = lime_exif_handle_find_float_by_tagname(exif, "FocusDistance");
+  if (data->common->f_dist == -1.0)
+    data->common->f_dist = 1000;
+  data->common->f_num = lime_exif_handle_find_float_by_tagname(exif, "FNumber");
+  
+  printf("lens: %s\n", data->common->lens_model);
+  printf("focal length: %fmm\n", data->common->f);
+  printf("f-num: %f\n", data->common->f_num);
+  printf("focus dist: %f\n", data->common->f_dist);
+  
+  
+  //FIXME check for errors...
+  if (!data->common->db) {
+    data->common->db = lf_db_new();
+    lf_db_load(data->common->db);
+  }
+  
+  lenses = lf_db_find_lenses_hd(data->common->db, NULL, NULL, data->common->lens_model, 0);
+  
+  if (!lenses) {
+    printf("lensfun could not find lens model %s!\n", data->common->lens_model);
+    data->common->exif_loaded = -1;
+    return -1;
+  }
+  
+  lens = lenses[0];
+  data->common->lens = lens;
+  lf_free(lenses);
+  
+  data->common->exif_loaded = 1;
+  
+  return 0;
+}
 
 
 static void _worker(Filter *f, Eina_Array *in, Eina_Array *out, Rect *area, int thread_id)
@@ -63,11 +125,16 @@ static void _worker(Filter *f, Eina_Array *in, Eina_Array *out, Rect *area, int 
   out_td = ((Tiledata*)ea_data(out, 0));
   output = out_td->data;  
   
+   if (check_exif(data)) {
+    printf("FIXME: lensfun pass through if lens not identified! %d\n", data->common->exif_loaded);
+    return;
+  }
+  
   w = ((Dim*)data->common->dim_in_meta->data)->width;
   h = ((Dim*)data->common->dim_in_meta->data)->height;
   
   mod = lf_modifier_new(data->common->lens, data->common->lens->CropFactor, w>>area->corner.scale, h>>area->corner.scale);
-  lf_modifier_initialize(mod, data->common->lens, LF_PF_U16, 12, 3.5, 1.0, 0.0, LF_RECTILINEAR, LF_MODIFY_ALL, 0);
+  lf_modifier_initialize(mod, data->common->lens, LF_PF_U16, data->common->f, data->common->f_num, data->common->f_dist, 0.0, LF_RECTILINEAR, LF_MODIFY_ALL, 0);
   
   coords = malloc(2*3*sizeof(float)*area->width);
   
@@ -97,7 +164,7 @@ static void _worker(Filter *f, Eina_Array *in, Eina_Array *out, Rect *area, int 
   free(coords);
 }
 
-fminmax(float *in, float *min, float *max)
+void fminmax(float *in, float *min, float *max)
 {
   if (*in < *min) *min = *in;
   if (*in > *max) *max = *in;
@@ -121,6 +188,11 @@ static void _area_calc(Filter *f, Rect *in, Rect *out)
   _Data *data = eina_array_data_get(f->data, 0);
   float min[2], max[2];
   
+  if (check_exif(data)) {
+    *out = *in;
+    return;
+  }
+  
   min[0] = FLT_MAX;
   min[1] = FLT_MAX;
   max[0] = FLT_MIN;
@@ -130,7 +202,7 @@ static void _area_calc(Filter *f, Rect *in, Rect *out)
   h = ((Dim*)data->common->dim_in_meta->data)->height;
   
   lfModifier *mod = lf_modifier_new(data->common->lens, data->common->lens->CropFactor, w>>in->corner.scale, h>>in->corner.scale);
-  lf_modifier_initialize(mod, data->common->lens, LF_PF_U16, 12, 3.5, 1.0, 0.0, LF_RECTILINEAR, LF_MODIFY_ALL, 0);
+  lf_modifier_initialize(mod, data->common->lens, LF_PF_U16, data->common->f, data->common->f_num, data->common->f_dist, 0.0, LF_RECTILINEAR, LF_MODIFY_ALL, 0);
   
   mod_min_max(mod, in->corner.x, in->corner.y, min, max);
   mod_min_max(mod, in->corner.x+in->width, in->corner.y, min, max);
@@ -148,26 +220,10 @@ static void _area_calc(Filter *f, Rect *in, Rect *out)
 
 static int _input_fixed(Filter *f)
 {
-  const lfLens **lenses;
-  const lfLens *lens;
   _Data *data = ea_data(f->data, 0);
   
-  //FIXME check for errors...
-  if (!data->common->db) {
-    data->common->db = lf_db_new();
-    lf_db_load(data->common->db);
-  }
-  
-  lenses = lf_db_find_lenses_hd(data->common->db, NULL, NULL, "Olympus M.Zuiko Digital ED 12-50mm F3.5-6.3 EZ", 0);
-  
-  if (!lenses)
+  if (!data->common->exif->data)
     return -1;
-  
-  printf("yay found the lens!\n");
-  
-  lens = lenses[0];
-  data->common->lens = lens;
-  lf_free(lenses);
   
   data->common->out_dim = *(Dim*)data->common->dim_in_meta->data;
   
@@ -179,15 +235,14 @@ static int _del(Filter *f)
   int i;
   _Data *data = ea_data(f->data, 0);
   
-  lf_db_destroy(data->common->db);
+  if (data->common->db)
+    lf_db_destroy(data->common->db);
+  
+  if (data->common->lens_model)
+    free(data->common->lens_model);
   
   for(i=0;i<ea_count(f->data);i++) {
     data = ea_data(f->data, i);
-    if (data->blur_b) {
-      free(data->blur_b);
-      free(data->estimate_b);
-      free(data->fac_b);
-    }
     free(data);
   }
   
@@ -207,7 +262,7 @@ static Filter *_new(void)
 {
   Filter *f = filter_new(&filter_core_lensfun);
   
-  Meta *in, *out, *setting, *bd_in, *bd_out, *tune_color, *bound, *size_in, *size_out;
+  Meta *in, *out, *in_ch, *out_ch, *setting, *bd_in, *bd_out, *tune_color, *bound, *size_in, *size_out, *exif;
   _Data *data = calloc(sizeof(_Data), 1);
   f->mode_buffer = filter_mode_buffer_new();
   f->mode_buffer->worker = _worker;
@@ -247,20 +302,34 @@ static Filter *_new(void)
   bd_in->dep = bd_in;
   eina_array_push(f->tune, bd_in);
   
-  //output
-  out = meta_new_channel(f, 1);
-  meta_attach(out, tune_color);
-  meta_attach(out, bd_out);
-  meta_attach(out, size_out);
+  exif = meta_new(MT_OBJ, f);
+  meta_type_str_set(exif, "exif");
+  exif->replace = exif;
+  data->common->exif = exif;
+  
+  out = meta_new(MT_BUNDLE, f);
+  meta_attach(out, exif);
   eina_array_push(f->out, out);
   
-  //input
-  in = meta_new_channel(f, 1);
-  meta_attach(in, tune_color);
-  meta_attach(in, bd_in);
-  meta_attach(in, size_in);
-  eina_array_push(f->in, in);
+  in = meta_new(MT_BUNDLE, f);
+  meta_attach(in, exif);
   in->replace = out;
+  eina_array_push(f->in, in);
+  
+  //output
+  out_ch = meta_new_channel(f, 1);
+  meta_attach(out, out_ch);
+  meta_attach(out_ch, tune_color);
+  meta_attach(out_ch, bd_out);
+  meta_attach(out_ch, size_out);
+  
+  //input
+  in_ch = meta_new_channel(f, 1);
+  meta_attach(in, in_ch);
+  meta_attach(in_ch, tune_color);
+  meta_attach(in_ch, bd_in);
+  meta_attach(in_ch, size_in);
+  in_ch->replace = out_ch;
   
   //setting
   /*setting = meta_new_data(MT_FLOAT, f, &data->common->radius);

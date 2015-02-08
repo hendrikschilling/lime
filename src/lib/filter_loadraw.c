@@ -41,6 +41,7 @@ typedef struct {
   libraw_data_t *raw;
   int unpacked;
   pthread_mutex_t lock;
+  Meta *exif;
 } _Common;
 
 typedef struct {
@@ -212,6 +213,9 @@ static int _input_fixed(Filter *f)
   f->th_s[1] = 2*DEFAULT_TILE_SIZE;
   
   data->common->unpacked = 0;
+  
+  data->common->exif->data = lime_exif_handle_new_from_file(data->input->data);
+  assert(data->common->exif->data);
 
   return 0;
 }
@@ -248,7 +252,7 @@ static void *_data_new(Filter *f, void *data)
 static Filter *_new(void)
 {
   Filter *filter = filter_new(&filter_core_loadraw);
-  Meta *in, *out, *channel, *bitdepth, *color, *dim, *fliprot;
+  Meta *in, *out, *channel, *bitdepth, *color, *dim, *fliprot, *exif;
   _Data *data = calloc(sizeof(_Data), 1);
   data->common = calloc(sizeof(_Common), 1);
   data->size_pos = calloc(sizeof(int*), 1);
@@ -283,6 +287,11 @@ static Filter *_new(void)
   meta_attach(out, fliprot);
   data->fliprot = fliprot;
   data->fliprot->data = &data->rot;
+  
+  exif = meta_new(MT_OBJ, filter);
+  meta_type_str_set(exif, "exif");
+  meta_attach(out, exif);
+  data->common->exif = exif;
   
   channel = meta_new_channel(filter, 1);
   color = meta_new_data(MT_COLOR, filter, malloc(sizeof(int)));
