@@ -188,7 +188,7 @@ void workerfinish_schedule(void (*func)(void *data, Evas_Object *obj), void *dat
 void filter_settings_create_gui(Eina_List *chain_node, Evas_Object *box);
 void step_image_do(void *data, Evas_Object *obj);
 
-Tagfiles *tagfiles_step_new(int step, int group_idx)
+Tagfiles_Step *tagfiles_step_new(int step, int group_idx)
 {
   Tagfiles_Step *ts = malloc(sizeof(Tagfiles_Step));
   ts->step = step;
@@ -1759,9 +1759,9 @@ Config_Data *config_data_get(File_Group *group, int nth)
   if (filegroup_tags_valid(group) && tagged_file_filterchain(filegroup_nth(group, nth))) {
     filters = lime_filter_chain_deserialize(tagged_file_filterchain(filegroup_nth(group, nth)));
     
+    //FIXME this triggers sometimes on load!
     assert(filters);
     
-    //FIXME select group according to load file 
     config->load = eina_list_data_get(filters);
     if (strcmp(config->load->fc->shortname, "load")) {
       config->load = lime_filter_new("load");
@@ -2666,6 +2666,26 @@ static void on_open(void *data, Evas_Object *obj, void *event_info)
   on_open_path((char*)event_info);
 }
 
+static void on_save_filterchain(void *data, Evas_Object *obj, void *event_info)
+{
+  FILE *f;
+  char *fc;
+  
+  if (!event_info)
+    return;
+  fc = lime_filter_chain_serialize(((Filter_Chain*)eina_list_data_get(eina_list_next(config_curr->filter_chain)))->f);
+  
+  if (!fc)
+    return;
+  
+  printf("save filterchain\n%s\nto %s\n", fc, (char*)event_info);
+  f = fopen((char*)event_info, "w");
+  fprintf(f, "#lime filter chain serialization version 0\n");
+  fprintf(f, "%s\n", fc);
+  
+  free(fc);
+}
+
 
 void zoom_out_do(void)
 {
@@ -2859,31 +2879,92 @@ Eina_Bool shortcut_elm(void *data, Evas_Object *obj, Evas_Object *src, Evas_Call
   return EINA_TRUE;
 }
 
-Evas_Object *elm_button_add_pack(Evas_Object *p, const char *text, void (*cb)(void *data, Evas_Object *obj, void *event_info))
+Evas_Object *elm_button_add_pack_data(Evas_Object *p, const char *text, void (*cb)(void *data, Evas_Object *obj, void *event_info), void *data)
 {
   Evas_Object *btn = elm_button_add(p);
-  evas_object_size_hint_weight_set(btn, EVAS_HINT_EXPAND, EVAS_HINT_EXPAND);
-  evas_object_size_hint_align_set(btn, EVAS_HINT_FILL, EVAS_HINT_FILL);
+  evas_object_size_hint_weight_set(btn, EVAS_HINT_EXPAND, 0);
+  evas_object_size_hint_align_set(btn, EVAS_HINT_FILL, 0);
   elm_object_text_set(btn, text);
   elm_box_pack_end(p, btn);
   evas_object_show(btn);
-  evas_object_smart_callback_add(btn, "clicked", cb, NULL);
+  evas_object_smart_callback_add(btn, "clicked", cb, data);
   
   return btn;
 }
 
-Evas_Object *elm_fsb_add_pack(Evas_Object *p, const char *text, void (*cb)(void *data, Evas_Object *obj, void *event_info), char *path)
+Evas_Object *elm_button_add_pack(Evas_Object *p, const char *text, void (*cb)(void *data, Evas_Object *obj, void *event_info))
+{  
+  return elm_button_add_pack_data(p, text, cb, NULL);
+}
+
+typedef struct {
+  char *path;
+  char *title;
+  int show_hidden;
+  int is_save;
+  void (*done_cb)(void *data, Evas_Object *obj, void *event_info);
+  Evas_Object *fs, *win;
+} file_selection_options;
+
+file_selection_options *new_file_selection_options(char *title, void (*done_cb)(void *data, Evas_Object *obj, void *event_info))
 {
-  Evas_Object *btn = elm_fileselector_button_add(p);
-  elm_fileselector_button_folder_only_set(btn, EINA_FALSE);
-  evas_object_size_hint_weight_set(btn, EVAS_HINT_EXPAND, EVAS_HINT_EXPAND);
-  evas_object_size_hint_align_set(btn, EVAS_HINT_FILL, EVAS_HINT_FILL);
+  file_selection_options *opts = calloc(sizeof(file_selection_options), 1);
+  
+  opts->title = title;
+  opts->done_cb = done_cb;
+  
+  return opts;
+}
+
+void on_done_fs(void *data, Evas_Object *obj, void *event_info)
+{
+  char *path;
+  file_selection_options *opts = data;
+  
+  path = (char*)event_info;
+  
+  evas_object_del(opts->win);
+  
   if (path)
-    elm_fileselector_button_path_set(btn, path);
-  elm_object_text_set(btn, text);
-  elm_box_pack_end(p, btn);
-  evas_object_show(btn);
-  evas_object_smart_callback_add(btn, "file,chosen", cb, NULL);
+    opts->done_cb(opts, NULL, path);
+}
+
+void show_new_fs_win(void *data, Evas_Object *obj, void *event_info)
+{
+  file_selection_options *opts = data;
+  Evas_Object *bg;
+  
+  opts->win = elm_win_add(NULL, "fileselector_custom", ELM_WIN_DIALOG_BASIC);
+  elm_win_title_set(opts->win, opts->title);
+  elm_win_autodel_set(opts->win, EINA_TRUE);
+  
+  bg = elm_bg_add(opts->win);
+  elm_win_resize_object_add(opts->win, bg);
+  evas_object_size_hint_weight_set(bg, EVAS_HINT_EXPAND, EVAS_HINT_EXPAND);
+  evas_object_show(bg);
+  
+  opts->fs = elm_fileselector_add(opts->win);
+  elm_fileselector_is_save_set(opts->fs, opts->is_save);
+  elm_fileselector_hidden_visible_set(opts->fs, opts->show_hidden);
+  if (opts->path)
+    elm_fileselector_selected_set(opts->fs, opts->path);
+  evas_object_size_hint_weight_set(opts->fs, EVAS_HINT_EXPAND, EVAS_HINT_EXPAND);
+  evas_object_size_hint_align_set(opts->fs, EVAS_HINT_FILL, EVAS_HINT_FILL);
+  evas_object_smart_callback_add(opts->fs, "done", on_done_fs, opts);
+  evas_object_show(opts->fs);
+   
+   elm_win_resize_object_add(opts->win, opts->fs);
+   evas_object_show(opts->win);
+}
+
+Evas_Object *elm_fsb_add_pack(Evas_Object *p, const char *text, void (*cb)(void *data, Evas_Object *obj, void *event_info), char *path, int is_save, int show_hidden)
+{
+  file_selection_options *opts = new_file_selection_options(text, cb);
+  Evas_Object *btn = elm_button_add_pack_data(p, text, &show_new_fs_win, opts);
+  
+  opts->path = path;
+  opts->is_save = is_save;
+  opts->show_hidden = show_hidden;
   
   return btn;
 }
@@ -3406,7 +3487,7 @@ elm_main(int argc, char **argv)
   elm_box_pack_end(vbox_bottom, hbox);
   evas_object_show(hbox);
   
-  fsb = elm_fsb_add_pack(hbox, "open", &on_open, dir);
+  fsb = elm_fsb_add_pack(hbox, "open", &on_open, dir, EINA_FALSE, EINA_FALSE);
   elm_button_add_pack(hbox, "exit", &on_done);
   elm_button_add_pack(hbox, "+", &on_zoom_in);
   elm_button_add_pack(hbox, "-", &on_zoom_out);
@@ -3544,6 +3625,9 @@ elm_main(int argc, char **argv)
   evas_object_size_hint_weight_set(tab_filter, EVAS_HINT_EXPAND, EVAS_HINT_EXPAND);
   evas_object_size_hint_align_set(tab_filter, EVAS_HINT_FILL, EVAS_HINT_FILL);
   elm_box_pack_end(tab_box, tab_filter);
+  btn = elm_fsb_add_pack(tab_filter, "save filter chain", &on_save_filterchain, NULL, EINA_TRUE, EINA_TRUE);
+  elm_fileselector_hidden_visible_set(btn, EINA_TRUE);
+  elm_fileselector_is_save_set(btn, EINA_TRUE);
   evas_object_show(tab_filter);
   
   tab_current = tab_filter;

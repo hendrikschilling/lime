@@ -146,6 +146,7 @@ char *next_single_colon(char *str)
 }
 
 
+//FIXME leaves out the last filter (which should be the sink!), add check if it really is the sink?
 char *lime_filter_chain_serialize(Filter *f)
 {
   int i;
@@ -154,7 +155,9 @@ char *lime_filter_chain_serialize(Filter *f)
   char *str = buf;
   Meta *m;
   
-  while (f) {
+  buf[0] = '\0';
+  
+  while (f && f->node_orig->con_trees_out &&  ea_count(f->node_orig->con_trees_out)) {
     str += sprintf(str, "%s", f->fc->shortname);
     for(i=0;i<ea_count(f->settings);i++) {
       m = ea_data(f->settings, i);
@@ -186,8 +189,13 @@ char *lime_filter_chain_serialize(Filter *f)
     else
       f = NULL;*/
     
-    if (f)
+    if (f && f->node_orig->con_trees_out &&  ea_count(f->node_orig->con_trees_out))
       str += sprintf(str, ",");
+  }
+  
+  if (buf[0] == '\0') {
+    free(buf);
+    buf = NULL;
   }
   
   return buf;
