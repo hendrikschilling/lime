@@ -116,6 +116,8 @@ typedef struct {
   Filter *load, *sink;
   int running;
   Eina_List *filter_chain;
+  Tagged_File *file;
+  File_Group *group;
 } Config_Data;
 
 typedef struct {
@@ -1673,11 +1675,12 @@ int group_in_filters(File_Group *group, Eina_Hash *filters)
 {
   Filter_Check_Data check;
   
-  if (!filegroup_tags_valid(group))
+  if (!filegroup_tags_valid(group)) {
     if ((filters && eina_hash_population(filters)) || tags_filter_rating)
       return 0;
     else
       return 1;
+  }
   
   if (tags_filter_rating && filegroup_rating(group) < tags_filter_rating)
     return 0;
@@ -1734,16 +1737,16 @@ void group_config_reset(File_Group *group)
   printf("FIXME delete group_changed_cb\n");
   //tagfiles_group_changed_cb_delete(files);
   
-  /*for(i=0;i<filegroup_count(group);i++)
+  for(i=0;i<filegroup_count(group);i++)
   {
     config = filegroup_data_get(group, i);
     //FIXME if config->running -> the config thread is still waiting to execute? cancel that thread?
     if (config && config != config_curr && config->sink && !config->running) {
-      //FIXME free filters?
+      //FIXME del filters?
       lime_config_reset(config->sink);
       config->sink = NULL;
     }
-  }*/
+  }
 }
 
 void filegroup_changed_cb(File_Group *group)
@@ -1789,8 +1792,11 @@ Config_Data *config_build(File_Group *group, int nth)
   tagfiles_group_changed_cb_insert(files, group, filegroup_changed_cb);
   
   config = calloc(sizeof(Config_Data), 1);
-  if (filegroup_tags_valid(group) && tagged_file_filterchain(filegroup_nth(group, nth))) {
-    filters = lime_filter_chain_deserialize(tagged_file_filterchain(filegroup_nth(group, nth)));
+  config->group = group;
+  config->file = filegroup_nth(group, nth);
+  
+  if (filegroup_tags_valid(group) && tagged_file_filterchain(config->file)) {
+    filters = lime_filter_chain_deserialize(tagged_file_filterchain(config->file));
     
     //FIXME this triggers sometimes on load!
     assert(filters);
@@ -1830,6 +1836,13 @@ Config_Data *config_build(File_Group *group, int nth)
 //FIXME merge this with config_thread_start
 Config_Data *config_data_get(File_Group *group, int nth)
 {
+  int i;
+  Eina_List *filters;
+  Default_Fc_Rule *rule;
+  char *cam = NULL,
+       *format, 
+       *fc;
+  
   Config_Data *config = config_build(group, nth);
   
   if (!config)
@@ -1838,6 +1851,57 @@ Config_Data *config_data_get(File_Group *group, int nth)
   assert(!config->running);
 
   config->failed = lime_config_test(config->sink);
+  
+  //FIXME integrate this in threaded preload (isn't yet working either :-P)
+  if (config->failed)
+    return config;
+  
+  if (!default_fc_rules || !ea_count(default_fc_rules))
+    return config;
+  
+  //FIXME check interaction with refresh group cb... (we may not "see" a filterchain initially!) (and check threading!)
+  if (filegroup_tags_valid(group) && tagged_file_filterchain(config->file))
+    return config;
+  
+  printf("no filterchain, check defaults\n");
+  
+  config_exif_infos(config, &cam, NULL);
+  format = strrchr(tagged_file_name(config->file), '.');
+  
+  for(i=0;i<ea_count(default_fc_rules);i++) {
+    rule = ea_data(default_fc_rules, i);
+    printf("[%s-%s]\n", rule->cam, cam);
+    if ((!cam && rule->cam) || strcmp(rule->cam, cam))
+      continue;
+    printf("[%s-%s]\n", rule->format, format);
+    if ((!format && rule->format) || strcmp(rule->format, format))
+      continue;
+
+    group_config_reset(config->group);
+    
+    //FIXME merge this with config_build()
+    filters = lime_filter_chain_deserialize(rule->fc);
+    assert(filters);
+    
+    config->load = eina_list_data_get(filters);
+    if (strcmp(config->load->fc->shortname, "load")) {
+      config->load = lime_filter_new("load");
+      filters = eina_list_prepend(filters, config->load);
+    }
+    config->sink = eina_list_data_get(eina_list_last(filters));
+    if (strcmp(config->sink->fc->shortname, "sink")) {
+      config->sink = lime_filter_new("memsink");
+      lime_setting_int_set(config->sink, "add alpha", 1);
+      filters = eina_list_append(filters, config->sink);
+    }
+    fc_connect_from_list(filters);
+    
+    lime_setting_string_set(config->load, "filename", tagged_file_name(config->file));
+    
+    config->failed = lime_config_test(config->sink);
+    
+    break;
+  }
   
   return config;
 }
@@ -2066,7 +2130,7 @@ void refresh_tab_setings(void)
     buf = malloc(strlen(cam)+9);
     sprintf(buf, "camera: %s", cam);
     elm_object_text_set(settings_rule_cam_lbl, buf);
-    cam_cur = buf;
+    cam_cur = cam;
   }
   else {
     cam_cur = NULL;
@@ -2074,14 +2138,14 @@ void refresh_tab_setings(void)
   }
   
   if (config_curr)
-    format = strrchr(tagged_file_name(filegroup_nth(tagfiles_get(files), cur_group_idx)), '.');
+    format = strdup(strrchr(tagged_file_name(filegroup_nth(tagfiles_get(files), cur_group_idx)), '.'));
     
   if (format) {
     //FIXME stringshare...
     buf = malloc(strlen(format)+9);
     sprintf(buf, "format: %s", format);
     elm_object_text_set(settings_rule_format_lbl, buf);
-    format_cur = buf;
+    format_cur = format;
   }
   else {
     format_cur = NULL;
@@ -3243,6 +3307,8 @@ void on_add_rule(void *data, Evas_Object *obj, void *event_info)
   if (!default_fc_rules)
     default_fc_rules = eina_array_new(1);
   eina_array_push(default_fc_rules, rule);
+  printf("added rule [%s][%s]->[%s]\n", rule->cam, rule->format, rule->fc);
+  printf("FIXME invalidate (all?) cached configs!\n");
 }
 
 Evas_Object *settings_box_add(Evas_Object *parent)
