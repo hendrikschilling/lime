@@ -125,7 +125,10 @@ static void _worker(Filter *f, Eina_Array *in, Eina_Array *out, Rect *area, int 
   out_td = ((Tiledata*)ea_data(out, 0));
   output = out_td->data;  
   
-   if (check_exif(data)) {
+  //has been executed by area calc! (hacky?)
+  assert(data->common->exif_loaded);
+  
+  if (check_exif(data)) {
     printf("FIXME: lensfun pass through if lens not identified! %d\n", data->common->exif_loaded);
     return;
   }

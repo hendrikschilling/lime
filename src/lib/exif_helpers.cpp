@@ -25,6 +25,7 @@
 struct _lime_exif {
   const char *path;
   Exiv2::Image::AutoPtr img;
+  pthread_mutex_t lock;
 };
 
 lime_exif *lime_exif_handle_new_from_file(const char *path)
@@ -32,12 +33,14 @@ lime_exif *lime_exif_handle_new_from_file(const char *path)
   lime_exif *h = (lime_exif*)calloc(sizeof(lime_exif), 1);
   
   h->path = path;
+  pthread_mutex_init(&h->lock, NULL);
   
   return h;
 }
 
 float lime_exif_handle_find_float_by_tagname(lime_exif *h, const char *tagname)
 {
+  pthread_mutex_lock(&h->lock);
   if (!h->img.get()) {
     h->img = Exiv2::ImageFactory::open(h->path);
     assert(h->img.get() != 0);
@@ -49,15 +52,20 @@ float lime_exif_handle_find_float_by_tagname(lime_exif *h, const char *tagname)
   
   Exiv2::ExifData::const_iterator end = exifData.end();
   for (Exiv2::ExifData::const_iterator i = exifData.begin(); i != end; ++i)
-    if (i->typeId() == Exiv2::unsignedRational && !i->tagName().compare(tagname))
+    if (i->typeId() == Exiv2::unsignedRational && !i->tagName().compare(tagname)) {
+      pthread_mutex_unlock(&h->lock);
       return i->getValue()->toFloat();
+    }
 
+  pthread_mutex_unlock(&h->lock);
   return -1.0;
 }
 
-const char *lime_exif_handle_find_str_by_tagname(lime_exif *h, const char *tagname)
+char *lime_exif_handle_find_str_by_tagname(lime_exif *h, const char *tagname)
 {
+  pthread_mutex_lock(&h->lock);
   std::string str;
+  char *c_str;
   if (!h->img.get()) {
     h->img = Exiv2::ImageFactory::open(h->path);
     assert(h->img.get() != 0);
@@ -71,17 +79,68 @@ const char *lime_exif_handle_find_str_by_tagname(lime_exif *h, const char *tagna
   for (Exiv2::ExifData::const_iterator i = exifData.begin(); i != end; ++i)
     if ((i->typeId() == Exiv2::unsignedByte || i->typeId() == Exiv2::asciiString) && !i->tagName().compare(tagname)) {
       str = i->print(&exifData);
-      return str.c_str();
+      c_str = strdup(str.c_str());
+      pthread_mutex_unlock(&h->lock);
+      return c_str;
     }
 
+  pthread_mutex_unlock(&h->lock);
   return NULL;
 }
 
-
-lime_exif *lime_exif_handle_destroy(lime_exif *h)
+void lime_exif_handle_destroy(lime_exif *h)
 {
   if (h->img.get())
     h->img.reset();
   
   free(h);
+}
+  
+  
+static inline int strlen_null(const char *str)
+{
+  if (!str)
+    return 0;
+  return strlen(str);
+}
+  
+char *lime_exif_model_make_string(lime_exif *h)
+{
+  char *make, *model;
+  char *buf;
+  if (!h) return NULL;
+  
+  make = lime_exif_handle_find_str_by_tagname(h, "Make");
+  model = lime_exif_handle_find_str_by_tagname(h, "Model");
+  
+  if (!make && !model)
+    return NULL;
+  
+  buf = (char*)malloc(strlen_null(make)+strlen_null(model)+1);
+  buf[0] = '\0';
+  
+  if (make) {
+    strcat(buf, make);
+    free(make); 
+  }
+  if (model) {
+    strcat(buf, model);
+    free(model);
+  }
+  
+  return buf;
+}
+
+char *lime_exif_lens_string(lime_exif *h)
+{
+  const char *lens;
+  if (!h) return NULL;
+  
+  lens = lime_exif_handle_find_str_by_tagname(h, "LensType");
+  if (lens)
+    return strdup(lens);
+  lens = lime_exif_handle_find_str_by_tagname(h, "LensModel");
+  if (lens)
+    return strdup(lens); 
+  return NULL;
 }

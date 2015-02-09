@@ -199,6 +199,16 @@ void meta_type_str_set(Meta *meta, const char *type_str)
   meta->type_str = type_str;
 }
 
+void meta_flag_set(Meta *meta, int flag)
+{
+  meta->flags = meta->flags | flag;
+}
+
+int meta_flag_get(Meta *meta, int flag)
+{
+  return meta->flags = meta->flags & flag;
+}
+
 void meta_attach(Meta *parent, Meta *child)
 {
   if (!parent->childs)

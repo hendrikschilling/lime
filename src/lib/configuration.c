@@ -31,6 +31,7 @@
 #define MAX_CONS_TRIES 5
 
 //#define DEBUG_SPECIAL
+//#define PRINT_CONFIG_PROGRESS
 
 //TODO replace by non-global filter-located variable! this here is bad for multiple filter graphs!
 struct _Config {
@@ -266,7 +267,10 @@ int metas_not_kompat_rec_all(Meta *source, Meta *sink, Eina_Array *match_source,
 	  found = 1;
 	  break;
 	}
-      if (!found) {
+      if (!found && !meta_flag_get(ma_data(sink->childs,i), MT_FLAG_NOSOURCEREQUIRED)) {
+#ifdef PRINT_CONFIG_PROGRESS
+        printf("[metas_not_kompat_rec_all: no source match for sink node]");
+#endif
 	//printf("rec no  match\n");
 	while (ea_count(match_source) > pre_count) {
 	  ea_pop(match_source);
@@ -296,6 +300,9 @@ Eina_Array *get_sink_source_matches(Meta *source, Meta *sink, Eina_Array *match_
   if (!ea_count(matches_possible)) {
     eina_array_free(matches_possible);
     eina_array_free(matches_compat);
+#ifdef PRINT_CONFIG_PROGRESS
+    printf("[no possible matches]");
+#endif
     return NULL;
   }
   
@@ -308,6 +315,9 @@ Eina_Array *get_sink_source_matches(Meta *source, Meta *sink, Eina_Array *match_
   if (!ea_count(matches_compat)) {
     eina_array_free(matches_possible);
     eina_array_free(matches_compat);
+#ifdef PRINT_CONFIG_PROGRESS
+    printf("[no compatible matches]");
+#endif
     return NULL;
   }
 
@@ -763,9 +773,17 @@ int test_filter_config_real(Filter *f, int write_graph, Config *c)
   
   out = ea_data(con->source->filter->out, 0);
   
+#ifdef PRINT_CONFIG_PROGRESS
+  printf("try %s ", con->source->filter->fc->shortname);
+#endif 
+  
   while (con) {
     if (write_graph)
       vizp_filter(filters, con->sink->filter);
+    
+#ifdef PRINT_CONFIG_PROGRESS
+    printf("->%s ", con->sink->filter->fc->shortname);
+#endif 
     
     eina_array_free(match_source);
     match_source = eina_array_new(8);
@@ -793,6 +811,9 @@ int test_filter_config_real(Filter *f, int write_graph, Config *c)
       //for(i=0;i<ea_count(trash);i++)
 	//free(ea_data(trash, i));
       eina_array_free(trash);
+#ifdef PRINT_CONFIG_PROGRESS
+  printf(" failed: no compatible matches\n");
+#endif 
       return pos;
     }
     
@@ -818,6 +839,9 @@ int test_filter_config_real(Filter *f, int write_graph, Config *c)
 	//for(i=0;i<ea_count(trash);i++)
 	  //free(ea_data(trash, i));
 	eina_array_free(trash);
+#ifdef PRINT_CONFIG_PROGRESS
+  printf(" failed: input fixed failed\n");
+#endif 
 	return pos;
       }
    

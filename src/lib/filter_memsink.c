@@ -107,10 +107,11 @@ Filter *filter_memsink_new(void)
   
   exif = meta_new(MT_OBJ, filter);
   meta_type_str_set(exif, "exif");
+  meta_flag_set(exif, MT_FLAG_NOSOURCEREQUIRED);
   ea_push(filter->core, exif);
   
   in = meta_new(MT_BUNDLE, filter);
-  //meta_attach(in, exif);
+  meta_attach(in, exif);
   eina_array_push(filter->in, in);
   
   fliprot = meta_new_data(MT_FLIPROT, filter, malloc(sizeof(int)));

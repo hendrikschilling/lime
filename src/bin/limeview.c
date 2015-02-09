@@ -62,7 +62,7 @@
 
 //FIXME adjust depending on speed!
 #define PRELOAD_CONFIG_RANGE 32
-#define PRELOAD_IMG_RANGE 2
+#define PRELOAD_IMG_RANGE 0
 #define PRELOAD_THRESHOLD 8
 
 #define FIX_ENABLE_PRELOAD
@@ -132,14 +132,24 @@ typedef struct {
   int group_idx;
 } Tagfiles_Step;
 
+
+typedef struct {
+  char *cam;
+  char *format;
+  char *fc;
+} Default_Fc_Rule;
+
+
 int max_workers;
 int max_thread_id;
 Evas_Object *clipper, *win, *scroller, *file_slider, *filter_list, *select_filter, *pos_label, *fsb, *load_progress, *load_label, *load_notify;
+Evas_Object *settings_rule_cam_lbl, *settings_rule_format_lbl;
 Evas_Object *tab_group, *tab_filter, *tab_settings, *tab_tags, *tab_current, *tab_box, *tab_export, *tab_tags, *tags_list, *tags_filter_list, *seg_rating;
 Evas_Object *group_list, *export_box, *export_extensions, *export_path, *main_vbox;
 Evas_Object *grid = NULL, *vbox_bottom, *bg;
 char *labelbuf;
 char *pos_lbl_buf;
+char *cam_cur = NULL, *format_cur = NULL;
 int posx, posy;
 Evas_Object *slider_blur, *slider_contr, *gridbox = NULL;
 int cache_size;
@@ -156,6 +166,7 @@ int fixme_no_group_select = 0;
 File_Group *cur_group = NULL;
 Tagged_File *cur_file = NULL;
 int cur_group_idx = 0;
+Eina_Array *default_fc_rules = NULL;
 
 int bench_idx = 0;
 
@@ -222,15 +233,10 @@ void config_exif_infos(Config_Data *config, char **cam, char **lens)
     return;
   
   if (cam)
-    *cam = lime_exif_handle_find_str_by_tagname(exif, "Model");
+    *cam = lime_exif_model_make_string(exif);
   
-  if (lens) {
-    *lens = lime_exif_handle_find_str_by_tagname(exif, "LensType");
-    if (!lens)
-      lens = lime_exif_handle_find_str_by_tagname(exif, "LensModel");
-    if (*lens)
-      *lens = strdup(*lens);
-  }
+  if (lens)
+    *lens = lime_exif_lens_string(exif);
 }
 
 int pending_action(void)
@@ -1728,7 +1734,7 @@ void group_config_reset(File_Group *group)
   printf("FIXME delete group_changed_cb\n");
   //tagfiles_group_changed_cb_delete(files);
   
-  for(i=0;i<filegroup_count(group);i++)
+  /*for(i=0;i<filegroup_count(group);i++)
   {
     config = filegroup_data_get(group, i);
     //FIXME if config->running -> the config thread is still waiting to execute? cancel that thread?
@@ -1737,7 +1743,7 @@ void group_config_reset(File_Group *group)
       lime_config_reset(config->sink);
       config->sink = NULL;
     }
-  }
+  }*/
 }
 
 void filegroup_changed_cb(File_Group *group)
@@ -1762,24 +1768,23 @@ void filegroup_changed_cb(File_Group *group)
     workerfinish_schedule(step_image_do, NULL, NULL, EINA_TRUE);
 }
 
-Config_Data *config_data_get(File_Group *group, int nth)
+Config_Data *config_build(File_Group *group, int nth)
 {
   Eina_List *filters;
   char *filename;
   Config_Data *config;
   
   filename = tagged_file_name(filegroup_nth(group, nth));
-  printf("config for %s\n", filename);
   //FIXME include some fast file compatibility checks!
   if (!filename)
     return NULL;
+  printf("config for %s\n", filename);
 
 
   config = filegroup_data_get(group, nth);
-  if (config && config->sink) {
-    config->failed = lime_config_test(config->sink);
+  if (config && config->sink)
     return config;
-  }
+  //FIXME else if config free(config) ?
   
   tagfiles_group_changed_cb_insert(files, group, filegroup_changed_cb);
   
@@ -1819,6 +1824,19 @@ Config_Data *config_data_get(File_Group *group, int nth)
   
   lime_setting_string_set(config->load, "filename", filename);
   
+  return config;
+}
+
+//FIXME merge this with config_thread_start
+Config_Data *config_data_get(File_Group *group, int nth)
+{
+  Config_Data *config = config_build(group, nth);
+  
+  if (!config)
+    return NULL;
+  
+  assert(!config->running);
+
   config->failed = lime_config_test(config->sink);
   
   return config;
@@ -1863,7 +1881,7 @@ void config_finish(void *data, Ecore_Thread *thread)
 //FIXME unify config_thread_start and config_data_get
 void config_thread_start(File_Group *group, int nth)
 {
-  char *filename;
+  /*char *filename;
   Config_Data *config;
   Eina_List *filters;
   
@@ -1917,6 +1935,18 @@ void config_thread_start(File_Group *group, int nth)
   lime_setting_string_set(config->load, "filename", filename);
   
   filegroup_data_attach(group, nth, config);
+  
+  worker_config++;
+  config->running = EINA_TRUE;
+  ecore_thread_run(&config_exe, &config_finish, NULL, config);*/
+  
+  Config_Data *config = filegroup_data_get(group, nth);
+  if (config)
+    return;
+  
+  config = config_build(group,  nth);
+  if (!config)
+    return;
   
   worker_config++;
   config->running = EINA_TRUE;
@@ -2012,9 +2042,51 @@ void step_image_config_reset_range(Tagfiles *files, int start, int end)
 
 void refresh_tab_tags(void)
 {
+  if (tab_current != tab_tags)
+    return;
+  
   elm_genlist_realized_items_update(tags_list);
   
   elm_segment_control_item_selected_set(elm_segment_control_item_get(seg_rating, filegroup_rating(cur_group)), EINA_TRUE);
+}
+
+void refresh_tab_setings(void)
+{
+  char *cam = NULL;
+  char *buf;
+  char *format = NULL;
+  
+  if (tab_current != tab_settings)
+    return;
+  
+  config_exif_infos(config_curr, &cam, NULL);
+  
+  if (cam) {
+    //FIXME stringshare...
+    buf = malloc(strlen(cam)+9);
+    sprintf(buf, "camera: %s", cam);
+    elm_object_text_set(settings_rule_cam_lbl, buf);
+    cam_cur = buf;
+  }
+  else {
+    cam_cur = NULL;
+    elm_object_text_set(settings_rule_cam_lbl, "camera: -");
+  }
+  
+  if (config_curr)
+    format = strrchr(tagged_file_name(filegroup_nth(tagfiles_get(files), cur_group_idx)), '.');
+    
+  if (format) {
+    //FIXME stringshare...
+    buf = malloc(strlen(format)+9);
+    sprintf(buf, "format: %s", format);
+    elm_object_text_set(settings_rule_format_lbl, buf);
+    format_cur = buf;
+  }
+  else {
+    format_cur = NULL;
+    elm_object_text_set(settings_rule_format_lbl, "file type: -");
+  }
 }
 
 void step_image_do(void *data, Evas_Object *obj)
@@ -2113,6 +2185,13 @@ void step_image_do(void *data, Evas_Object *obj)
     //config_curr = NULL;
   }
   config_curr = config;
+  {
+    char *cam = NULL;
+    printf("\n\nexif infos!\n");
+    config_exif_infos(config_curr, &cam, NULL);
+    if (cam)
+      printf("camera: %s\n", cam);
+  }
   //create gui only if necessary (tab selected) or if filter_chain is needed?
   fc_gui_from_config(config_curr);
   //FIXME free filter list
@@ -2142,7 +2221,8 @@ void step_image_do(void *data, Evas_Object *obj)
   
   elm_slider_value_set(file_slider, tagfiles_idx(files)+0.1);
   
-  step_image_start_configs(PRELOAD_CONFIG_RANGE);
+  //FIXME SOON
+  //step_image_start_configs(PRELOAD_CONFIG_RANGE);
   
   if (step) free(step);
 }
@@ -2674,7 +2754,8 @@ void on_open_path(char *path)
       files_new = NULL;
     }
     
-    elm_fileselector_button_path_set(fsb, path);
+    printf("FIXME fileselector button?! set path?\n");
+    //elm_fileselector_button_path_set(fsb, path);
     load_notify = elm_notify_add(win);
     load_label = elm_label_add(load_notify);
     elm_object_text_set(load_label, "found 0 files groups");
@@ -2763,7 +2844,7 @@ void refresh_group_tab(void)
   int *idx_cp;
   Elm_Object_Item *item;
   
-  if (!cur_group)
+  if (!cur_group || tab_current != tab_group)
     return;
   
   printf("refresh group tab!\n");
@@ -3147,6 +3228,23 @@ void _on_max_scaledown_set(void *data, Evas_Object *obj, void *event_info)
   max_fast_scaledown = elm_spinner_value_get(obj);
 }
 
+void on_add_rule(void *data, Evas_Object *obj, void *event_info)
+{ 
+  Default_Fc_Rule *rule;
+  
+  if (!cur_file)
+    return;
+  
+  rule = calloc(sizeof(Default_Fc_Rule), 1);
+  rule->cam = cam_cur;
+  rule->format = format_cur;
+  rule->fc = tagged_file_filterchain(cur_file);
+  
+  if (!default_fc_rules)
+    default_fc_rules = eina_array_new(1);
+  eina_array_push(default_fc_rules, rule);
+}
+
 Evas_Object *settings_box_add(Evas_Object *parent)
 {
   Evas_Object *box, *frame, *spinner_hq, *spinner_mr, *inbox, *lbl, *spinner_scale, *vbox;
@@ -3222,14 +3320,14 @@ Evas_Object *settings_box_add(Evas_Object *parent)
   vbox = elm_vbox_add_content(frame);
   //FIXME update!
   config_exif_infos(config_curr, &cam, &lens);
-  elm_label_add_pack(vbox, "camera:");
-  if (cam)
-    elm_label_add_pack(vbox, cam);
-  elm_label_add_pack(vbox, "lens:");
-  if (lens)
-    elm_label_add_pack(vbox, lens);
-  elm_label_add_pack(vbox, "file format:");
-  elm_button_add_pack(vbox, "add rule", NULL);
+  elm_label_add_pack(vbox, "use current filterchain as default for");
+  settings_rule_cam_lbl =  elm_label_add_pack(vbox, "camera: -");
+  //elm_label_add_pack(vbox, "lens:");
+  settings_rule_format_lbl = elm_label_add_pack(vbox, "file format: -");
+  elm_button_add_pack(vbox, "add rule", &on_add_rule);
+  
+  
+  evas_object_data_set(box, "limeview,main_tab,refresh_cb", &refresh_tab_setings);
   
   return box;
 }
@@ -3716,8 +3814,6 @@ elm_main(int argc, char **argv)
   evas_object_size_hint_align_set(tab_filter, EVAS_HINT_FILL, EVAS_HINT_FILL);
   elm_box_pack_end(tab_box, tab_filter);
   btn = elm_fsb_add_pack(tab_filter, "save filter chain", &on_save_filterchain, NULL, EINA_TRUE, EINA_TRUE);
-  elm_fileselector_hidden_visible_set(btn, EINA_TRUE);
-  elm_fileselector_is_save_set(btn, EINA_TRUE);
   evas_object_show(tab_filter);
   
   tab_current = tab_filter;

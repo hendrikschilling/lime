@@ -84,6 +84,8 @@ typedef enum {
  MT_MAX
 } Meta_Type;
 
+#define MT_FLAG_NOSOURCEREQUIRED 0x01
+
 extern Meta_Spec meta_def_list[MT_MAX];
 
 typedef void (*Meta_Data_Calc_F)(Meta *tune, Meta *m);
@@ -91,6 +93,7 @@ typedef void (*Meta_Data_Calc_F)(Meta *tune, Meta *m);
 struct _Meta
 {
    int type;
+   int flags;
    const char *name;
    const char *type_str; //further defines type (derive types)
    Meta *dep; //type: Meta, tuning this meta depends on
@@ -121,5 +124,7 @@ void vizp_ar(FILE *file, Eina_Array *ar, Filter *parent, char *label);
 void vizp_meta(FILE *file, Meta *meta);
 void *meta_child_data_by_type(Meta *m, int type);
 void pushint(Eina_Array *ar, int val);
+void meta_flag_set(Meta *meta, int flag);
+int meta_flag_get(Meta *meta, int flag);
 
 #endif
