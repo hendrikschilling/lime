@@ -158,6 +158,7 @@ void vizp_filter(FILE *file, Filter *filter);
 void filter_fill_thread_data(Filter *f, int thread_id);
 void *filter_core_by_name(Filter *f, const char *name);
 void *filter_core_by_type(Filter *f, int type);
+void *filter_core_by_subtype(Filter *f, int type, char *subtype);
 Filter_Mode_Buffer *filter_mode_buffer_new(void);
 int lime_setting_string_set(Filter *f, const char *setting, const char *value);
 int tw_get(Filter *f, int scale);

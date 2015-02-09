@@ -587,6 +587,18 @@ void *filter_core_by_type(Filter *f, int type)
   return NULL;
 }
 
+void *filter_core_by_subtype(Filter *f, int type, char *subtype)
+{
+  int i;
+  for(i=0;i<ea_count(f->core);i++)
+    if (type == ((Meta*)ea_data(f->core, i))->type
+        && ((Meta*)ea_data(f->core, i))->type_str
+        && !strcmp(((Meta*)ea_data(f->core, i))->type_str, subtype))
+      return ((Meta*)ea_data(f->core, i))->data;
+    
+  return NULL;
+}
+
 
 void vizp_filter(FILE *file, Filter *filter)
 {

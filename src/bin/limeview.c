@@ -48,6 +48,7 @@
 #include "filter_curves.h"
 #include "filter_lrdeconv.h"
 #include "filter_lensfun.h"
+#include "exif_helpers.h"
 
 #define TILE_SIZE DEFAULT_TILE_SIZE
 
@@ -204,6 +205,32 @@ Dim *config_size(Config_Data *config)
     return NULL;
   
   return filter_core_by_type(config->sink, MT_IMGSIZE);
+}
+
+void config_exif_infos(Config_Data *config, char **cam, char **lens)
+{
+  lime_exif *exif;
+  
+  if (!config || !config->sink) {
+    printf("ERROR: exif info: not config given\n");
+    return;
+  }
+  
+  exif =  filter_core_by_subtype(config->sink, MT_OBJ, "exif");
+  
+  if (!exif)
+    return;
+  
+  if (cam)
+    *cam = lime_exif_handle_find_str_by_tagname(exif, "Model");
+  
+  if (lens) {
+    *lens = lime_exif_handle_find_str_by_tagname(exif, "LensType");
+    if (!lens)
+      lens = lime_exif_handle_find_str_by_tagname(exif, "LensModel");
+    if (*lens)
+      *lens = strdup(*lens);
+  }
 }
 
 int pending_action(void)
@@ -1986,6 +2013,8 @@ void step_image_config_reset_range(Tagfiles *files, int start, int end)
 void refresh_tab_tags(void)
 {
   elm_genlist_realized_items_update(tags_list);
+  
+  elm_segment_control_item_selected_set(elm_segment_control_item_get(seg_rating, filegroup_rating(cur_group)), EINA_TRUE);
 }
 
 void step_image_do(void *data, Evas_Object *obj)
@@ -2105,18 +2134,11 @@ void step_image_do(void *data, Evas_Object *obj)
     printf("configuration delay: %f\n", bench_delay_get(delay_cur)); 
   fill_scroller();
   
-  if (tab_current == tab_group)
-    refresh_group_tab();
-  
-  //update tag list
-
-  if (filegroup_tags_valid(cur_group)) {
-    if (tab_current == tab_tags)
-      refresh_tab_tags();
-  
-    //update tag rating
-    elm_segment_control_item_selected_set(elm_segment_control_item_get(seg_rating, filegroup_rating(group)), EINA_TRUE);
-  } 
+  //refresh currently selected tab 
+  void (*refresh)(void);
+  refresh = evas_object_data_get(tab_current, "limeview,main_tab,refresh_cb");
+  if (refresh)
+    refresh();
   
   elm_slider_value_set(file_slider, tagfiles_idx(files)+0.1);
   
@@ -2896,6 +2918,54 @@ Evas_Object *elm_button_add_pack_data(Evas_Object *p, const char *text, void (*c
   return btn;
 }
 
+Evas_Object *elm_vbox_add_pack(Evas_Object *p)
+{
+  Evas_Object *box = elm_box_add(p);
+  evas_object_size_hint_weight_set(box, EVAS_HINT_EXPAND, EVAS_HINT_EXPAND);
+  evas_object_size_hint_align_set(box, EVAS_HINT_FILL, EVAS_HINT_FILL);
+  elm_box_pack_end(p, box);
+  evas_object_show(box);
+  
+  return box;
+}
+
+Evas_Object *elm_vbox_add_content(Evas_Object *p)
+{
+  Evas_Object *box = elm_box_add(p);
+  evas_object_size_hint_weight_set(box, EVAS_HINT_EXPAND, EVAS_HINT_EXPAND);
+  evas_object_size_hint_align_set(box, EVAS_HINT_FILL, EVAS_HINT_FILL);
+  elm_object_content_set(p, box);
+  evas_object_show(box);
+  
+  return box;
+}
+
+Evas_Object *elm_label_add_pack(Evas_Object *p, char *text)
+{
+  Evas_Object *lbl = elm_label_add(p);
+  evas_object_size_hint_weight_set(lbl, EVAS_HINT_EXPAND, 0);
+  evas_object_size_hint_align_set(lbl, EVAS_HINT_FILL, 0);
+  elm_object_text_set(lbl, text);
+  elm_box_pack_end(p, lbl);
+  evas_object_show(lbl);
+  
+  return lbl;
+}
+
+
+Evas_Object *elm_frame_add_pack(Evas_Object *p, const char *text)
+{
+  Evas_Object *frame = elm_frame_add(p);
+  evas_object_size_hint_weight_set(frame, EVAS_HINT_EXPAND, EVAS_HINT_EXPAND);
+  evas_object_size_hint_align_set(frame, EVAS_HINT_FILL, EVAS_HINT_FILL);
+  if (text)
+    elm_object_text_set(frame, text);
+  elm_box_pack_end(p, frame);
+  evas_object_show(frame);
+  
+  return frame;
+}
+
 Evas_Object *elm_button_add_pack(Evas_Object *p, const char *text, void (*cb)(void *data, Evas_Object *obj, void *event_info))
 {  
   return elm_button_add_pack_data(p, text, cb, NULL);
@@ -3079,7 +3149,7 @@ void _on_max_scaledown_set(void *data, Evas_Object *obj, void *event_info)
 
 Evas_Object *settings_box_add(Evas_Object *parent)
 {
-  Evas_Object *box, *frame, *spinner_hq, *spinner_mr, *inbox, *lbl, *spinner_scale;
+  Evas_Object *box, *frame, *spinner_hq, *spinner_mr, *inbox, *lbl, *spinner_scale, *vbox;
   
   box = elm_box_add(parent);
   evas_object_size_hint_weight_set(box, EVAS_HINT_EXPAND, EVAS_HINT_EXPAND);
@@ -3145,6 +3215,21 @@ Evas_Object *settings_box_add(Evas_Object *parent)
   evas_object_smart_callback_add(spinner_scale, "delay,changed", _on_max_scaledown_set, NULL);
   elm_box_pack_end(inbox, spinner_scale);
   evas_object_show(spinner_scale);
+  
+  char *cam = NULL, *lens = NULL;  
+  frame = elm_frame_add_pack(box, "default filter chains");
+  
+  vbox = elm_vbox_add_content(frame);
+  //FIXME update!
+  config_exif_infos(config_curr, &cam, &lens);
+  elm_label_add_pack(vbox, "camera:");
+  if (cam)
+    elm_label_add_pack(vbox, cam);
+  elm_label_add_pack(vbox, "lens:");
+  if (lens)
+    elm_label_add_pack(vbox, lens);
+  elm_label_add_pack(vbox, "file format:");
+  elm_button_add_pack(vbox, "add rule", NULL);
   
   return box;
 }

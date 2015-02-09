@@ -87,7 +87,7 @@ static int _del(Filter *f)
 Filter *filter_memsink_new(void)
 {
   Filter *filter = filter_new(&filter_core_memsink);
-  Meta *in, *channel, *bitdepth, *color, *size, *setting, *bound, *fliprot;
+  Meta *in, *channel, *bitdepth, *color, *size, *setting, *bound, *fliprot, *exif;
   _Data *data = calloc(sizeof(_Data), 1);
   data->use_alpha = malloc(sizeof(int));
   *data->use_alpha = 0;
@@ -105,7 +105,12 @@ Filter *filter_memsink_new(void)
   size = meta_new(MT_IMGSIZE, filter);
   ea_push(filter->core, size);
   
+  exif = meta_new(MT_OBJ, filter);
+  meta_type_str_set(exif, "exif");
+  ea_push(filter->core, exif);
+  
   in = meta_new(MT_BUNDLE, filter);
+  //meta_attach(in, exif);
   eina_array_push(filter->in, in);
   
   fliprot = meta_new_data(MT_FLIPROT, filter, malloc(sizeof(int)));
