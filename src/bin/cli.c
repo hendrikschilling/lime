@@ -186,7 +186,8 @@ int parse_cli(int argc, char **argv, Eina_List **filters, Bench_Step **bench, in
   
   if (bench)
     *bench = 0;
-  *size = 100;
+  if (size)
+    *size = 100;
   *metric = 0;
   *strategy = CACHE_F_RAPX;
   *verbose = 0;
@@ -245,6 +246,8 @@ int parse_cli(int argc, char **argv, Eina_List **filters, Bench_Step **bench, in
 	}
 	break;
       case 's' :
+        if (!size)
+          break;
 	*size = atoi(optarg);
 	if (*size < 1) {
 	  printf("ERROR parsing command line: require cache-size >= 1MB (was %s)\n", optarg);

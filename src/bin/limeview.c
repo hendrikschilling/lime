@@ -27,6 +27,7 @@
 #include "cli.h"
 #include "tagfiles.h"
 #include "cache.h"
+#include "settings.h"
 
 #include "filter_convert.h"
 #include "filter_gauss.h"
@@ -66,6 +67,11 @@
 #define PRELOAD_THRESHOLD 8
 
 #define FIX_ENABLE_PRELOAD
+
+#ifdef IF_FREE
+# undef IF_FREE
+#endif
+#define IF_FREE(ptr) if (ptr) {free(ptr); } ptr = NULL;
 
 int high_quality_delay =  300;
 int max_reaction_delay =  1000;
@@ -128,24 +134,16 @@ typedef struct {
   Eina_Array **imgs;
 } Mat_Cache;
 
-
 typedef struct {
   int step;
   int group_idx;
 } Tagfiles_Step;
 
 
-typedef struct {
-  char *cam;
-  char *format;
-  char *fc;
-} Default_Fc_Rule;
-
-
 int max_workers;
 int max_thread_id;
 Evas_Object *clipper, *win, *scroller, *file_slider, *filter_list, *select_filter, *pos_label, *fsb, *load_progress, *load_label, *load_notify;
-Evas_Object *settings_rule_cam_lbl, *settings_rule_format_lbl;
+Evas_Object *settings_rule_cam_lbl, *settings_rule_format_lbl, *settings_rule_list, *settings_rule_del_btn;
 Evas_Object *tab_group, *tab_filter, *tab_settings, *tab_tags, *tab_current, *tab_box, *tab_export, *tab_tags, *tags_list, *tags_filter_list, *seg_rating;
 Evas_Object *group_list, *export_box, *export_extensions, *export_path, *main_vbox;
 Evas_Object *grid = NULL, *vbox_bottom, *bg;
@@ -154,7 +152,6 @@ char *pos_lbl_buf;
 char *cam_cur = NULL, *format_cur = NULL;
 int posx, posy;
 Evas_Object *slider_blur, *slider_contr, *gridbox = NULL;
-int cache_size;
 Mat_Cache *mat_cache = NULL;
 Mat_Cache *mat_cache_old = NULL;
 int forbid_fill = 0;
@@ -168,7 +165,8 @@ int fixme_no_group_select = 0;
 File_Group *cur_group = NULL;
 Tagged_File *cur_file = NULL;
 int cur_group_idx = 0;
-Eina_Array *default_fc_rules = NULL;
+
+Limeview_Settings *settings = NULL;
 
 int bench_idx = 0;
 
@@ -1837,7 +1835,7 @@ Config_Data *config_build(File_Group *group, int nth)
 Config_Data *config_data_get(File_Group *group, int nth)
 {
   int i;
-  Eina_List *filters;
+  Eina_List *filters, *l;
   Default_Fc_Rule *rule;
   char *cam = NULL,
        *format, 
@@ -1856,7 +1854,7 @@ Config_Data *config_data_get(File_Group *group, int nth)
   if (config->failed)
     return config;
   
-  if (!default_fc_rules || !ea_count(default_fc_rules))
+  if (!settings->default_fc_rules)
     return config;
   
   //FIXME check interaction with refresh group cb... (we may not "see" a filterchain initially!) (and check threading!)
@@ -1868,8 +1866,7 @@ Config_Data *config_data_get(File_Group *group, int nth)
   config_exif_infos(config, &cam, NULL);
   format = strrchr(tagged_file_name(config->file), '.');
   
-  for(i=0;i<ea_count(default_fc_rules);i++) {
-    rule = ea_data(default_fc_rules, i);
+  EINA_LIST_FOREACH(settings->default_fc_rules, l, rule) {
     printf("[%s-%s]\n", rule->cam, cam);
     if ((!cam && rule->cam) || strcmp(rule->cam, cam))
       continue;
@@ -2102,6 +2099,19 @@ void step_image_config_reset_range(Tagfiles *files, int start, int end)
   
   for(i=start;i<end;i++)
     group_config_reset(tagfiles_nth(files, i));
+}
+
+//TODO we really need config cache!
+void reset_all_configs(Tagfiles *files)
+{
+  int i;
+  
+  for(i=0;i<tagfiles_count(files);i++) {
+    if (tagfiles_idx(files) == i)
+      printf("FIXME: reset and recalc curretn config (using workefinish schedule...)\n");
+    else
+      group_config_reset(tagfiles_nth(files, i));
+  }
 }
 
 void refresh_tab_tags(void)
@@ -3063,6 +3073,17 @@ Evas_Object *elm_button_add_pack_data(Evas_Object *p, const char *text, void (*c
   return btn;
 }
 
+Evas_Object *elm_list_add_pack(Evas_Object *p)
+{
+  Evas_Object *list = elm_list_add(p);
+  evas_object_size_hint_weight_set(list, EVAS_HINT_EXPAND, EVAS_HINT_EXPAND);
+  evas_object_size_hint_align_set(list, EVAS_HINT_FILL, EVAS_HINT_FILL);
+  elm_box_pack_end(p, list);
+  evas_object_show(list);
+  
+  return list;
+}
+
 Evas_Object *elm_vbox_add_pack(Evas_Object *p)
 {
   Evas_Object *box = elm_box_add(p);
@@ -3292,9 +3313,17 @@ void _on_max_scaledown_set(void *data, Evas_Object *obj, void *event_info)
   max_fast_scaledown = elm_spinner_value_get(obj);
 }
 
+void on_cache_size_set(void *data, Evas_Object *obj, void *event_info)
+{ 
+  settings->cache_size = elm_spinner_value_get(obj);
+  lime_cache_set(settings->cache_size, 0);
+  lv_setting_save(settings);
+}
+
 void on_add_rule(void *data, Evas_Object *obj, void *event_info)
 { 
   Default_Fc_Rule *rule;
+  char *buf;
   
   if (!cur_file)
     return;
@@ -3304,16 +3333,53 @@ void on_add_rule(void *data, Evas_Object *obj, void *event_info)
   rule->format = format_cur;
   rule->fc = tagged_file_filterchain(cur_file);
   
-  if (!default_fc_rules)
-    default_fc_rules = eina_array_new(1);
-  eina_array_push(default_fc_rules, rule);
+  settings->default_fc_rules = eina_list_append(settings->default_fc_rules, rule);
   printf("added rule [%s][%s]->[%s]\n", rule->cam, rule->format, rule->fc);
+  buf = malloc(1024);
+  snprintf(buf, 1024, "%s/%s->%s", rule->cam, rule->format, rule->fc);
+  printf("wtf %s\n", buf);
+  elm_list_item_append(settings_rule_list, buf, NULL, NULL, NULL, rule);
+  elm_list_go(settings_rule_list);
   printf("FIXME invalidate (all?) cached configs!\n");
+  
+  lv_setting_save(settings);
+  reset_all_configs(files);
+}
+
+void on_del_rule(void *data, Evas_Object *obj, void *event_info)
+{ 
+  Elm_Object_Item *it;
+  Default_Fc_Rule *rule;
+  
+  it = elm_list_selected_item_get(settings_rule_list);
+  
+  assert(it);
+  
+  evas_object_hide(settings_rule_del_btn);
+  
+  rule = elm_object_item_data_get(it);
+  settings->default_fc_rules = eina_list_remove(settings->default_fc_rules, rule);
+  elm_object_item_del(it);
+  
+  free(rule);
+  
+  lv_setting_save(settings);
+  reset_all_configs(files);
+}
+
+void on_default_rule_selected(void *data, Evas_Object *obj, void *event_info)
+{ 
+  evas_object_show(settings_rule_del_btn);
+}
+
+void on_default_rule_unselected(void *data, Evas_Object *obj, void *event_info)
+{ 
+  evas_object_hide(settings_rule_del_btn);
 }
 
 Evas_Object *settings_box_add(Evas_Object *parent)
 {
-  Evas_Object *box, *frame, *spinner_hq, *spinner_mr, *inbox, *lbl, *spinner_scale, *vbox;
+  Evas_Object *box, *frame, *spinner_hq, *spinner_mr, *inbox, *lbl, *spinner_scale, *vbox, *sp;
   
   box = elm_box_add(parent);
   evas_object_size_hint_weight_set(box, EVAS_HINT_EXPAND, EVAS_HINT_EXPAND);
@@ -3380,6 +3446,18 @@ Evas_Object *settings_box_add(Evas_Object *parent)
   elm_box_pack_end(inbox, spinner_scale);
   evas_object_show(spinner_scale);
   
+  elm_label_add_pack(inbox, "cache size in MiB");
+  sp = elm_spinner_add(parent);
+  evas_object_size_hint_weight_set(sp, EVAS_HINT_EXPAND, 0);
+  evas_object_size_hint_align_set(sp, EVAS_HINT_FILL, 0);
+  elm_spinner_min_max_set(sp, 25, 1000);
+  elm_spinner_step_set (sp, 1);
+  elm_spinner_round_set(sp, 1);
+  elm_spinner_value_set (sp, settings->cache_size);
+  evas_object_smart_callback_add(sp, "delay,changed", on_cache_size_set, NULL);
+  elm_box_pack_end(inbox, sp);
+  evas_object_show(sp);
+  
   char *cam = NULL, *lens = NULL;  
   frame = elm_frame_add_pack(box, "default filter chains");
   
@@ -3391,7 +3469,23 @@ Evas_Object *settings_box_add(Evas_Object *parent)
   //elm_label_add_pack(vbox, "lens:");
   settings_rule_format_lbl = elm_label_add_pack(vbox, "file format: -");
   elm_button_add_pack(vbox, "add rule", &on_add_rule);
+  settings_rule_list = elm_list_add_pack(vbox);
+  evas_object_smart_callback_add(settings_rule_list, "selected", &on_default_rule_selected, NULL);
+  evas_object_smart_callback_add(settings_rule_list, "unselected", &on_default_rule_selected, NULL);
   
+  char *buf;
+  Eina_List *l;
+  Default_Fc_Rule *rule;
+  EINA_LIST_FOREACH(settings->default_fc_rules, l, rule) {
+    printf("adding %s %s %s\n", rule->cam, rule->format, rule->fc);
+    buf = malloc(1024);
+    snprintf(buf, 1024, "%s/%s->%s", rule->cam, rule->format, rule->fc);
+    printf("wtf %s\n", buf);
+    elm_list_item_append(settings_rule_list, buf, NULL, NULL, NULL, rule);
+  }
+  elm_list_go(settings_rule_list);
+  settings_rule_del_btn = elm_button_add_pack(vbox, "remove rule", &on_del_rule);
+  evas_object_hide(settings_rule_del_btn);
   
   evas_object_data_set(box, "limeview,main_tab,refresh_cb", &refresh_tab_setings);
   
@@ -3636,7 +3730,7 @@ EAPI_MAIN int
 elm_main(int argc, char **argv)
 {
   int help;
-  int cache_strategy, cache_metric, cache_size;
+  int cache_strategy, cache_metric;
   char *path;
   Evas_Object *hbox, *frame, *hpane, *seg_filter_rating, *entry, *btn;
   Eina_List *filters = NULL;
@@ -3657,6 +3751,9 @@ elm_main(int argc, char **argv)
   efreet_trash_init();
   
   tagfiles_init();
+  lv_settings_init();
+  
+  settings = lv_setting_load();
   
   elm_config_scroll_thumbscroll_enabled_set(EINA_TRUE);
   
@@ -3672,7 +3769,7 @@ elm_main(int argc, char **argv)
   
   thread_ids = calloc(sizeof(int)*(max_thread_id+1), 1);
   
-  if (parse_cli(argc, argv, &filters, &bench, &cache_size, &cache_metric, &cache_strategy, &path, &winsize, &verbose, &help))
+  if (parse_cli(argc, argv, &filters, &bench, NULL, &cache_metric, &cache_strategy, &path, &winsize, &verbose, &help))
     return EXIT_FAILURE;
   
   if (help) {
@@ -3688,7 +3785,7 @@ elm_main(int argc, char **argv)
   //strcpy(image_path, dir);
   //image_file = image_path + strlen(image_path);
   
-  print_init_info(bench, cache_size, cache_metric, cache_strategy, path);
+  print_init_info(bench, settings->cache_size, cache_metric, cache_strategy, path);
   
   if (bench && bench[0].scale != -1)
     fit = bench[0].scale;
@@ -3755,7 +3852,7 @@ elm_main(int argc, char **argv)
   elm_box_pack_end(vbox_bottom, pos_label);
   evas_object_show(pos_label);
 
-  lime_cache_set(cache_size, cache_strategy | cache_metric);
+  lime_cache_set(settings->cache_size, cache_strategy | cache_metric);
   
   scroller = elm_scroller_add(win);
   evas_object_size_hint_weight_set(scroller, EVAS_HINT_EXPAND, EVAS_HINT_EXPAND);
@@ -3978,6 +4075,7 @@ elm_main(int argc, char **argv)
     bench_report();
   lime_shutdown();
   
+  lv_settings_shutdown();
   tagfiles_shutdown();
   
   efreet_trash_shutdown();

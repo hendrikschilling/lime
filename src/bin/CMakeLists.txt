@@ -18,7 +18,7 @@ link_directories(${EVAS_LIBRARY_DIRS})
 
 include_directories(${CMAKE_SOURCE_DIR}/src/lib)
 
-add_executable(limeview limeview.c cli.c tagfiles.c)
+add_executable(limeview limeview.c cli.c tagfiles.c settings.c)
 
 add_executable(limedo limedo.c cli.c)
 

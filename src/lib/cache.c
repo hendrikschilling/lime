@@ -508,6 +508,8 @@ int lime_cache_set(int mem_max, int strategy)
       memset(cache->tiles+cache->mem_max*sizeof(Tile*), 0, mem_max - cache->mem_max);
       cache->count_max = 10*mem_max;
       cache->strategy = strategy;
+      if (!(cache->strategy & CACHE_MASK_M))
+        cache->strategy |= CACHE_M_LRU;
     }
     else
       return -1;

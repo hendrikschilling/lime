@@ -1098,13 +1098,17 @@ void filegroup_save_sidecars(File_Group *group)
 
 void tagged_file_filterchain_set(Tagged_File *file, File_Group *group, const char *fc)
 {    
-  file->last_fc = strdup(fc);
-  if (strstr(file->last_fc, ",memsink"))
-    *strstr(file->last_fc, ",memsink") = '\0';
-  else if (strstr(file->last_fc, "memsink") == file->last_fc) {
-    free(file->last_fc);
-    file->last_fc = NULL;
+  if (fc) {
+    file->last_fc = strdup(fc);
+    if (strstr(file->last_fc, ",memsink"))
+      *strstr(file->last_fc, ",memsink") = '\0';
+    else if (strstr(file->last_fc, "memsink") == file->last_fc) {
+      free(file->last_fc);
+      file->last_fc = NULL;
+    }
   }
+  else
+    file->last_fc = NULL;
   
   tagged_file_sidecar_save(file, group);
 }
