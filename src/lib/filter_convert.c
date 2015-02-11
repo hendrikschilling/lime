@@ -155,7 +155,7 @@ static void _worker(Filter *f, Eina_Array *in, Eina_Array *out, Rect *area, int 
   #define TYPE_Lab_8_PLANAR             (COLORSPACE_SH(PT_Lab)|CHANNELS_SH(3)|BYTES_SH(1)|PLANAR_SH(1))
 #endif
 
-static int _tunes_fixed(Filter *f)
+static int prepare(Filter *f)
 {
   cmsHPROFILE hInProfile, hOutProfile;
   uint32_t in_type, out_type;
@@ -349,7 +349,7 @@ Filter *filter_convert_new(void)
 {
   Filter *filter = filter_new(&filter_core_convert);
   Meta *in, *out, *color, *channel, *tune_in_bitdepth, *tune_out_bitdepth, *tune_in_color, *tune_out_color;
-  filter->tunes_fixed = &_tunes_fixed;
+  filter->prepare = &prepare;
   filter->del = &_del;
   _Data *data = calloc(sizeof(_Data), 1);
   data->common = calloc(sizeof(_Common), 1);

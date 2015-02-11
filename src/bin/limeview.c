@@ -2251,8 +2251,6 @@ void step_image_do(void *data, Evas_Object *obj)
     }
   }
   
-  printf("success! file %s\n", tagged_file_name(filegroup_nth(group, group_idx)));
-  
   if (config_curr) {
     //FIXME free ->filter_chain
     fc_del_gui(config_curr->filter_chain);

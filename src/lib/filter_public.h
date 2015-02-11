@@ -129,7 +129,6 @@ struct _Filter
   Fg_Node *node_orig;
   Filter_F setting_changed; //settings were changed, calc input-meta
   Filter_F input_fixed; //input meta and settings are fixed, calc out-meta
-  Filter_F tunes_fixed; //tunings are fixed, prepare filtering
   Filter_F del; //tunings are fixed, prepare filtering
   Filter_F prepare; //prepare rendering, calc LUTs etc (executed single threaded)
   Eina_Array *data;
