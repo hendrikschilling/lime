@@ -62,7 +62,9 @@
 #define BENCHMARK_LENGTH 2000
 
 //FIXME adjust depending on speed!
+//FIXME fix threaded config
 #define PRELOAD_CONFIG_RANGE 32
+//FIXME fix image preload
 #define PRELOAD_IMG_RANGE 0
 #define PRELOAD_THRESHOLD 8
 

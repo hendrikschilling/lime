@@ -59,7 +59,7 @@ static double lin2gamma(double lin)
     return (1+0.055)*pow(lin,1/2.4)-0.055;
 }
 
-static int _input_fixed(Filter *f)
+static int _prepare(Filter *f)
 {
   _Data *data = ea_data(f->data, 0);
   gsl_spline *spline_exp;
@@ -152,7 +152,7 @@ static Filter *_new(void)
   f->mode_buffer = filter_mode_buffer_new();
   f->mode_buffer->worker = _worker;
   f->mode_buffer->threadsafe = 1;
-  f->input_fixed = &_input_fixed;
+  f->prepare = &_prepare;
   ea_push(f->data, data);
   f->fixme_outcount = 1;
   

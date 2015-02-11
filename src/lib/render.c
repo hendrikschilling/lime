@@ -362,6 +362,11 @@ void filter_render_tile(Render_Node *job, int thread_id)
   if (channels)
     assert(cache_tile_get(&job->tile->hash) != NULL);
   
+  if (job->f->prepare && job->f->prepared_hash != job->f->hash.hash) {
+    job->f->prepare(job->f);
+    job->f->prepared_hash = job->f->hash.hash;
+  }
+  
   if (job->f->mode_buffer->threadsafe)
     lime_unlock();
   

@@ -131,6 +131,7 @@ struct _Filter
   Filter_F input_fixed; //input meta and settings are fixed, calc out-meta
   Filter_F tunes_fixed; //tunings are fixed, prepare filtering
   Filter_F del; //tunings are fixed, prepare filtering
+  Filter_F prepare; //prepare rendering, calc LUTs etc (executed single threaded)
   Eina_Array *data;
   Filter_Mode_Buffer *mode_buffer;
   Filter_Mode_Iter *mode_iter;
@@ -141,6 +142,7 @@ struct _Filter
   int tile_height;
   int *th_s;
   int *tw_s;
+  uint32_t prepared_hash;
 };
 
 Tilehash tile_hash_calc(Filter *f, Rect *area);
