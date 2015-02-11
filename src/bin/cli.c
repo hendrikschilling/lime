@@ -189,7 +189,7 @@ int parse_cli(int argc, char **argv, Eina_List **filters, Bench_Step **bench, in
   if (size)
     *size = 100;
   *metric = 0;
-  *strategy = CACHE_F_RAPX;
+  *strategy = 0;
   *verbose = 0;
   if (winsize)
     *winsize = 0;
@@ -325,9 +325,6 @@ int parse_cli(int argc, char **argv, Eina_List **filters, Bench_Step **bench, in
 	return -1;
     }
   }
-  
-  if (!*metric)
-    *metric = CACHE_M_LRU;
   
   while (optind < argc) {
     assert(filters);

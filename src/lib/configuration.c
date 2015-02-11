@@ -26,8 +26,6 @@
 #include "filter_fliprot.h"
 #include "filter_loadraw.h"
 
-#include <valgrind/callgrind.h>
-
 #define DEBUG_OUT_GRAPH 
 
 #define MAX_CONS_TRIES 5
@@ -919,22 +917,6 @@ int test_filter_config_real(Filter *f, int write_graph, Config *c)
   vizp_stop(filters);
   }
   
-  /*con = ea_data(f->node->con_trees_out, 0);
-  if (con->source->filter->tunes_fixed) {
-    //printf("fixed_tunings %s\n",con->source->filter->name);
-    con->source->filter->tunes_fixed(con->source->filter);
-  }
-  while (con) {
-    if (con->sink->filter->tunes_fixed) {
-      //printf("fixed_tunings %s\n",con->sink->filter->fc->name);
-      con->sink->filter->tunes_fixed(con->sink->filter);
-    }
-    if (con->sink->filter->node->con_trees_out && ea_count(con->sink->filter->node->con_trees_out) == 1)
-      con = ea_data(con->sink->filter->node->con_trees_out, 0);
-    else
-      con = NULL;
-  }*/
-  
   eina_array_free(match_source);
   eina_array_free(match_sink);
   for(i=0;i<ea_count(copied);i++)
@@ -1292,7 +1274,6 @@ int lime_config_test(Filter *f_sink)
   Con *con_orig;
   Filter *f = f_sink;
   Config *c;
-  CALLGRIND_START_INSTRUMENTATION;
   
   pthread_mutex_lock(&filter_chain_last_filter(f_sink)->lock);
   
@@ -1300,7 +1281,6 @@ int lime_config_test(Filter *f_sink)
   
   if (c && c->configured) {
     pthread_mutex_unlock(&filter_chain_last_filter(f_sink)->lock);
-    CALLGRIND_STOP_INSTRUMENTATION;
     return 0;
   }
   if (!c) {
@@ -1360,7 +1340,6 @@ int lime_config_test(Filter *f_sink)
       eina_array_free(cons);
       eina_array_free(insert_f);
       pthread_mutex_unlock(&filter_chain_last_filter(f_sink)->lock);
-      CALLGRIND_STOP_INSTRUMENTATION;
       return -1;
     }
   }
@@ -1384,6 +1363,5 @@ int lime_config_test(Filter *f_sink)
   eina_array_free(cons);
   eina_array_free(insert_f);
   pthread_mutex_unlock(&filter_chain_last_filter(f_sink)->lock);
-  CALLGRIND_STOP_INSTRUMENTATION;
   return 0;
 }

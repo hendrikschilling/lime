@@ -43,7 +43,7 @@ struct _Cache {
   Eina_Hash *stats;
 };
 
-#define CACHE_ITERS 20
+#define CACHE_ITERS 100
 
 static Cache *cache = NULL;
 
@@ -54,6 +54,7 @@ typedef struct {
   uint64_t tiles;
   uint64_t time;
   uint64_t time_count;
+  uint64_t time_kib;
 } Cache_Stat;
 
 int cache_tile_cmp(const void *key1, int key1_length, const void *key2, int key2_length)
@@ -139,12 +140,12 @@ int select_rand(Tile *newtile, Eina_Array *metrics, int *delpos, Tile **del)
   return 0;
 }
 
-float tile_score_time(Tile *tile, Tile *newtile)
+double tile_score_time(Tile *tile, Tile *newtile)
 {
   return tile->time;
 }
 
-float tile_score_lru(Tile *tile, Tile *newtile)
+double tile_score_lru(Tile *tile, Tile *newtile)
 {
   return tile->generation;
 }
@@ -167,9 +168,9 @@ int select_rand_napx(Tile *newtile, Eina_Array *metrics, int *delpos, Tile **del
   Tile *old;
   int pos;
   int tries;
-  float maxscore;
-  float score;
-  float (*score_func)(Tile *tile, Tile *newtile);
+  double maxscore;
+  double score;
+  double (*score_func)(Tile *tile, Tile *newtile);
   int i;
   int start;
   
@@ -195,6 +196,7 @@ int select_rand_napx(Tile *newtile, Eina_Array *metrics, int *delpos, Tile **del
       score_func = ea_data(metrics, i);
       score *= score_func(old, newtile);
     }
+    
     if (!*del || score < maxscore) {
       maxscore = score;
       *del = old;
@@ -217,7 +219,7 @@ int select_rand_prob(Tile *newtile, Eina_Array *metrics, int *delpos, Tile **del
   float score;
   Tile *candidates[CACHE_ITERS];
   int cand_pos[CACHE_ITERS];
-  float (*score_func)(Tile *tile, Tile *newtile);
+  double (*score_func)(Tile *tile, Tile *newtile);
   int start;
   
   scoresum = 0.0;
@@ -259,8 +261,9 @@ int select_rand_prob(Tile *newtile, Eina_Array *metrics, int *delpos, Tile **del
   return 0;
 }
 
-void cache_stats_update(Filter_Core *fc, int hit, int miss, int time, int count)
+void cache_stats_update_area(Tile *tile, int hit, int miss, int time, int count, Rect *area, int ch_count)
 {
+  Filter_Core *fc = tile->fc;
   Cache_Stat *stat;
   
   if (!cache)
@@ -274,6 +277,7 @@ void cache_stats_update(Filter_Core *fc, int hit, int miss, int time, int count)
       if (time) {
 	stat->time += time;
 	stat->time_count++;
+	stat->time_kib += area->width*area->height*ch_count/1024;
       }
       stat->tiles += count;
   }
@@ -291,6 +295,15 @@ void cache_stats_update(Filter_Core *fc, int hit, int miss, int time, int count)
   }
 }
 
+
+void cache_stats_update(Tile *tile, int hit, int miss, int time, int count)
+{
+  if (time)
+    cache_stats_update_area(tile, hit, miss, time, count, &tile->area, ea_count(tile->channels));
+  else
+    cache_stats_update_area(tile, hit, miss, 0, count, NULL, 0);
+}
+
 void cache_stats_print(void)
 {
   Cache_Stat *stat;
@@ -301,8 +314,8 @@ void cache_stats_print(void)
   printf("[CACHE] stats:\n");
   
   EINA_ITERATOR_FOREACH(iter, stat) {
-    printf("       req to %12.12s hr: %4.1f%% (%llu/%llu) tiles: %4llu time: %4.3fms per tile from %llu iters\n",
-	   stat->fc->name, 100.0*stat->hits/(stat->misses+stat->hits), stat->hits, stat->misses, stat->tiles, 0.000001*stat->time/stat->time_count, stat->time_count);
+    printf("       req to %12.12s hr: %4.1f%% (%llu/%llu) tiles: %4llu time: %4.3fms per tile, %4.3fms per MP, from %llu iters\n",
+	   stat->fc->name, 100.0*stat->hits/(stat->misses+stat->hits), stat->hits, stat->misses, stat->tiles, 0.000001*stat->time/stat->time_count, .000001*stat->time/stat->time_kib*1024, stat->time_count);
   }
 }
 
@@ -410,7 +423,7 @@ int chache_tile_cleanone(Tile *tile)
   cache->count--;
   eina_hash_del(cache->table, &del->hash, del);
   assert(del->fc);
-  cache_stats_update(del->fc, 0, 0, 0, -1);
+  cache_stats_update(del, 0, 0, 0, -1);
   tile_del(del);
   cache->tiles[pos] = NULL;
   eina_array_free(metrics);
@@ -452,7 +465,7 @@ void cache_tile_add(Tile *tile)
   tile->cached = 1;
   
   assert(tile->fc);
-  cache_stats_update(tile->fc, 0, 0, 0, 1);
+  cache_stats_update(tile, 0, 0, 0, 1);
   
   eina_hash_direct_add(cache->table, &tile->hash, tile);
   if (tile->channels) {
@@ -502,17 +515,26 @@ Tile *cache_tile_get(Tilehash *hash)
 
 int lime_cache_set(int mem_max, int strategy)
 {
+  
+  if (!(strategy & CACHE_MASK_M)) {
+    strategy |= CACHE_M_LRU;
+    //strategy |= CACHE_M_TIME;
+  }
+  
   if (cache) {
     if (mem_max > cache->mem_max) {
       cache->tiles = realloc(cache->tiles, sizeof(Tile*)*10*mem_max);
       memset(cache->tiles+cache->mem_max*sizeof(Tile*), 0, mem_max - cache->mem_max);
       cache->count_max = 10*mem_max;
       cache->strategy = strategy;
-      if (!(cache->strategy & CACHE_MASK_M))
-        cache->strategy |= CACHE_M_LRU;
+      cache->mem_max = mem_max*1024*1024;
     }
-    else
+    else {
+      cache->mem_max = mem_max*1024*1024;
+      cache->strategy = strategy;
+      printf("FIXME: cache size will not be shrinking immediately!\n");
       return -1;
+    }
   }
   
   cache = calloc(sizeof(Cache), 1);

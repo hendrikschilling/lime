@@ -27,7 +27,7 @@
 
 void cache_tile_add(Tile *tile);
 Tile *cache_tile_get(Tilehash *hash);
-void cache_stats_update(Filter_Core *fc, int hit, int miss, int time, int count);
+void cache_stats_update(Tile *tile, int hit, int miss, int time, int count);
 void cache_tile_channelmem_add(Tile *tile);
 
 

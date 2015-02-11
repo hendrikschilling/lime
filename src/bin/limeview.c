@@ -3785,7 +3785,9 @@ elm_main(int argc, char **argv)
   //strcpy(image_path, dir);
   //image_file = image_path + strlen(image_path);
   
-  print_init_info(bench, settings->cache_size, cache_metric, cache_strategy, path);
+
+  lime_cache_set(settings->cache_size, cache_strategy | cache_metric);
+  //print_init_info(bench, settings->cache_size, cache_metric, cache_strategy, path);
   
   if (bench && bench[0].scale != -1)
     fit = bench[0].scale;
@@ -3851,8 +3853,6 @@ elm_main(int argc, char **argv)
   pos_label = elm_label_add(win);
   elm_box_pack_end(vbox_bottom, pos_label);
   evas_object_show(pos_label);
-
-  lime_cache_set(settings->cache_size, cache_strategy | cache_metric);
   
   scroller = elm_scroller_add(win);
   evas_object_size_hint_weight_set(scroller, EVAS_HINT_EXPAND, EVAS_HINT_EXPAND);
