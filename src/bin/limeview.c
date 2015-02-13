@@ -1879,15 +1879,14 @@ Config_Data *config_data_get(File_Group *group, int nth)
     return config;
   
   printf("no filterchain, check defaults\n");
+  return config;
   
   config_exif_infos(config, &cam, NULL);
   format = strrchr(tagged_file_name(config->file), '.');
   
   EINA_LIST_FOREACH(settings->default_fc_rules, l, rule) {
-    printf("[%s-%s]\n", rule->cam, cam);
     if ((!cam && rule->cam) || strcmp(rule->cam, cam))
       continue;
-    printf("[%s-%s]\n", rule->format, format);
     if ((!format && rule->format) || strcmp(rule->format, format))
       continue;
 
@@ -2026,6 +2025,9 @@ void config_thread_start(File_Group *group, int nth)
   
   config = config_build(group,  nth);
   if (!config)
+    return;
+  
+  if (config && config->sink)
     return;
   
   worker_config++;
@@ -2315,8 +2317,7 @@ void step_image_do(void *data, Evas_Object *obj)
   
   elm_slider_value_set(file_slider, tagfiles_idx(files)+0.1);
   
-  //FIXME SOON
-  //step_image_start_configs(PRELOAD_CONFIG_RANGE);
+  step_image_start_configs(PRELOAD_CONFIG_RANGE);
   
   if (step) free(step);
 }
