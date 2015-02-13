@@ -141,6 +141,8 @@ static void _worker(Filter *f, Eina_Array *in, Eina_Array *out, Rect *area, int 
   
   coords = malloc(2*3*sizeof(float)*area->width);
   
+  //FIXME fix negative y and x rounding (->fx)
+  
   for(j=0;j<area->height;j++) {
     lf_modifier_apply_subpixel_geometry_distortion(mod, area->corner.x, area->corner.y+j, area->width, 1, coords);
     for(i=0;i<area->width;i++)
@@ -152,8 +154,8 @@ static void _worker(Filter *f, Eina_Array *in, Eina_Array *out, Rect *area, int 
           continue;
         x = coords[i*2*3+ch*2];
         y = coords[i*2*3+ch*2+1];
-        fx = fmod(x,1.0);
-        fy = fmod(y,1.0);
+        fx = x-(int)x;
+        fy = y-(int)y;
         pos = tileptr16_3(in_td, x, y) + ch;
         tileptr16_3(out_td, area->corner.x+i, area->corner.y+j)[ch] = 
            pos[0]*(1.0-fx)*(1.0-fy)

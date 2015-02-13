@@ -395,10 +395,7 @@ void filter_render_tile(Render_Node *job, int thread_id)
   +  t_stop.tv_nsec - t_start.tv_nsec;
   
   job->tile->channels = channels;
-  if (channels)
-    cache_stats_update(job->tile, 0, 0, job->tile->time, 0);
-  else
-    cache_stats_update_area(job->tile, 0, 0, job->tile->time, 0, &job->tile->area, 3);
+  cache_stats_update(job->tile, 0, 0, job->tile->time, 0);
   
   //printf("render add %p filter %s\n", job->tile, job->f->fc->shortname);
   //???

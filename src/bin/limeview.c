@@ -65,10 +65,10 @@
 //FIXME fix threaded config
 #define PRELOAD_CONFIG_RANGE 32
 //FIXME fix image preload
-#define PRELOAD_IMG_RANGE 0
+#define PRELOAD_IMG_RANGE 2
 #define PRELOAD_THRESHOLD 8
 
-#define FIX_ENABLE_PRELOAD
+//#define FIX_DISABLE_PRELOAD
 
 #ifdef IF_FREE
 # undef IF_FREE
@@ -92,6 +92,8 @@ int preload_count = 0;
 int quick_preview_only = 0;
 int cur_key_down = 0;
 int key_repeat = 0;
+
+pthread_mutex_t barrier_lock;
 
 int config_waitfor_idx;
 int config_waitfor_groupidx;
@@ -1126,7 +1128,7 @@ _finished_tile(void *data, Ecore_Thread *th)
 	  _display_preview(NULL);
 	}
 	
-#ifndef FIX_ENABLE_PRELOAD
+#ifndef FIX_DISABLE_PRELOAD
       if (worker < max_workers && preload_pending() < PRELOAD_THRESHOLD)
 	step_image_preload_next(PRELOAD_IMG_RANGE);
       else
@@ -1164,7 +1166,7 @@ _finished_tile(void *data, Ecore_Thread *th)
     //workerfinish_schedule(pending_action, pending_data, pending_obj, EINA_TRUE);
     pending_exe();
   }
-#ifndef  FIX_ENABLE_PRELOAD
+#ifndef  FIX_DISABLE_PRELOAD
   else if (worker < max_workers && preload_pending() < PRELOAD_THRESHOLD) {
     step_image_preload_next(PRELOAD_IMG_RANGE);
   }
@@ -1731,6 +1733,8 @@ void group_config_reset(File_Group *group)
   int i;
   Config_Data *config;
   
+  //printf("FIXME temporary: no group_config_reset\n");
+  
   //FIXME clean pending refs to config from preload_list (and other?)
   
   //FIXME delete group cb
@@ -1741,7 +1745,12 @@ void group_config_reset(File_Group *group)
   {
     config = filegroup_data_get(group, i);
     //FIXME if config->running -> the config thread is still waiting to execute? cancel that thread?
-    if (config && config != config_curr && config->sink && !config->running) {
+    if (config && config != config_curr && config->sink) {
+      while(config->running) {
+        pthread_mutex_lock(&barrier_lock);
+        usleep(20);
+        pthread_mutex_unlock(&barrier_lock);
+      }
       //FIXME del filters?
       lime_config_reset(config->sink);
       config->sink = NULL;
@@ -1785,6 +1794,7 @@ Config_Data *config_build(File_Group *group, int nth)
 
 
   config = filegroup_data_get(group, nth);
+  
   if (config && config->sink)
     return config;
   //FIXME else if config free(config) ?
@@ -1848,7 +1858,12 @@ Config_Data *config_data_get(File_Group *group, int nth)
   if (!config)
     return NULL;
   
-  assert(!config->running);
+  if (config->running)
+    while(config->running) {
+      pthread_mutex_lock(&barrier_lock);
+      usleep(20);
+      pthread_mutex_unlock(&barrier_lock);
+    }
 
   config->failed = lime_config_test(config->sink);
   
@@ -1910,6 +1925,8 @@ void config_exe(void *data, Ecore_Thread *thread)
   Config_Data *config = data;
   
   config->failed = lime_config_test(config->sink);
+  
+  config->running = EINA_FALSE;
 }
 
 void config_finish(void *data, Ecore_Thread *thread)
@@ -1920,10 +1937,9 @@ void config_finish(void *data, Ecore_Thread *thread)
   Dim *size = config_size(config);
   
   worker_config--;
-  config->running = EINA_FALSE;
   assert(config->sink);
   
-  if (config->failed || !size) {
+  /*if (config->failed || !size) {
     free(tdata);
   }
   else {
@@ -1938,7 +1954,8 @@ void config_finish(void *data, Ecore_Thread *thread)
     preload_add(tdata);
   }
   
-  run_preload_threads();
+  run_preload_threads();*/
+  free(tdata);
 }
 
 //FIXME unify config_thread_start and config_data_get
@@ -2013,6 +2030,7 @@ void config_thread_start(File_Group *group, int nth)
   
   worker_config++;
   config->running = EINA_TRUE;
+  assert(config->sink);
   ecore_thread_run(&config_exe, &config_finish, NULL, config);
 }
 
@@ -2042,6 +2060,8 @@ void step_image_start_configs(int n)
     idx += step;
     
     group = tagfiles_nth(files, idx);
+    
+    assert(group);
     
     if (group_in_filters(group, tags_filter)) {
       for(group_idx=0;group_idx<filegroup_count(group);group_idx++)
@@ -3754,6 +3774,8 @@ elm_main(int argc, char **argv)
   lv_settings_init();
   
   settings = lv_setting_load();
+  
+  pthread_mutex_init(&barrier_lock, NULL);
   
   elm_config_scroll_thumbscroll_enabled_set(EINA_TRUE);
   

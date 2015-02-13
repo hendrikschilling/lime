@@ -261,9 +261,10 @@ int select_rand_prob(Tile *newtile, Eina_Array *metrics, int *delpos, Tile **del
   return 0;
 }
 
-void cache_stats_update_area(Tile *tile, int hit, int miss, int time, int count, Rect *area, int ch_count)
+void cache_stats_update(Tile *tile, int hit, int miss, int time, int count)
 {
   Filter_Core *fc = tile->fc;
+  Rect *area = &tile->area;
   Cache_Stat *stat;
   
   if (!cache)
@@ -277,7 +278,7 @@ void cache_stats_update_area(Tile *tile, int hit, int miss, int time, int count,
       if (time) {
 	stat->time += time;
 	stat->time_count++;
-	stat->time_kib += area->width*area->height*ch_count/1024;
+	stat->time_kib += area->width*area->height/1024;
       }
       stat->tiles += count;
   }
@@ -295,15 +296,6 @@ void cache_stats_update_area(Tile *tile, int hit, int miss, int time, int count,
   }
 }
 
-
-void cache_stats_update(Tile *tile, int hit, int miss, int time, int count)
-{
-  if (time)
-    cache_stats_update_area(tile, hit, miss, time, count, &tile->area, ea_count(tile->channels));
-  else
-    cache_stats_update_area(tile, hit, miss, 0, count, NULL, 0);
-}
-
 void cache_stats_print(void)
 {
   Cache_Stat *stat;
@@ -314,8 +306,8 @@ void cache_stats_print(void)
   printf("[CACHE] stats:\n");
   
   EINA_ITERATOR_FOREACH(iter, stat) {
-    printf("       req to %12.12s hr: %4.1f%% (%llu/%llu) tiles: %4llu time: %4.3fms per tile, %4.3fms per MP, from %llu iters\n",
-	   stat->fc->name, 100.0*stat->hits/(stat->misses+stat->hits), stat->hits, stat->misses, stat->tiles, 0.000001*stat->time/stat->time_count, .000001*stat->time/stat->time_kib*1024, stat->time_count);
+    printf("       req to %12.12s hr: %4.1f%% (%llu/%llu) tiles: %4llu time: %4.3fms per tile, %4.3fms per MP, from %llu iters, sum: %5fms\n",
+	   stat->fc->name, 100.0*stat->hits/(stat->misses+stat->hits), stat->hits, stat->misses, stat->tiles, 0.000001*stat->time/stat->time_count, .000001*stat->time/stat->time_kib*1024, stat->time_count, .000001*stat->time);
   }
 }
 

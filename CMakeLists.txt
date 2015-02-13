@@ -22,7 +22,7 @@ FIND_PACKAGE(JPEG REQUIRED)
 
 find_package (Threads)
 
-set(CMAKE_C_FLAGS "-Wall -g -O0 -fno-omit-frame-pointer")
+set(CMAKE_C_FLAGS "-Wall -g -O3 -fno-omit-frame-pointer")
 set(CMAKE_CXX_FLAGS "-Wall -g -O3 -fno-omit-frame-pointer")
 
 add_subdirectory(src/lib)

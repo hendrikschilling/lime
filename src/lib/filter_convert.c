@@ -260,6 +260,7 @@ static int prepare(Filter *f)
 					in_type, 
 					hOutProfile, 
 					out_type, 
+//most useful for two-way conversion!
 					INTENT_PERCEPTUAL, 
 					cmsFLAGS_FORCE_CLUT);
   data->common->initialized = INIT_LMCS;
