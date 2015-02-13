@@ -1938,7 +1938,7 @@ void config_finish(void *data, Ecore_Thread *thread)
   worker_config--;
   assert(config->sink);
   
-  /*if (config->failed || !size) {
+  if (config->failed || !size) {
     free(tdata);
   }
   else {
@@ -1953,8 +1953,7 @@ void config_finish(void *data, Ecore_Thread *thread)
     preload_add(tdata);
   }
   
-  run_preload_threads();*/
-  free(tdata);
+  run_preload_threads();
 }
 
 //FIXME unify config_thread_start and config_data_get
