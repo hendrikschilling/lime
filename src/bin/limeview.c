@@ -1879,7 +1879,6 @@ Config_Data *config_data_get(File_Group *group, int nth)
     return config;
   
   printf("no filterchain, check defaults\n");
-  return config;
   
   config_exif_infos(config, &cam, NULL);
   format = strrchr(tagged_file_name(config->file), '.');

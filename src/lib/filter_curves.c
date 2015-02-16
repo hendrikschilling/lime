@@ -26,7 +26,8 @@
 
 typedef struct {
   float clip, compress, exp;
-  uint8_t lut[65536];
+  float x1,x2,y1,y2;
+  uint8_t *lut;
 } _Data;
 
 static void _worker(Filter *f, Eina_Array *in, Eina_Array *out, Rect *area, int thread_id)
@@ -69,6 +70,9 @@ static int _prepare(Filter *f)
   double clip;
   double compress;
   
+  if (!data->lut)
+    data->lut = malloc(65536);
+  
   exp = pow(2.0, data->exp);
   compress = data->compress;
   clip = data->clip;
@@ -78,12 +82,33 @@ static int _prepare(Filter *f)
   x[3] = 1.0;
   y[3] = 1.0;
   
-  x[1] = 0.0995671;
+  /*x[1] = 0.0995671;
   y[1] = 0.034632;
   
   x[2] = 0.454545;
-  y[2] = 0.493506;
+  y[2] = 0.493506;*/
   
+  if (data->x1 == data->x2 || data->x1 == 0.0 || data->x1 == 1.0 || data->x2 == 0.0 || data->x2 == 1.0) {
+    //TODO handle degenerate case more gracefully?
+    x[1] = 0.25;
+    y[1] = 0.25;
+    x[2] = 0.75;
+    y[2] = 0.75;
+  }
+  else {
+    if (data->x2 > data->x1) {
+      x[1] = data->x1;
+      y[1] = data->y1;
+      x[2] = data->x2;
+      y[2] = data->y2;
+    }
+    else {
+      x[2] = data->x1;
+      y[2] = data->y1;
+      x[1] = data->x2;
+      y[1] = data->y2;
+    }
+  }
   
   ex[0] = 0.0;
   ey[0] = 0.0;
@@ -143,6 +168,18 @@ static int _prepare(Filter *f)
   return 0;
 }
 
+
+static int _del(Filter *f)
+{  
+  _Data *data = ea_data(f->data, 0);
+  
+  if (data->lut)
+    free(data->lut);
+  free(data);
+  
+  return 0;
+}
+
 static Filter *_new(void)
 {
   Filter *f = filter_new(&filter_core_curves);
@@ -153,6 +190,7 @@ static Filter *_new(void)
   f->mode_buffer->worker = _worker;
   f->mode_buffer->threadsafe = 1;
   f->prepare = &_prepare;
+  f->del = &_del;
   ea_push(f->data, data);
   f->fixme_outcount = 1;
   
@@ -234,6 +272,86 @@ static Filter *_new(void)
   bound = meta_new_data(MT_FLOAT, f, malloc(sizeof(float)));
   *(float*)bound->data = 1.0;
   meta_name_set(bound, "PARENT_SETTING_MAX");
+  meta_attach(setting, bound);
+  
+  //setting
+  setting = meta_new_data(MT_FLOAT, f, &data->x1);
+  meta_name_set(setting, "x1");
+  eina_array_push(f->settings, setting);
+  
+  bound = meta_new_data(MT_FLOAT, f, malloc(sizeof(float)));
+  *(float*)bound->data = 0.0;
+  meta_name_set(bound, "PARENT_SETTING_MIN");
+  meta_attach(setting, bound);
+  
+  bound = meta_new_data(MT_FLOAT, f, malloc(sizeof(float)));
+  *(float*)bound->data = 1.0;
+  meta_name_set(bound, "PARENT_SETTING_MAX");
+  meta_attach(setting, bound);
+  
+  bound = meta_new_data(MT_FLOAT, f, malloc(sizeof(float)));
+  *(float*)bound->data = 0.01;
+  meta_name_set(bound, "PARENT_SETTING_STEP");
+  meta_attach(setting, bound);
+  
+  //setting
+  setting = meta_new_data(MT_FLOAT, f, &data->y1);
+  meta_name_set(setting, "y1");
+  eina_array_push(f->settings, setting);
+  
+  bound = meta_new_data(MT_FLOAT, f, malloc(sizeof(float)));
+  *(float*)bound->data = 0.0;
+  meta_name_set(bound, "PARENT_SETTING_MIN");
+  meta_attach(setting, bound);
+  
+  bound = meta_new_data(MT_FLOAT, f, malloc(sizeof(float)));
+  *(float*)bound->data = 1.0;
+  meta_name_set(bound, "PARENT_SETTING_MAX");
+  meta_attach(setting, bound);
+  
+  bound = meta_new_data(MT_FLOAT, f, malloc(sizeof(float)));
+  *(float*)bound->data = 0.01;
+  meta_name_set(bound, "PARENT_SETTING_STEP");
+  meta_attach(setting, bound);
+  
+  //setting
+  setting = meta_new_data(MT_FLOAT, f, &data->x2);
+  meta_name_set(setting, "x2");
+  eina_array_push(f->settings, setting);
+  
+  bound = meta_new_data(MT_FLOAT, f, malloc(sizeof(float)));
+  *(float*)bound->data = 0.0;
+  meta_name_set(bound, "PARENT_SETTING_MIN");
+  meta_attach(setting, bound);
+  
+  bound = meta_new_data(MT_FLOAT, f, malloc(sizeof(float)));
+  *(float*)bound->data = 1.0;
+  meta_name_set(bound, "PARENT_SETTING_MAX");
+  meta_attach(setting, bound);
+  
+  bound = meta_new_data(MT_FLOAT, f, malloc(sizeof(float)));
+  *(float*)bound->data = 0.01;
+  meta_name_set(bound, "PARENT_SETTING_STEP");
+  meta_attach(setting, bound);
+  
+  //setting
+  setting = meta_new_data(MT_FLOAT, f, &data->y2);
+  meta_name_set(setting, "y2");
+  eina_array_push(f->settings, setting);
+  
+  bound = meta_new_data(MT_FLOAT, f, malloc(sizeof(float)));
+  *(float*)bound->data = 0.0;
+  meta_name_set(bound, "PARENT_SETTING_MIN");
+  meta_attach(setting, bound);
+  
+  bound = meta_new_data(MT_FLOAT, f, malloc(sizeof(float)));
+  *(float*)bound->data = 1.0;
+  meta_name_set(bound, "PARENT_SETTING_MAX");
+  meta_attach(setting, bound);
+  
+  bound = meta_new_data(MT_FLOAT, f, malloc(sizeof(float)));
+  *(float*)bound->data = 0.01;
+  meta_name_set(bound, "PARENT_SETTING_STEP");
   meta_attach(setting, bound);
   
   return f;

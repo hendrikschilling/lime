@@ -105,7 +105,7 @@ static void _worker(Filter *f, Eina_Array *in, Eina_Array *out, Rect *area, int 
       data->common->raw->params.no_auto_bright = 1;
       data->common->raw->params.no_auto_scale = 0;
       data->common->raw->params.use_auto_wb = 0;
-      data->common->raw->params.use_camera_matrix = 1;
+      data->common->raw->params.use_camera_matrix = 0;
       data->common->raw->params.output_bps = 16;
       
       //exposure
@@ -175,7 +175,7 @@ static int _input_fixed(Filter *f)
   int rot;
   _Data *data = ea_data(f->data, 0);
   
-  data->common->raw->params.use_camera_matrix = 1;
+  data->common->raw->params.use_camera_matrix = 0;
   data->common->raw->params.use_camera_wb = 1;
   data->common->raw->params.user_flip = 0;
   data->common->raw->params.use_rawspeed = 0;
