@@ -31,3 +31,8 @@ libraw_data_t *libraw_data_copy(libraw_data_t *src)
   
   return &copy->imgdata;
 }
+
+void libraw_copy_del(libraw_data_t *copy)
+{  
+  delete (LibRaw *)copy->parent_class;
+}

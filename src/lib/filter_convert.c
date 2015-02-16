@@ -54,7 +54,7 @@ static void *_data_new(Filter *f, void *data)
   _Data *newdata = calloc(sizeof(_Data), 1);
   
   *newdata = *(_Data*)data;
-  newdata->buf = cache_buffer_alloc(DEFAULT_TILE_AREA*3);
+  newdata->buf = NULL;
   
   if (newdata->common->initialized == INIT_SWS)
     newdata->sws = sws_getContext(DEFAULT_TILE_SIZE, DEFAULT_TILE_SIZE, newdata->common->lav_fmt_in, DEFAULT_TILE_SIZE, DEFAULT_TILE_SIZE, newdata->common->lav_fmt_out, SWS_POINT, NULL, NULL, NULL);
@@ -94,6 +94,9 @@ static void _worker(Filter *f, Eina_Array *in, Eina_Array *out, Rect *area, int 
   uint8_t *out_planes[3];
   int in_strides[3] = {DEFAULT_TILE_SIZE, DEFAULT_TILE_SIZE, DEFAULT_TILE_SIZE};
   int out_strides[3] = {DEFAULT_TILE_SIZE, DEFAULT_TILE_SIZE, DEFAULT_TILE_SIZE};
+  
+  if (!data->buf)
+    data->buf = cache_buffer_alloc(DEFAULT_TILE_AREA*3);
   
   buf = data->buf;
   
@@ -354,7 +357,6 @@ Filter *filter_convert_new(void)
   filter->del = &_del;
   _Data *data = calloc(sizeof(_Data), 1);
   data->common = calloc(sizeof(_Common), 1);
-  data->buf = cache_buffer_alloc(DEFAULT_TILE_AREA*3);
   ea_push(filter->data, data);
   Meta *ch_out_color[3];
   

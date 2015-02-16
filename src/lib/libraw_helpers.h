@@ -20,7 +20,10 @@
 #include <libraw.h>
 
 #ifdef __cplusplus
-extern "C" libraw_data_t *libraw_data_copy(libraw_data_t *src);
-#else
+extern "C" {
+#endif
 libraw_data_t *libraw_data_copy(libraw_data_t *src);
+void libraw_copy_del(libraw_data_t *copy);
+#ifdef __cplusplus
+}
 #endif

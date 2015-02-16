@@ -321,6 +321,7 @@ void cache_uncached_sub(int mem)
   cache->uncached -= mem;
 }
 
+//FIXME not threadsafe but used in worker threads!
 void *cache_buffer_alloc(int mem)
 {
   cache->buffers += mem;

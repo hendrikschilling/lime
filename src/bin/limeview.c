@@ -63,7 +63,8 @@
 
 //FIXME adjust depending on speed!
 //FIXME fix threaded config
-#define PRELOAD_CONFIG_RANGE 32
+#define PRELOAD_CONFIG_RANGE 8
+#define KEEP_CONFIG_RANGE 0
 //FIXME fix image preload
 #define PRELOAD_IMG_RANGE 2
 #define PRELOAD_THRESHOLD 8
@@ -1604,6 +1605,18 @@ void delgrid(void)
   finished_threads = eina_array_new(16);
 }
 
+
+
+void jump_image_do(void *data, Evas_Object *obj)
+{
+  step_image_config_reset_range(files, tagfiles_idx(files)-PRELOAD_CONFIG_RANGE-1, tagfiles_idx(files)+PRELOAD_CONFIG_RANGE+1);
+  group_config_reset(config_curr);
+  config_curr = NULL;
+  
+  tagfiles_idx_set(files, (intptr_t)data);
+  step_image_do(NULL, NULL);
+}
+
 static void on_jump_image(void *data, Evas_Object *obj, void *event_info)
 {
   if (!files)
@@ -1617,13 +1630,11 @@ static void on_jump_image(void *data, Evas_Object *obj, void *event_info)
   //FIXME don't reset around next/target idx
   //FIXME we still will leak configs if we are currently rendering stuff!
   //FIXME segfaults if this happens - disable for now!
-  //step_image_config_reset_range(files, tagfiles_idx(files)-abs(last_file_step*PRELOAD_CONFIG_RANGE)-1, tagfiles_idx(files)+abs(last_file_step*PRELOAD_CONFIG_RANGE+1);
-  tagfiles_idx_set(files, idx);
   
   if (mat_cache_old && !worker)
     _display_preview(NULL);
   //FIXME detect if same actions come behind each other and skip?
-  workerfinish_schedule(&step_image_do, NULL, NULL, EINA_FALSE);
+  workerfinish_schedule(&jump_image_do, (intptr_t)idx, NULL, EINA_FALSE);
 }
 
 
@@ -1733,6 +1744,9 @@ void group_config_reset(File_Group *group)
   int i;
   Config_Data *config;
   
+  if (!group)
+    return;
+  
   //printf("FIXME temporary: no group_config_reset\n");
   
   //FIXME clean pending refs to config from preload_list (and other?)
@@ -1740,6 +1754,11 @@ void group_config_reset(File_Group *group)
   //FIXME delete group cb
   printf("FIXME delete group_changed_cb\n");
   //tagfiles_group_changed_cb_delete(files);
+  
+  if (!filegroup_basename(group)) {
+    printf("FIXME what does this mean?\n");
+    return;
+  }
   
   for(i=0;i<filegroup_count(group);i++)
   {
@@ -2114,7 +2133,7 @@ void step_image_preload_next(int n)
   }
 }
 
-//TODO what about wrapping? problems with small number of files (reset before use...)
+//FIXME what about wrapping? problems with small number of files (reset before use...)
 void step_image_config_reset_range(Tagfiles *files, int start, int end)
 {
   int i;
@@ -2217,7 +2236,7 @@ void step_image_do(void *data, Evas_Object *obj)
   }
   
   if (last_file_step == 1 || last_file_step == -1)
-    group_config_reset(tagfiles_nth(files, tagfiles_idx(files)-last_file_step*PRELOAD_CONFIG_RANGE));
+    step_image_config_reset_range(files, tagfiles_idx(files)-PRELOAD_CONFIG_RANGE-2, tagfiles_idx(files)-KEEP_CONFIG_RANGE-1);
   
   del_filter_settings();  
   

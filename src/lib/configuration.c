@@ -91,8 +91,11 @@ void lime_filter_config_ref(Filter *f)
 
 void lime_filter_config_unref(Filter *f)
 {
-  Config * c = filter_chain_last_filter(f)->c;
+  if (!f)
+    return;
   
+  Config * c = filter_chain_last_filter(f)->c;
+
   assert(c);
     
   if (!c->refcount) {
@@ -1257,6 +1260,7 @@ void lime_config_reset(Filter *f)
   }
   
   if (c->refcount) {
+    printf("lime config reset: exiting references to config!\n");
     pthread_mutex_unlock(&f->lock);
     c->delete = EINA_TRUE;
     return;
@@ -1280,6 +1284,8 @@ int lime_config_test(Filter *f_sink)
   c = filter_chain_last_filter(f)->c;
   
   if (c && c->configured) {
+    if (c->delete)
+      printf("FIXME config test: already configured (delete: %d)!\n", c->delete);
     pthread_mutex_unlock(&filter_chain_last_filter(f_sink)->lock);
     return 0;
   }

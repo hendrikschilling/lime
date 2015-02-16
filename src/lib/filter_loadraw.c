@@ -34,13 +34,17 @@
 
 #define RAW_TILING_BORDER 8
 
+//#define RAW_THREADSAFE_BUT_LEAK
 
 /* Expanded data source object for stdio input */
 
 typedef struct {
   libraw_data_t *raw;
   int unpacked;
+  int opened;
+#ifdef RAW_THREADSAFE_BUT_LEAK
   pthread_mutex_t lock;
+#endif
   Meta *exif;
 } _Common;
 
@@ -74,7 +78,6 @@ typedef struct {
   char *filename;
   Meta *fliprot;
   int thumb_len;
-  uint8_t *thumb_data;
   libraw_data_t *raw;
 } _Data;
 
@@ -90,14 +93,20 @@ static void _worker(Filter *f, Eina_Array *in, Eina_Array *out, Rect *area, int 
   int tb;
   int offx, offy;
   int w, h;
+#ifdef RAW_THREADSAFE_BUT_LEAK
   _Data *data = ea_data(f->data, thread_id);
   _Data *tdata;
+#else
+  _Data *data = ea_data(f->data, 0);
+#endif
   Tiledata *out_td;
   libraw_processed_image_t *img;
   int errcode;
   
   if (!data->common->unpacked) {
+#ifdef RAW_THREADSAFE_BUT_LEAK
     pthread_mutex_lock(&data->common->lock);
+#endif
     if (!data->common->unpacked) {
       
       data->common->raw->params.user_qual = 10;
@@ -128,12 +137,20 @@ static void _worker(Filter *f, Eina_Array *in, Eina_Array *out, Rect *area, int 
       libraw_unpack(data->common->raw);
       data->common->unpacked = 1;
       
+#ifdef RAW_THREADSAFE_BUT_LEAK
       for(i=0;i<ea_count(f->data);i++) {
         tdata = ea_data(f->data, i);
+        //if (tdata->raw)
+          //libraw_copy_del(tdata->raw);
         tdata->raw = libraw_data_copy(data->common->raw);
       }
+#else
+    data->raw = data->common->raw;
+#endif
     }
+#ifdef RAW_THREADSAFE_BUT_LEAK
     pthread_mutex_unlock(&data->common->lock);
+#endif
   }
   
   assert(out && ea_count(out) == 3);
@@ -168,10 +185,14 @@ static void _worker(Filter *f, Eina_Array *in, Eina_Array *out, Rect *area, int 
       for(ch=0;ch<3;ch++)
         ptr[ch] = ((uint16_t*)img->data)[((j+offy)*img->width+i+offx)*3+ch];
     }
+  
+  libraw_dcraw_clear_mem(img);
+  libraw_free_image(data->raw);
 }
 
 static int _input_fixed(Filter *f)
 {
+  int i;
   int rot;
   _Data *data = ea_data(f->data, 0);
   
@@ -182,8 +203,16 @@ static int _input_fixed(Filter *f)
   
   //data->common->raw->params.camera_profile = "/usr/share/rawtherapee/dcpprofiles/Olympus E-M5.dcp";
   
+  if (data->common->opened) {
+    libraw_recycle(data->common->raw);
+    libraw_recycle_datastream(data->common->raw);
+    //libraw_close(data->common->raw);
+  }
+  
   if (libraw_open_file(data->common->raw, data->input->data))
     return -1;
+  
+  data->common->opened = 1;
   
   //printf("raw profile: %s\n", data->common->raw->params.camera_profile);
   
@@ -200,7 +229,7 @@ static int _input_fixed(Filter *f)
   data->w = data->common->raw->sizes.width;
   data->h = data->common->raw->sizes.height;
   
-  ((Dim*)data->dim)->scaledown_max = 1;
+  ((Dim*)data->dim)->scaledown_max = 0;
   ((Dim*)data->dim)->width = data->w;
   ((Dim*)data->dim)->height = data->h;
   
@@ -216,6 +245,15 @@ static int _input_fixed(Filter *f)
   
   data->common->exif->data = lime_exif_handle_new_from_file(data->input->data);
   assert(data->common->exif->data);
+  
+#ifdef RAW_THREADSAFE_BUT_LEAK
+  /*for(i=0;i<ea_count(f->data);i++) {
+    data = ea_data(f->data, i);
+    if (data->raw)
+      libraw_copy_del(data->raw);
+    data->raw = NULL;
+  }*/
+#endif
 
   return 0;
 }
@@ -226,12 +264,23 @@ static int _del(Filter *f)
   _Data *data = ea_data(f->data, 0);
   int i;
   
-  free(data->thumb_data);
-  free(data->size_pos);  
+  if (data->common->opened) {
+    libraw_recycle(data->common->raw);
+    libraw_recycle_datastream(data->common->raw);
+  }
+  
+  libraw_close(data->common->raw);
+  
+  if (data->common->exif->data)
+    lime_exif_handle_destroy(data->common->exif->data);
+  
   free(data->common);
+  free(data->dim);
   
   for(i=0;i<ea_count(f->data);i++) {
     data = ea_data(f->data, i);
+    /*if (data->raw)
+      libraw_copy_del(data->raw);*/
     free(data);
   }
   
@@ -239,6 +288,7 @@ static int _del(Filter *f)
   return 0;
 }
 
+#ifdef RAW_THREADSAFE_BUT_LEAK
 static void *_data_new(Filter *f, void *data)
 {
   _Data *newdata = calloc(sizeof(_Data), 1);
@@ -248,6 +298,7 @@ static void *_data_new(Filter *f, void *data)
   
   return newdata;
 }
+#endif
 
 static Filter *_new(void)
 {
@@ -255,16 +306,19 @@ static Filter *_new(void)
   Meta *in, *out, *channel, *bitdepth, *color, *dim, *fliprot, *exif;
   _Data *data = calloc(sizeof(_Data), 1);
   data->common = calloc(sizeof(_Common), 1);
-  data->size_pos = calloc(sizeof(int*), 1);
   data->dim = calloc(sizeof(Dim), 1);
   data->common->raw = libraw_init(0);
+#ifdef RAW_THREADSAFE_BUT_LEAK
   pthread_mutex_init(&data->common->lock, NULL);
+#endif
   
   filter->del = &_del;
   filter->mode_buffer = filter_mode_buffer_new();
   filter->mode_buffer->worker = &_worker;
+#ifdef RAW_THREADSAFE_BUT_LEAK
   filter->mode_buffer->threadsafe = 1;
   filter->mode_buffer->data_new = &_data_new;
+#endif
   filter->input_fixed = &_input_fixed;
   filter->fixme_outcount = 3;
   ea_push(filter->data, data);
