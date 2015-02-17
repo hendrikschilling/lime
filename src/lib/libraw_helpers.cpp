@@ -21,9 +21,11 @@
 
 #include "libraw_helpers.h"
 
+//ATTENTION here be dragons - this could break in so many ways...
+
 libraw_data_t *libraw_data_copy(libraw_data_t *src)
 {
-  LibRaw *copy = new LibRaw(0);
+  LibRaw *copy = (LibRaw*)malloc(sizeof(LibRaw));
   
   memcpy(copy, src->parent_class, sizeof(LibRaw));
   
@@ -34,5 +36,5 @@ libraw_data_t *libraw_data_copy(libraw_data_t *src)
 
 void libraw_copy_del(libraw_data_t *copy)
 {  
-  delete (LibRaw *)copy->parent_class;
+  free((LibRaw *)copy->parent_class);
 }

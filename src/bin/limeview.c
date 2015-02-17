@@ -64,9 +64,8 @@
 //FIXME adjust depending on speed!
 //FIXME fix threaded config
 #define PRELOAD_CONFIG_RANGE 8
-#define KEEP_CONFIG_RANGE 1
-//FIXME fix image preload
 #define PRELOAD_IMG_RANGE 2
+#define KEEP_CONFIG_RANGE PRELOAD_IMG_RANGE
 #define PRELOAD_THRESHOLD 8
 
 //#define FIX_DISABLE_PRELOAD
@@ -345,7 +344,10 @@ void grid_setsize(void)
 
 void fc_save_change_update_scroller(void)
 {
-  lime_config_test(config_curr->sink);
+  int failed = lime_config_test(config_curr->sink);
+  
+  if (failed) 
+    printf("FIXME change to filterchain caused config to fail!\n");
   
   tagged_file_filterchain_set(cur_file, cur_group, lime_filter_chain_serialize(((Filter_Chain*)eina_list_data_get(eina_list_next(config_curr->filter_chain)))->f));
   
@@ -1822,9 +1824,17 @@ Config_Data *config_build(File_Group *group, int nth)
 
   config = filegroup_data_get(group, nth);
   
-  if (config && config->sink)
-    return config;
-  //FIXME else if config free(config) ?
+  if (config && config->sink) {
+    if (config->running)
+      while(config->running) {
+        pthread_mutex_lock(&barrier_lock);
+        usleep(20);
+        pthread_mutex_unlock(&barrier_lock);
+      }
+      
+      return config;
+  }
+  else printf("FIXME config_build: config but no sink\n");
   
   tagfiles_group_changed_cb_insert(files, group, filegroup_changed_cb);
   
@@ -1920,13 +1930,6 @@ Config_Data *config_data_get(File_Group *group, int nth)
   
   if (!config)
     return NULL;
-  
-  if (config->running)
-    while(config->running) {
-      pthread_mutex_lock(&barrier_lock);
-      usleep(20);
-      pthread_mutex_unlock(&barrier_lock);
-    }
 
   config->failed = lime_config_test(config->sink);
   

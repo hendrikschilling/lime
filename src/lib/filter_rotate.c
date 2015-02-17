@@ -222,6 +222,7 @@ static int _del(Filter *f)
   return 0;
 }
 
+//FIXME specify bitdepth!
 static Filter *_new(void)
 {
   Filter *filter = filter_new(&filter_core_rotate);

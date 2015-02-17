@@ -34,7 +34,7 @@
 
 #define RAW_TILING_BORDER 8
 
-//#define RAW_THREADSAFE_BUT_LEAK
+#define RAW_THREADSAFE_BUT_LEAK
 
 /* Expanded data source object for stdio input */
 
@@ -142,8 +142,8 @@ static void _worker(Filter *f, Eina_Array *in, Eina_Array *out, Rect *area, int 
 #ifdef RAW_THREADSAFE_BUT_LEAK
       for(i=0;i<ea_count(f->data);i++) {
         tdata = ea_data(f->data, i);
-        //if (tdata->raw)
-          //libraw_copy_del(tdata->raw);
+        if (tdata->raw)
+          libraw_copy_del(tdata->raw);
         tdata->raw = libraw_data_copy(data->common->raw);
       }
 #else
@@ -254,12 +254,12 @@ static int _input_fixed(Filter *f)
   assert(data->common->exif->data);
   
 #ifdef RAW_THREADSAFE_BUT_LEAK
-  /*for(i=0;i<ea_count(f->data);i++) {
+  for(i=0;i<ea_count(f->data);i++) {
     data = ea_data(f->data, i);
     if (data->raw)
       libraw_copy_del(data->raw);
     data->raw = NULL;
-  }*/
+  }
 #endif
 
   return 0;
@@ -291,8 +291,8 @@ static int _del(Filter *f)
   
   for(i=0;i<ea_count(f->data);i++) {
     data = ea_data(f->data, i);
-    /*if (data->raw)
-      libraw_copy_del(data->raw);*/
+    if (data->raw)
+      libraw_copy_del(data->raw);
     free(data);
   }
   
