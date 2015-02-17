@@ -93,6 +93,8 @@ int quick_preview_only = 0;
 int cur_key_down = 0;
 int key_repeat = 0;
 
+const double zoom_fac = 1.4142136;
+
 pthread_mutex_t barrier_lock;
 
 int config_waitfor_idx;
@@ -2698,7 +2700,7 @@ void zoom_in_do(void)
     evas_object_size_hint_min_get(grid, &grid_w, &grid_h);
     
     
-    scale_goal /= 1.5;
+    scale_goal /= zoom_fac;
     if (scale_goal < 0.25)
       scale_goal = 0.25;
     
@@ -2921,7 +2923,7 @@ void zoom_out_do(void)
   
   fit = 0;
   
-  scale_goal *= 1.5;
+  scale_goal *= zoom_fac;
   
   new_scaledown = 1.0/config_actual_scale_get(config_curr)*scale_goal;
   

@@ -32,6 +32,7 @@ static const int bord = 16;
 typedef struct {
   int iterations;
   float radius;
+  float sharpen;
   void *blur_b, *estimate_b, *fac_b;
   uint8_t lut[65536];
 } _Common;
@@ -108,49 +109,45 @@ static void _worker(Filter *f, Eina_Array *in, Eina_Array *out, Rect *area, int 
     return;
   }
   
-  //16bit sharpen
-  /*float s = 1.0;
-  uint16_t *buf_out, *buf_in1, *buf_in2, *buf_in3;
-  for(j=0;j<area->height;j++) {
-    buf_out = tileptr16_3(out_td, area->corner.x, area->corner.y+j);
-    buf_in1 = tileptr16_3(in_td, in_area.corner.x+bord, in_area.corner.y+bord+j-1);
-    buf_in2 = tileptr16_3(in_td, in_area.corner.x+bord, in_area.corner.y+bord+j);
-    buf_in3 = tileptr16_3(in_td, in_area.corner.x+bord, in_area.corner.y+bord+j+1);
-    for(i=0;i<area->width*3;i++) {
-      *buf_out =  clip_u16(((1.0+4*s)*buf_in2[0] - s*(buf_in1[0] + buf_in2[-3] + buf_in2[3] + buf_in3[0])));
-      buf_out++;
-      buf_in1++;
-      buf_in2++;
-      buf_in3++;
-    }
-  }*/
-  
   uint16_t *newestimate = malloc(size);
   
   memcpy(estimate, input, 3*sizeof(uint16_t)*in_area.width*in_area.height);
   
-  for(i=0;i<data->common->iterations;i++) {
-    simplegauss(in_area, estimate, blur, data->common->radius);
-    lrdiv(in_area, input, blur, fac);
-    simplegauss(in_area, fac, fac, data->common->radius);
-    lrmul(in_area, estimate, fac, newestimate);
-    memcpy(estimate, newestimate, size);
-  }
+  if (data->common->radius)
+    for(i=0;i<data->common->iterations;i++) {
+      simplegauss(in_area, estimate, blur, data->common->radius);
+      lrdiv(in_area, input, blur, fac);
+      simplegauss(in_area, fac, fac, data->common->radius);
+      lrmul(in_area, estimate, fac, newestimate);
+      memcpy(estimate, newestimate, size);
+    }
   
   free(newestimate);
   
-  for(j=0;j<area->height;j++)
-    for(i=0;i<area->width*3;i++) {
-	output[j*area->width*3+i] = estimate[(j+bord)*in_area.width*3+i+3*bord];
+  if (data->common->sharpen == 0.0) {
+    for(j=0;j<area->height;j++)
+      for(i=0;i<area->width*3;i++) {
+          output[j*area->width*3+i] = estimate[(j+bord)*in_area.width*3+i+3*bord];
+      }
+  }
+  else {
+    //16bit sharpen
+    float s = data->common->sharpen*0.01;
+    uint16_t *buf_out, *buf_in1, *buf_in2, *buf_in3;
+    for(j=0;j<area->height;j++) {
+      buf_out = tileptr16_3(out_td, area->corner.x, area->corner.y+j);
+      buf_in1 = estimate+(j+bord-1)*in_area.width*3+3*bord;
+      buf_in2 = estimate+(j+bord+0)*in_area.width*3+3*bord;
+      buf_in3 = estimate+(j+bord+1)*in_area.width*3+3*bord;
+      for(i=0;i<area->width*3;i++) {
+        *buf_out =  clip_u16(((1.0+4*s)*buf_in2[0] - s*(buf_in1[0] + buf_in2[-3] + buf_in2[3] + buf_in3[0])));
+        buf_out++;
+        buf_in1++;
+        buf_in2++;
+        buf_in3++;
+      }
     }
-}
-
-static double lin2gamma(double lin)
-{
-  if (lin <= 0.0031308)
-    return 12.92*lin;
-  else
-    return (1+0.055)*pow(lin,1/2.4)-0.055;
+  }
 }
 
 static void _area_calc(Filter *f, Rect *in, Rect *out)
@@ -165,14 +162,6 @@ static void _area_calc(Filter *f, Rect *in, Rect *out)
     out->width = in->width+2*bord;
     out->height = in->height+2*bord;
   }
-}
-
-static int _input_fixed(Filter *f)
-{
-  _Data *data = ea_data(f->data, 0);
-  
-  
-  return 0;
 }
 
 static int _del(Filter *f)
@@ -213,7 +202,6 @@ static Filter *_new(void)
   f->mode_buffer->area_calc = _area_calc;
   f->mode_buffer->threadsafe = 1;
   f->mode_buffer->data_new = &_data_new;
-  f->input_fixed = _input_fixed;
   f->del = _del;
   ea_push(f->data, data);
   f->fixme_outcount = 1;
@@ -283,6 +271,21 @@ static Filter *_new(void)
   
   bound = meta_new_data(MT_INT, f, malloc(sizeof(int)));
   *(int*)bound->data = 100;
+  meta_name_set(bound, "PARENT_SETTING_MAX");
+  meta_attach(setting, bound);
+  
+  //setting
+  setting = meta_new_data(MT_FLOAT, f, &data->common->sharpen);
+  meta_name_set(setting, "sharpen");
+  eina_array_push(f->settings, setting);
+  
+  bound = meta_new_data(MT_FLOAT, f, malloc(sizeof(float)));
+  *(float*)bound->data = 0.0;
+  meta_name_set(bound, "PARENT_SETTING_MIN");
+  meta_attach(setting, bound);
+  
+  bound = meta_new_data(MT_FLOAT, f, malloc(sizeof(float)));
+  *(float*)bound->data = 100.0;
   meta_name_set(bound, "PARENT_SETTING_MAX");
   meta_attach(setting, bound);
   

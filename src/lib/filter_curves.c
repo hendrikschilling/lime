@@ -27,20 +27,20 @@
 typedef struct {
   float clip, compress, exp;
   float x1,x2,y1,y2;
-  uint8_t *lut;
+  uint16_t *lut;
 } _Data;
 
 static void _worker(Filter *f, Eina_Array *in, Eina_Array *out, Rect *area, int thread_id)
 { 
   int i, j;
-  uint8_t *output;
+  uint16_t *output;
   uint16_t *input;
   _Data *data = ea_data(f->data, 0);
 
   assert(in && ea_count(in) == 1);
   assert(out && ea_count(out) == 1);
   
-  hack_tiledata_fixsize(3, ea_data(out, 0));
+  hack_tiledata_fixsize(6, ea_data(out, 0));
   
   input = ((Tiledata*)ea_data(in, 0))->data;
   output = ((Tiledata*)ea_data(out, 0))->data;
@@ -71,7 +71,7 @@ static int _prepare(Filter *f)
   double compress;
   
   if (!data->lut)
-    data->lut = malloc(65536);
+    data->lut = malloc(sizeof(uint16_t)*65536);
   
   exp = pow(2.0, data->exp);
   compress = data->compress;
@@ -160,7 +160,7 @@ static int _prepare(Filter *f)
     ye = lin2gamma(gsl_spline_eval(spline_exp, i*(1.0/65536.0), acc_exp));
     //ye = lin2gamma(i*(1.0/65536.0));
     yc = gsl_spline_eval(spline, ye, acc);
-    data->lut[i] = imin((int)(yc*256.0),255);
+    data->lut[i] = imin((int)(yc*65536.0),65535);
   }
   gsl_spline_free (spline);
   gsl_interp_accel_free (acc);
@@ -203,8 +203,8 @@ static Filter *_new(void)
   
   //tune bitdepth
   bd_out = meta_new_select(MT_BITDEPTH, f, eina_array_new(2));
-  //pushint(bd_out->select, BD_U16);
-  pushint(bd_out->select, BD_U8);
+  pushint(bd_out->select, BD_U16);
+  //pushint(bd_out->select, BD_U8);
   bd_out->dep = bd_out;
   eina_array_push(f->tune, bd_out);
   

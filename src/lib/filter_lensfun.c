@@ -99,6 +99,7 @@ static void _worker(Filter *f, Eina_Array *in, Eina_Array *out, Rect *area, int 
   uint16_t *output;
   uint16_t *input;
   uint16_t *pos;
+  int scale;
   _Data *data = ea_data(f->data, 0);
   Tiledata *in_td, *out_td;
   Rect in_area;
@@ -126,40 +127,79 @@ static void _worker(Filter *f, Eina_Array *in, Eina_Array *out, Rect *area, int 
     return;
   }
   
-  w = ((Dim*)data->common->dim_in_meta->data)->width;
-  h = ((Dim*)data->common->dim_in_meta->data)->height;
-  
-  mod = lf_modifier_new(data->common->lens, data->common->lens->CropFactor, w>>area->corner.scale, h>>area->corner.scale);
-  lf_modifier_initialize(mod, data->common->lens, LF_PF_U16, data->common->f, data->common->f_num, data->common->f_dist, 0.0, LF_RECTILINEAR, LF_MODIFY_ALL, 0);
-  
-  coords = malloc(2*3*sizeof(float)*area->width);
-  
-  //FIXME fix negative y and x rounding (->fx)
-  
-  for(j=0;j<area->height;j++) {
-    lf_modifier_apply_subpixel_geometry_distortion(mod, area->corner.x, area->corner.y+j, area->width, 1, coords);
-    for(i=0;i<area->width;i++)
-      for(ch=0;ch<3;ch++) {
-        //FIXME can we realiably catch this in area_calc?
-        if (coords[i*2*3+ch*2] < in_area.corner.x || coords[i*2*3+ch*2] >= in_area.corner.x+in_area.width-1)
-          continue;
-        if (coords[i*2*3+ch*2+1] < in_area.corner.y || coords[i*2*3+ch*2+1] >= in_area.corner.y+in_area.height-1)
-          continue;
-        x = coords[i*2*3+ch*2];
-        y = coords[i*2*3+ch*2+1];
-        fx = x-(int)x;
-        fy = y-(int)y;
-        pos = tileptr16_3(in_td, x, y) + ch;
-        tileptr16_3(out_td, area->corner.x+i, area->corner.y+j)[ch] = 
-           pos[0]*(1.0-fx)*(1.0-fy)
-          +pos[3]*(fx)*(1.0-fy)
-          +pos[in_area.width*3]*(1.0-fx)*(fy)
-          +pos[in_area.width*3+3]*(fx)*(fy);
-      }
+  if (area->corner.scale) {
+    scale = area->corner.scale-1;
+    w = ((Dim*)data->common->dim_in_meta->data)->width;
+    h = ((Dim*)data->common->dim_in_meta->data)->height;
+    
+    mod = lf_modifier_new(data->common->lens, data->common->lens->CropFactor, w>>scale, h>>scale);
+    lf_modifier_initialize(mod, data->common->lens, LF_PF_U16, data->common->f, data->common->f_num, data->common->f_dist, 0.0, LF_RECTILINEAR, LF_MODIFY_ALL, 0);
+    
+    coords = malloc(2*3*sizeof(float)*area->width);
+    
+    //FIXME fix negative y and x rounding (->fx)
+    
+    for(j=0;j<area->height;j++) {
+      lf_modifier_apply_subpixel_geometry_distortion(mod, area->corner.x, area->corner.y+j, area->width, 1, coords);
+      for(i=0;i<area->width;i++)
+        for(ch=0;ch<3;ch++) {
+          //FIXME can we realiably catch this in area_calc?
+          x = coords[i*2*3+ch*2];
+          y = coords[i*2*3+ch*2+1];
+          if (x < in_area.corner.x || x >= in_area.corner.x+in_area.width-1)
+            continue;
+          if (y < in_area.corner.y || y >= in_area.corner.y+in_area.height-1)
+            continue;
+          fx = x-(int)x;
+          fy = y-(int)y;
+          pos = tileptr16_3(in_td, x, y) + ch;
+          tileptr16_3(out_td, area->corner.x+i, area->corner.y+j)[ch] = 
+            pos[0]*(1.0-fx)*(1.0-fy)
+            +pos[3]*(fx)*(1.0-fy)
+            +pos[in_area.width*3]*(1.0-fx)*(fy)
+            +pos[in_area.width*3+3]*(fx)*(fy);
+        }
+    }
+    
+    lf_modifier_destroy(mod);
+    free(coords);
   }
-  
-  lf_modifier_destroy(mod);
-  free(coords);
+  else {
+    w = ((Dim*)data->common->dim_in_meta->data)->width*2;
+    h = ((Dim*)data->common->dim_in_meta->data)->height*2;
+    
+    mod = lf_modifier_new(data->common->lens, data->common->lens->CropFactor, w, h);
+    lf_modifier_initialize(mod, data->common->lens, LF_PF_U16, data->common->f, data->common->f_num, data->common->f_dist, 0.0, LF_RECTILINEAR, LF_MODIFY_ALL, 0);
+    
+    coords = malloc(2*3*sizeof(float)*area->width);
+    
+    //FIXME fix negative y and x rounding (->fx)
+    
+    for(j=0;j<area->height;j++) {
+      lf_modifier_apply_subpixel_geometry_distortion(mod, area->corner.x, area->corner.y+j, area->width, 1, coords);
+      for(i=0;i<area->width;i++)
+        for(ch=0;ch<3;ch++) {
+          //FIXME can we realiably catch this in area_calc?
+          x = coords[i*2*3+ch*2]*0.5;
+          y = coords[i*2*3+ch*2+1]*0.5;
+          if (x < in_area.corner.x || x >= in_area.corner.x+in_area.width-1)
+            continue;
+          if (y < in_area.corner.y || y >= in_area.corner.y+in_area.height-1)
+            continue;
+          fx = x-(int)x;
+          fy = y-(int)y;
+          pos = tileptr16_3(in_td, x, y) + ch;
+          tileptr16_3(out_td, area->corner.x+i, area->corner.y+j)[ch] = 
+            pos[0]*(1.0-fx)*(1.0-fy)
+            +pos[3]*(fx)*(1.0-fy)
+            +pos[in_area.width*3]*(1.0-fx)*(fy)
+            +pos[in_area.width*3+3]*(fx)*(fy);
+        }
+    }
+    
+    lf_modifier_destroy(mod);
+    free(coords);
+  }
 }
 
 void fminmax(float *in, float *min, float *max)
@@ -183,6 +223,9 @@ void mod_min_max(lfModifier *mod, int x, int y, float *min, float *max)
 static void _area_calc(Filter *f, Rect *in, Rect *out)
 { 
   int w, h, ch;
+  int rx, ry, rw, rh;
+  int scale;
+  lfModifier *mod;
   _Data *data = eina_array_data_get(f->data, 0);
   float min[2], max[2];
   
@@ -196,34 +239,74 @@ static void _area_calc(Filter *f, Rect *in, Rect *out)
   max[0] = FLT_MIN;
   max[1] = FLT_MIN;
   
-  w = ((Dim*)data->common->dim_in_meta->data)->width;
-  h = ((Dim*)data->common->dim_in_meta->data)->height;
+  rx = in->corner.x;
+  ry = in->corner.y;
+  rw = in->width;
+  rh = in->height;
   
-  lfModifier *mod = lf_modifier_new(data->common->lens, data->common->lens->CropFactor, w>>in->corner.scale, h>>in->corner.scale);
-  lf_modifier_initialize(mod, data->common->lens, LF_PF_U16, data->common->f, data->common->f_num, data->common->f_dist, 0.0, LF_RECTILINEAR, LF_MODIFY_ALL, 0);
-  
-  mod_min_max(mod, in->corner.x, in->corner.y, min, max);
-  mod_min_max(mod, in->corner.x+in->width, in->corner.y, min, max);
-  mod_min_max(mod, in->corner.x, in->corner.y+in->height, min, max);
-  mod_min_max(mod, in->corner.x+in->width, in->corner.y+in->height, min, max);
+  if (in->corner.scale) {
+    scale = in->corner.scale-1;
+    w = ((Dim*)data->common->dim_in_meta->data)->width;
+    h = ((Dim*)data->common->dim_in_meta->data)->height;
 
-  out->corner.scale = in->corner.scale;
-  out->corner.x = min[0]-bord;
-  out->corner.y = min[1]-bord;
-  out->width = max[0]-min[0]+2*bord;
-  out->height = max[1]-min[1]+2*bord;
+    mod = lf_modifier_new(data->common->lens, data->common->lens->CropFactor, w>>scale, h>>scale);
+    lf_modifier_initialize(mod, data->common->lens, LF_PF_U16, data->common->f, data->common->f_num, data->common->f_dist, 0.0, LF_RECTILINEAR, LF_MODIFY_ALL, 0);
+    
+    mod_min_max(mod, in->corner.x, in->corner.y, min, max);
+    mod_min_max(mod, in->corner.x+in->width, in->corner.y, min, max);
+    mod_min_max(mod, in->corner.x, in->corner.y+in->height, min, max);
+    mod_min_max(mod, in->corner.x+in->width, in->corner.y+in->height, min, max);
 
-  lf_modifier_destroy(mod);
+    out->corner.scale = in->corner.scale-1;
+    out->corner.x = min[0]-bord;
+    out->corner.y = min[1]-bord;
+    out->width = max[0]-min[0]+2*bord;
+    out->height = max[1]-min[1]+2*bord;
+
+    lf_modifier_destroy(mod);
+  }
+  else {
+    w = ((Dim*)data->common->dim_in_meta->data)->width*2;
+    h = ((Dim*)data->common->dim_in_meta->data)->height*2;
+    
+    lfModifier *mod = lf_modifier_new(data->common->lens, data->common->lens->CropFactor, w, h);
+    lf_modifier_initialize(mod, data->common->lens, LF_PF_U16, data->common->f, data->common->f_num, data->common->f_dist, 0.0, LF_RECTILINEAR, LF_MODIFY_ALL, 0);
+    
+    mod_min_max(mod, rx, ry, min, max);
+    mod_min_max(mod, rx+rw, ry, min, max);
+    mod_min_max(mod, rx, ry+rh, min, max);
+    mod_min_max(mod, rx+rw, ry+rh, min, max);
+
+    min[0] *= 0.5;
+    max[0] *= 0.5;
+    min[1] *= 0.5;
+    max[1] *= 0.5;
+    
+    out->corner.scale = in->corner.scale;
+    out->corner.x = min[0]-bord;
+    out->corner.y = min[1]-bord;
+    out->width = max[0]-min[0]+2*bord;
+    out->height = max[1]-min[1]+2*bord;
+
+    lf_modifier_destroy(mod);
+  }
 }
 
 static int _input_fixed(Filter *f)
 {
   _Data *data = ea_data(f->data, 0);
+  Dim *d;
   
   if (!data->common->exif->data)
     return -1;
   
-  data->common->out_dim = *(Dim*)data->common->dim_in_meta->data;
+  //data->common->out_dim = *(Dim*)data->common->dim_in_meta->data;
+  
+  d = &data->common->out_dim;
+  *d = *(Dim*)data->common->dim_in_meta->data;
+  d->scaledown_max++;
+  d->width *= 2;
+  d->height *= 2;
   
   return 0;
 }
