@@ -135,6 +135,8 @@ static void _worker(Filter *f, Eina_Array *in, Eina_Array *out, Rect *area, int 
       data->common->raw->params.gamm[1]=0.0;
       
       libraw_unpack(data->common->raw);
+      printf("loadraw: unpack %s %p\n", data->input->data, f);
+      //libraw_recycle(data->common->raw);
       data->common->unpacked = 1;
       
 #ifdef RAW_THREADSAFE_BUT_LEAK
@@ -196,10 +198,13 @@ static int _input_fixed(Filter *f)
   int rot;
   _Data *data = ea_data(f->data, 0);
   
+  if (!data->common->raw)
+    data->common->raw = libraw_init(0);
+  
   data->common->raw->params.use_camera_matrix = 0;
   data->common->raw->params.use_camera_wb = 1;
   data->common->raw->params.user_flip = 0;
-  data->common->raw->params.use_rawspeed = 0;
+  data->common->raw->params.use_rawspeed = 1;
   
   //data->common->raw->params.camera_profile = "/usr/share/rawtherapee/dcpprofiles/Olympus E-M5.dcp";
   
@@ -208,6 +213,8 @@ static int _input_fixed(Filter *f)
     libraw_recycle_datastream(data->common->raw);
     //libraw_close(data->common->raw);
   }
+  
+  printf("loadraw: input_fixed: %s %p\n", data->input->data, f);
   
   if (libraw_open_file(data->common->raw, data->input->data))
     return -1;
@@ -229,7 +236,7 @@ static int _input_fixed(Filter *f)
   data->w = data->common->raw->sizes.width;
   data->h = data->common->raw->sizes.height;
   
-  ((Dim*)data->dim)->scaledown_max = 0;
+  ((Dim*)data->dim)->scaledown_max = 1;
   ((Dim*)data->dim)->width = data->w;
   ((Dim*)data->dim)->height = data->h;
   
@@ -264,12 +271,17 @@ static int _del(Filter *f)
   _Data *data = ea_data(f->data, 0);
   int i;
   
+  
+  printf("loadraw: del %s %p\n", data->input->data, f);
+  
   if (data->common->opened) {
+    printf("loadraw: recycle %s\n", data->input->data);
     libraw_recycle(data->common->raw);
     libraw_recycle_datastream(data->common->raw);
   }
   
-  libraw_close(data->common->raw);
+  if (data->common->raw)
+    libraw_close(data->common->raw);
   
   if (data->common->exif->data)
     lime_exif_handle_destroy(data->common->exif->data);
@@ -307,7 +319,6 @@ static Filter *_new(void)
   _Data *data = calloc(sizeof(_Data), 1);
   data->common = calloc(sizeof(_Common), 1);
   data->dim = calloc(sizeof(Dim), 1);
-  data->common->raw = libraw_init(0);
 #ifdef RAW_THREADSAFE_BUT_LEAK
   pthread_mutex_init(&data->common->lock, NULL);
 #endif

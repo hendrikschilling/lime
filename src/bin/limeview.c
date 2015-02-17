@@ -64,7 +64,7 @@
 //FIXME adjust depending on speed!
 //FIXME fix threaded config
 #define PRELOAD_CONFIG_RANGE 8
-#define KEEP_CONFIG_RANGE 0
+#define KEEP_CONFIG_RANGE 1
 //FIXME fix image preload
 #define PRELOAD_IMG_RANGE 2
 #define PRELOAD_THRESHOLD 8
@@ -1752,7 +1752,7 @@ void group_config_reset(File_Group *group)
   //FIXME clean pending refs to config from preload_list (and other?)
   
   //FIXME delete group cb
-  printf("FIXME delete group_changed_cb\n");
+  printf("FIXME delete group_changed_cb for %s\n", filegroup_basename(group));
   //tagfiles_group_changed_cb_delete(files);
   
   if (!filegroup_basename(group)) {
@@ -1764,12 +1764,15 @@ void group_config_reset(File_Group *group)
   {
     config = filegroup_data_get(group, i);
     //FIXME if config->running -> the config thread is still waiting to execute? cancel that thread?
+    //printf("del config for %s\n", tagged_file_name(filegroup_nth(group,i), config, config_curr, );
+    
     if (config && config != config_curr && config->sink) {
       while(config->running) {
         pthread_mutex_lock(&barrier_lock);
         usleep(20);
         pthread_mutex_unlock(&barrier_lock);
       }
+      printf("group reset %s\n", tagged_file_name(filegroup_nth(group,i)));
       //FIXME del filters?
       lime_config_reset(config->sink);
       config->sink = NULL;
@@ -2138,7 +2141,9 @@ void step_image_config_reset_range(Tagfiles *files, int start, int end)
 {
   int i;
   
-  for(i=start;i<end;i++)
+  printf("reset range %d-%d\n", start, end);
+  
+  for(i=start;i<=end;i++)
     group_config_reset(tagfiles_nth(files, i));
 }
 
