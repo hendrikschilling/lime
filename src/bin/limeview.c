@@ -223,6 +223,18 @@ Dim *config_size(Config_Data *config)
   return filter_core_by_type(config->sink, MT_IMGSIZE);
 }
 
+void exif_infos(lime_exif *exif, char **cam, char **lens)
+{
+  if (!exif)
+    return;
+  
+  if (cam)
+    *cam = lime_exif_model_make_string(exif);
+  
+  if (lens)
+    *lens = lime_exif_lens_string(exif);
+}
+
 void config_exif_infos(Config_Data *config, char **cam, char **lens)
 {
   lime_exif *exif;
@@ -234,14 +246,7 @@ void config_exif_infos(Config_Data *config, char **cam, char **lens)
   
   exif =  filter_core_by_subtype(config->sink, MT_OBJ, "exif");
   
-  if (!exif)
-    return;
-  
-  if (cam)
-    *cam = lime_exif_model_make_string(exif);
-  
-  if (lens)
-    *lens = lime_exif_lens_string(exif);
+  exif_infos(exif, cam, lens);
 }
 
 int pending_action(void)
@@ -1844,22 +1849,58 @@ Config_Data *config_build(File_Group *group, int nth)
       lime_setting_int_set(config->sink, "add alpha", 1);
       filters = eina_list_append(filters, config->sink);
     }
-    fc_connect_from_list(filters);
   }
   else {
     
-    config->load = lime_filter_new("load");
-    filters = eina_list_append(NULL, config->load);
-    config->sink = lime_filter_new("memsink");
-    lime_setting_int_set(config->sink, "add alpha", 1);
-    filters = eina_list_append(filters, config->sink);
+    printf("no filterchain, check defaults\n");
+    lime_exif *exif = lime_exif_handle_new_from_file(filename);
+    char *cam = NULL;
+    Eina_List *l;
+    Default_Fc_Rule *rule;
+    char *format;
     
-    fc_connect_from_list(filters);
+    exif_infos(exif, &cam, NULL);
+    format = strrchr(filename, '.');
+    
+    EINA_LIST_FOREACH(settings->default_fc_rules, l, rule) {
+      if ((!cam && rule->cam) || strcmp(rule->cam, cam))
+        continue;
+      if ((!format && rule->format) || strcmp(rule->format, format))
+        continue;
+      
+      group_config_reset(config->group);
+      
+      //FIXME merge this with config_build()
+      filters = lime_filter_chain_deserialize(rule->fc);
+      assert(filters);
+      
+      config->load = eina_list_data_get(filters);
+      if (strcmp(config->load->fc->shortname, "load")) {
+        config->load = lime_filter_new("load");
+        filters = eina_list_prepend(filters, config->load);
+      }
+      config->sink = eina_list_data_get(eina_list_last(filters));
+      if (strcmp(config->sink->fc->shortname, "sink")) {
+        config->sink = lime_filter_new("memsink");
+        lime_setting_int_set(config->sink, "add alpha", 1);
+        filters = eina_list_append(filters, config->sink);
+      }      
+      break;
+    }
+    
+    if (!config->load) {
+      config->load = lime_filter_new("load");
+      filters = eina_list_append(NULL, config->load);
+      config->sink = lime_filter_new("memsink");
+      lime_setting_int_set(config->sink, "add alpha", 1);
+      filters = eina_list_append(filters, config->sink);
+    }
   } 
   
   //strcpy(image_file, filename);
   filegroup_data_attach(group, nth, config);
   
+  fc_connect_from_list(filters);
   lime_setting_string_set(config->load, "filename", filename);
   
   return config;
@@ -1888,54 +1929,6 @@ Config_Data *config_data_get(File_Group *group, int nth)
     }
 
   config->failed = lime_config_test(config->sink);
-  
-  //FIXME integrate this in threaded preload (isn't yet working either :-P)
-  if (config->failed)
-    return config;
-  
-  if (!settings->default_fc_rules)
-    return config;
-  
-  //FIXME check interaction with refresh group cb... (we may not "see" a filterchain initially!) (and check threading!)
-  if (filegroup_tags_valid(group) && tagged_file_filterchain(config->file))
-    return config;
-  
-  printf("no filterchain, check defaults\n");
-  
-  config_exif_infos(config, &cam, NULL);
-  format = strrchr(tagged_file_name(config->file), '.');
-  
-  EINA_LIST_FOREACH(settings->default_fc_rules, l, rule) {
-    if ((!cam && rule->cam) || strcmp(rule->cam, cam))
-      continue;
-    if ((!format && rule->format) || strcmp(rule->format, format))
-      continue;
-
-    group_config_reset(config->group);
-    
-    //FIXME merge this with config_build()
-    filters = lime_filter_chain_deserialize(rule->fc);
-    assert(filters);
-    
-    config->load = eina_list_data_get(filters);
-    if (strcmp(config->load->fc->shortname, "load")) {
-      config->load = lime_filter_new("load");
-      filters = eina_list_prepend(filters, config->load);
-    }
-    config->sink = eina_list_data_get(eina_list_last(filters));
-    if (strcmp(config->sink->fc->shortname, "sink")) {
-      config->sink = lime_filter_new("memsink");
-      lime_setting_int_set(config->sink, "add alpha", 1);
-      filters = eina_list_append(filters, config->sink);
-    }
-    fc_connect_from_list(filters);
-    
-    lime_setting_string_set(config->load, "filename", tagged_file_name(config->file));
-    
-    config->failed = lime_config_test(config->sink);
-    
-    break;
-  }
   
   return config;
 }
