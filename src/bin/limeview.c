@@ -1835,7 +1835,9 @@ Config_Data *config_build(File_Group *group, int nth)
       
       return config;
   }
-  else printf("FIXME config_build: config but no sink\n");
+  else if (config) {
+    printf("FIXME config_build: config but no sink %d\n", config->failed);
+  }
   
   tagfiles_group_changed_cb_insert(files, group, filegroup_changed_cb);
   

@@ -17,6 +17,8 @@
  * along with Lime.  If not, see <http://www.gnu.org/licenses/>.
  */
 
+//TODO contains stuff from rawtherapee, mention this!
+
 #include "filter_lrdeconv.h"
 
 #include <math.h>
@@ -27,12 +29,14 @@
 
 #include "opencv_helpers.h"
 
-static const int bord = 16;
+static const int bord = 128;
+static const int mul_one = 256;
 
 typedef struct {
   int iterations;
   float radius;
   float sharpen;
+  float damp;
   void *blur_b, *estimate_b, *fac_b;
   uint8_t lut[65536];
 } _Common;
@@ -55,11 +59,105 @@ static void lrdiv(Rect area, uint16_t *observed, uint16_t *blur, uint16_t *out)
     for(i=0;i<area.width*3;i++) {
       int pos = j*area.width*3+i;
       if (blur[pos])
-        out[pos] = imin(observed[pos]*256/blur[pos], 65535);
+        out[pos] = imin(observed[pos]*mul_one/blur[pos], 65535);
       else
         out[pos] = 0;
     }
 }
+
+
+static inline int32_t floatToRawIntBits(float d) {
+  union {
+    float f;
+    int32_t i;
+  } tmp;
+  tmp.f = d;
+  return tmp.i;
+}
+
+static inline float intBitsToFloat(int32_t i) {
+  union {
+    float f;
+    int32_t i;
+  } tmp;
+  tmp.i = i;
+  return tmp.f;
+}
+
+static inline int xisinff(float x) { return x == INFINITY || x == -INFINITY; }
+
+static inline float mlaf(float x, float y, float z) { return x * y + z; }
+
+static inline int ilogbp1f(float d) {
+  int m = d < 5.421010862427522E-20f;
+  d = m ? 1.8446744073709552E19f * d : d;
+  int q = (floatToRawIntBits(d) >> 23) & 0xff;
+  q = m ? q - (64 + 0x7e) : q - 0x7e;
+  return q;
+}
+
+static inline float ldexpkf(float x, int q) {
+  float u;
+  int m;
+  m = q >> 31;
+  m = (((m + q) >> 6) - m) << 4;
+  q = q - (m << 2);
+  u = intBitsToFloat(((int32_t)(m + 0x7f)) << 23);
+  u = u * u;
+  x = x * u * u;
+  u = intBitsToFloat(((int32_t)(q + 0x7f)) << 23);
+  return x * u;
+}
+
+static inline float xlogf(float d) {
+  float x, x2, t, m;
+  int e;
+
+  e = ilogbp1f(d * 0.7071f);
+  m = ldexpkf(d, -e);
+
+  x = (m-1.0f) / (m+1.0f);
+  x2 = x * x;
+
+  t = 0.2371599674224853515625f;
+  t = mlaf(t, x2, 0.285279005765914916992188f);
+  t = mlaf(t, x2, 0.400005519390106201171875f);
+  t = mlaf(t, x2, 0.666666567325592041015625f);
+  t = mlaf(t, x2, 2.0f);
+
+  x = x * t + 0.693147180559945286226764f * e;
+
+  if (xisinff(d)) x = INFINITY;
+  if (d < 0) x = NAN;
+  if (d == 0) x = -INFINITY;
+
+  return x;
+}
+
+static void lrdampdiv(Rect area, uint16_t *observed, uint16_t *blur, uint16_t *out, float damp)
+{
+  int i, j;
+  float O, U, I;
+  float fac = -2.0/(damp*damp);
+  //h blur
+  for(j=0;j<area.height;j++)
+    for(i=0;i<area.width*3;i++) {
+      int pos = j*area.width*3+i;
+      O = observed[pos]*(1.0/65536.0);
+      I = blur[pos]*(1.0/65536.0);
+      if (blur[pos]) {
+        U = (O * xlogf(I/O) - I + O) * fac;
+        //printf("\n %f %f %f (%f) \n", U, I/O, xlogf(I/O), (O * xlogf(I/O) - I + O));
+        U = fmin(U,1.0f);
+        U = U*U*U*U*(5.0-U*4.0);
+        out[pos] = ((O - I) / I * U + 1.0)*mul_one;
+        //printf("%f %f %f = %f \n", O, U, I, ((O - I) / I * U + 1.0));
+      }
+      else
+        out[pos] = 0;
+    }
+}
+
 
 static void lrmul(Rect area, uint16_t *a, uint16_t *b, uint16_t *out)
 {
@@ -68,7 +166,7 @@ static void lrmul(Rect area, uint16_t *a, uint16_t *b, uint16_t *out)
   for(j=bord/2;j<area.height-bord/2;j++)
     for(i=bord/2;i<area.width*3-3*bord/2;i++) {
       int pos = j*area.width*3+i;
-      out[pos] = imin(a[pos]*b[pos]/256, 65535);
+      out[pos] = imin(a[pos]*b[pos]/mul_one, 65535);
     }
 }
 
@@ -116,7 +214,10 @@ static void _worker(Filter *f, Eina_Array *in, Eina_Array *out, Rect *area, int 
   if (data->common->radius)
     for(i=0;i<data->common->iterations;i++) {
       simplegauss(in_area, estimate, blur, data->common->radius);
-      lrdiv(in_area, input, blur, fac);
+      if (data->common->damp == 0.0)
+        lrdiv(in_area, input, blur, fac);
+      else
+        lrdampdiv(in_area, input, blur, fac, data->common->damp/500.0);
       simplegauss(in_area, fac, fac, data->common->radius);
       lrmul(in_area, estimate, fac, newestimate);
       memcpy(estimate, newestimate, size);
@@ -256,6 +357,21 @@ static Filter *_new(void)
   
   bound = meta_new_data(MT_FLOAT, f, malloc(sizeof(float)));
   *(float*)bound->data = 5.0;
+  meta_name_set(bound, "PARENT_SETTING_MAX");
+  meta_attach(setting, bound);
+  
+  //setting
+  setting = meta_new_data(MT_FLOAT, f, &data->common->damp);
+  meta_name_set(setting, "damping");
+  eina_array_push(f->settings, setting);
+  
+  bound = meta_new_data(MT_FLOAT, f, malloc(sizeof(float)));
+  *(float*)bound->data = 0.0;
+  meta_name_set(bound, "PARENT_SETTING_MIN");
+  meta_attach(setting, bound);
+  
+  bound = meta_new_data(MT_FLOAT, f, malloc(sizeof(float)));
+  *(float*)bound->data = 100.0;
   meta_name_set(bound, "PARENT_SETTING_MAX");
   meta_attach(setting, bound);
   

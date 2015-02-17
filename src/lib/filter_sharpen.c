@@ -68,10 +68,10 @@ static void _worker(Filter *f, Eina_Array *in, Eina_Array *out, Rect *area, int 
    3.0   70   44   20   10    0    0
    */
   
-  assert(in && ea_count(in) == 3);
-  assert(out && ea_count(out) == 3);
+  assert(in && ea_count(in) == 1);
+  assert(out && ea_count(out) == 1);
 
-  for(ch=0;ch<3;ch++) {
+  for(ch=0;ch<1;ch++) {
     in_td = (Tiledata*)ea_data(in, ch);
     out_td = (Tiledata*)ea_data(out, ch);
     
@@ -114,7 +114,7 @@ Filter *filter_sharpen_new(void)
   filter->mode_buffer->threadsafe = 1;
   filter->mode_buffer->worker = &_worker;
   filter->mode_buffer->area_calc = &_area_calc;
-  filter->fixme_outcount = 3;
+  filter->fixme_outcount = 1;
   ea_push(filter->data, data);
   
   out = meta_new(MT_BUNDLE, filter);
@@ -122,24 +122,24 @@ Filter *filter_sharpen_new(void)
   
   channel = meta_new_channel(filter, 1);
   color[0] = meta_new_data(MT_COLOR, filter, malloc(sizeof(int)));
-  *(int*)(color[0]->data) = CS_RGB_R;
+  *(int*)(color[0]->data) = CS_LAB_L;
   meta_attach(channel, color[0]);
   meta_attach(out, channel);
   ch_out[0] = channel;
   
-  channel = meta_new_channel(filter, 2);
+  /*channel = meta_new_channel(filter, 2);
   color[1] = meta_new_data(MT_COLOR, filter, malloc(sizeof(int)));
-  *(int*)(color[1]->data) = CS_RGB_G;
+  *(int*)(color[1]->data) = CS_LAB_A;
   meta_attach(channel, color[1]);
   meta_attach(out, channel);
   ch_out[1] = channel;
   
   channel = meta_new_channel(filter, 3);
   color[2] = meta_new_data(MT_COLOR, filter, malloc(sizeof(int)));
-  *(int*)(color[2]->data) = CS_RGB_B;
+  *(int*)(color[2]->data) = CS_LAB_B;
   meta_attach(channel, color[2]);
   meta_attach(out, channel);
-  ch_out[2] = channel;
+  ch_out[2] = channel;*/
   
   in = meta_new(MT_BUNDLE, filter);
   in->replace = out;
@@ -151,7 +151,7 @@ Filter *filter_sharpen_new(void)
   meta_attach(channel, color[0]);
   meta_attach(in, channel);
   
-  channel = meta_new_channel(filter, 2);
+  /*channel = meta_new_channel(filter, 2);
   color[1]->replace = color[1];
   channel->replace = ch_out[1];
   meta_attach(channel, color[1]);
@@ -162,7 +162,7 @@ Filter *filter_sharpen_new(void)
   color[2]->replace = color[2];
   channel->replace = ch_out[2];
   meta_attach(channel, color[2]);
-  meta_attach(in, channel);
+  meta_attach(in, channel);*/
   
   setting = meta_new_data(MT_FLOAT, filter, &data->val);
   meta_name_set(setting, "strength");
