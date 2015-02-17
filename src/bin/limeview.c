@@ -1779,7 +1779,6 @@ void group_config_reset(File_Group *group)
         usleep(20);
         pthread_mutex_unlock(&barrier_lock);
       }
-      printf("group reset %s\n", tagged_file_name(filegroup_nth(group,i)));
       //FIXME del filters?
       lime_config_reset(config->sink);
       config->sink = NULL;

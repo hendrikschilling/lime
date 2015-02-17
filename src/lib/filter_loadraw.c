@@ -135,8 +135,6 @@ static void _worker(Filter *f, Eina_Array *in, Eina_Array *out, Rect *area, int 
       data->common->raw->params.gamm[1]=0.0;
       
       libraw_unpack(data->common->raw);
-      printf("loadraw: unpack %s %p\n", data->input->data, f);
-      //libraw_recycle(data->common->raw);
       data->common->unpacked = 1;
       
 #ifdef RAW_THREADSAFE_BUT_LEAK
@@ -214,8 +212,6 @@ static int _input_fixed(Filter *f)
     //libraw_close(data->common->raw);
   }
   
-  printf("loadraw: input_fixed: %s %p\n", data->input->data, f);
-  
   if (libraw_open_file(data->common->raw, data->input->data))
     return -1;
   
@@ -271,11 +267,7 @@ static int _del(Filter *f)
   _Data *data = ea_data(f->data, 0);
   int i;
   
-  
-  printf("loadraw: del %s %p\n", data->input->data, f);
-  
   if (data->common->opened) {
-    printf("loadraw: recycle %s\n", data->input->data);
     libraw_recycle(data->common->raw);
     libraw_recycle_datastream(data->common->raw);
   }

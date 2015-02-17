@@ -42,7 +42,12 @@ float lime_exif_handle_find_float_by_tagname(lime_exif *h, const char *tagname)
 {
   pthread_mutex_lock(&h->lock);
   if (!h->img.get()) {
-    h->img = Exiv2::ImageFactory::open(h->path);
+    try {
+      h->img = Exiv2::ImageFactory::open(h->path);
+    }
+    catch (...) {
+      return -1.0;
+    }
     assert(h->img.get() != 0);
     h->img->readMetadata();
   }
@@ -67,7 +72,12 @@ char *lime_exif_handle_find_str_by_tagname(lime_exif *h, const char *tagname)
   std::string str;
   char *c_str;
   if (!h->img.get()) {
-    h->img = Exiv2::ImageFactory::open(h->path);
+    try {
+      h->img = Exiv2::ImageFactory::open(h->path);
+    }
+    catch (...) {
+      return NULL;
+    }
     assert(h->img.get() != 0);
     h->img->readMetadata();
   }

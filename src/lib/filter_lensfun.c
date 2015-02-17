@@ -53,8 +53,6 @@ static int check_exif(_Data *data)
   else if (data->common->exif_loaded == -1)
     return -1;
   
-  printf("exe!\n");
-  
   data->common->lens_model = lime_exif_handle_find_str_by_tagname(exif, "LensType");
   if (!data->common->lens_model)
     data->common->lens_model = lime_exif_handle_find_str_by_tagname(exif, "LensModel");
@@ -68,11 +66,6 @@ static int check_exif(_Data *data)
   if (data->common->f_dist == -1.0)
     data->common->f_dist = 1000;
   data->common->f_num = lime_exif_handle_find_float_by_tagname(exif, "FNumber");
-  
-  printf("lens: %s\n", data->common->lens_model);
-  printf("focal length: %fmm\n", data->common->f);
-  printf("f-num: %f\n", data->common->f_num);
-  printf("focus dist: %f\n", data->common->f_dist);
   
   
   //FIXME check for errors...
