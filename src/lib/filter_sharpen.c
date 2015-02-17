@@ -122,21 +122,21 @@ Filter *filter_sharpen_new(void)
   
   channel = meta_new_channel(filter, 1);
   color[0] = meta_new_data(MT_COLOR, filter, malloc(sizeof(int)));
-  *(int*)(color[0]->data) = CS_LAB_L;
+  *(int*)(color[0]->data) = CS_RGB_R;
   meta_attach(channel, color[0]);
   meta_attach(out, channel);
   ch_out[0] = channel;
   
   channel = meta_new_channel(filter, 2);
   color[1] = meta_new_data(MT_COLOR, filter, malloc(sizeof(int)));
-  *(int*)(color[1]->data) = CS_LAB_A;
+  *(int*)(color[1]->data) = CS_RGB_G;
   meta_attach(channel, color[1]);
   meta_attach(out, channel);
   ch_out[1] = channel;
   
   channel = meta_new_channel(filter, 3);
   color[2] = meta_new_data(MT_COLOR, filter, malloc(sizeof(int)));
-  *(int*)(color[2]->data) = CS_LAB_B;
+  *(int*)(color[2]->data) = CS_RGB_B;
   meta_attach(channel, color[2]);
   meta_attach(out, channel);
   ch_out[2] = channel;
