@@ -25,6 +25,7 @@
 #include "filter_interleave.h"
 #include "filter_fliprot.h"
 #include "filter_loadraw.h"
+#include "filter_curves.h"
 
 #define DEBUG_OUT_GRAPH 
 
@@ -1336,6 +1337,7 @@ int lime_config_test(Filter *f_sink)
   ea_push(insert_f, filter_core_convert.filter_new_f);
   ea_push(insert_f, filter_core_loadtiff.filter_new_f);
   ea_push(insert_f, filter_core_fliprot.filter_new_f);
+  ea_push(insert_f, filter_core_curves.filter_new_f);
   
   err_pos_start = test_filter_config_real(f, 0, c);
   

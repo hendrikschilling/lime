@@ -226,7 +226,7 @@ static Filter *filter_deinterleave_new(void)
   bitdepth->replace = bitdepth;
   
   bd_in = meta_new_select(MT_BITDEPTH, filter, eina_array_new(2));
-  pushint(bd_in->select, BD_U16);
+  //pushint(bd_in->select, BD_U16);
   pushint(bd_in->select, BD_U8);
   bd_in->replace = bitdepth;
   bd_in->dep = bd_in;

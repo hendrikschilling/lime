@@ -27,29 +27,44 @@
 typedef struct {
   float clip, compress, exp;
   float x1,x2,y1,y2;
-  uint16_t *lut;
+  uint8_t *lut;
+  uint16_t *lut2;
+  Meta *bd_out;
 } _Data;
 
 static void _worker(Filter *f, Eina_Array *in, Eina_Array *out, Rect *area, int thread_id)
 { 
   int i, j;
-  uint16_t *output;
-  uint16_t *input;
+  uint8_t *o;
+  uint16_t *o2, *i2;
   _Data *data = ea_data(f->data, 0);
+  int bd_out = *(int*)data->bd_out->data;
 
   assert(in && ea_count(in) == 1);
   assert(out && ea_count(out) == 1);
   
-  hack_tiledata_fixsize(6, ea_data(out, 0));
-  
-  input = ((Tiledata*)ea_data(in, 0))->data;
-  output = ((Tiledata*)ea_data(out, 0))->data;
+  if (bd_out == BD_U16) {
+    hack_tiledata_fixsize(6, ea_data(out, 0));
+    
+    i2 = ((Tiledata*)ea_data(in, 0))->data;
+    o2 = ((Tiledata*)ea_data(out, 0))->data;
 
-  
-  for(j=0;j<area->height;j++)
-    for(i=0;i<area->width*3;i++) {
-	output[j*area->width*3+i] = data->lut[input[j*area->width*3+i]];
-    }
+    for(j=0;j<area->height;j++)
+      for(i=0;i<area->width*3;i++) {
+          o2[j*area->width*3+i] = data->lut2[i2[j*area->width*3+i]];
+      }
+  }
+  else {
+    hack_tiledata_fixsize(3, ea_data(out, 0));
+    
+    i2 = ((Tiledata*)ea_data(in, 0))->data;
+    o = ((Tiledata*)ea_data(out, 0))->data;
+
+    for(j=0;j<area->height;j++)
+      for(i=0;i<area->width*3;i++) {
+          o[j*area->width*3+i] = data->lut[i2[j*area->width*3+i]];
+      }
+  }
 }
 
 static double lin2gamma(double lin)
@@ -69,9 +84,12 @@ static int _prepare(Filter *f)
   double exp;
   double clip;
   double compress;
+  int bd_out = *(int*)data->bd_out->data;
   
-  if (!data->lut)
-    data->lut = malloc(sizeof(uint16_t)*65536);
+  if (bd_out == BD_U8 && !data->lut)
+    data->lut = malloc(sizeof(uint8_t)*65536);
+  else if(bd_out == BD_U8 && !data->lut2)
+    data->lut2 = malloc(sizeof(uint16_t)*65536);
   
   exp = pow(2.0, data->exp);
   compress = data->compress;
@@ -155,13 +173,21 @@ static int _prepare(Filter *f)
     gsl_spline_init(spline_exp, ex, ey, 4);
   }
   
-  for (i = 0; i < 65536; i++)
-  {
-    ye = lin2gamma(gsl_spline_eval(spline_exp, i*(1.0/65536.0), acc_exp));
-    //ye = lin2gamma(i*(1.0/65536.0));
-    yc = gsl_spline_eval(spline, ye, acc);
-    data->lut[i] = imin((int)(yc*65536.0),65535);
-  }
+  if (bd_out == BD_U16)
+    for (i=0;i<65536;i++) {
+      ye = lin2gamma(gsl_spline_eval(spline_exp, i*(1.0/65536.0), acc_exp));
+      //ye = lin2gamma(i*(1.0/65536.0));
+      yc = gsl_spline_eval(spline, ye, acc);
+      data->lut[i] = imin((int)(yc*65536.0),65535);
+    }
+  else
+    for (i=0;i<65536;i++) {
+      ye = lin2gamma(gsl_spline_eval(spline_exp, i*(1.0/65536.0), acc_exp));
+      //ye = lin2gamma(i*(1.0/65536.0));
+      yc = gsl_spline_eval(spline, ye, acc);
+      data->lut[i] = imin((int)(yc*256.0),255);
+    }
+    
   gsl_spline_free (spline);
   gsl_interp_accel_free (acc);
     
@@ -204,9 +230,10 @@ static Filter *_new(void)
   //tune bitdepth
   bd_out = meta_new_select(MT_BITDEPTH, f, eina_array_new(2));
   pushint(bd_out->select, BD_U16);
-  //pushint(bd_out->select, BD_U8);
+  pushint(bd_out->select, BD_U8);
   bd_out->dep = bd_out;
   eina_array_push(f->tune, bd_out);
+  data->bd_out = bd_out;
   
   bd_in = meta_new_select(MT_BITDEPTH, f, eina_array_new(2));
   pushint(bd_in->select, BD_U16);
