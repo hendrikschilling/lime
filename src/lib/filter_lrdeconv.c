@@ -48,7 +48,7 @@ typedef struct {
 
 static void simplegauss(Rect area, uint16_t *in, uint16_t *out, float rad)
 { 
-  cv_gauss(area.width, area.height, CV_16UC3, in, out, rad);
+  cv_gauss(area.width, area.height, CV_16UC1, in, out, rad);
 }
 
 static void lrdiv(Rect area, uint16_t *observed, uint16_t *blur, uint16_t *out)
@@ -56,8 +56,8 @@ static void lrdiv(Rect area, uint16_t *observed, uint16_t *blur, uint16_t *out)
   int i, j;
   //h blur
   for(j=0;j<area.height;j++)
-    for(i=0;i<area.width*3;i++) {
-      int pos = j*area.width*3+i;
+    for(i=0;i<area.width;i++) {
+      int pos = j*area.width+i;
       if (blur[pos])
         out[pos] = imin(observed[pos]*mul_one/blur[pos], 65535);
       else
@@ -141,8 +141,8 @@ static void lrdampdiv(Rect area, uint16_t *observed, uint16_t *blur, uint16_t *o
   float fac = -2.0/(damp*damp);
   //h blur
   for(j=0;j<area.height;j++)
-    for(i=0;i<area.width*3;i++) {
-      int pos = j*area.width*3+i;
+    for(i=0;i<area.width;i++) {
+      int pos = j*area.width+i;
       O = observed[pos]*(1.0/65536.0);
       I = blur[pos]*(1.0/65536.0);
       if (blur[pos]) {
@@ -164,8 +164,8 @@ static void lrmul(Rect area, uint16_t *a, uint16_t *b, uint16_t *out)
   int i, j;
   //h blur
   for(j=bord/2;j<area.height-bord/2;j++)
-    for(i=bord/2;i<area.width*3-3*bord/2;i++) {
-      int pos = j*area.width*3+i;
+    for(i=bord/2;i<area.width-bord/2;i++) {
+      int pos = j*area.width+i;
       out[pos] = imin(a[pos]*b[pos]/mul_one, 65535);
     }
 }
@@ -179,7 +179,7 @@ static void _worker(Filter *f, Eina_Array *in, Eina_Array *out, Rect *area, int 
   uint16_t *blur, *estimate, *fac;
   Tiledata *in_td, *out_td;
   Rect in_area;
-  const int size = 3*sizeof(uint16_t)*(DEFAULT_TILE_SIZE+2*bord)*(DEFAULT_TILE_SIZE+2*bord);
+  const int size = sizeof(uint16_t)*(DEFAULT_TILE_SIZE+2*bord)*(DEFAULT_TILE_SIZE+2*bord);
   
   if (!data->blur_b) {
     data->blur_b = malloc(size);
@@ -193,7 +193,7 @@ static void _worker(Filter *f, Eina_Array *in, Eina_Array *out, Rect *area, int 
   assert(in && ea_count(in) == 1);
   assert(out && ea_count(out) == 1);
   
-  hack_tiledata_fixsize(6, ea_data(out, 0));
+  hack_tiledata_fixsize(2, ea_data(out, 0));
   
   in_td = ((Tiledata*)ea_data(in, 0));
   in_area = in_td->area;
@@ -203,13 +203,13 @@ static void _worker(Filter *f, Eina_Array *in, Eina_Array *out, Rect *area, int 
   
   
   if (area->corner.scale) {
-    memcpy(output,input,3*sizeof(uint16_t)*in_td->area.width*in_td->area.height);
+    memcpy(output,input,sizeof(uint16_t)*in_td->area.width*in_td->area.height);
     return;
   }
   
   uint16_t *newestimate = malloc(size);
   
-  memcpy(estimate, input, 3*sizeof(uint16_t)*in_area.width*in_area.height);
+  memcpy(estimate, input, sizeof(uint16_t)*in_area.width*in_area.height);
   
   if (data->common->radius)
     for(i=0;i<data->common->iterations;i++) {
@@ -227,8 +227,8 @@ static void _worker(Filter *f, Eina_Array *in, Eina_Array *out, Rect *area, int 
   
   if (data->common->sharpen == 0.0) {
     for(j=0;j<area->height;j++)
-      for(i=0;i<area->width*3;i++) {
-          output[j*area->width*3+i] = estimate[(j+bord)*in_area.width*3+i+3*bord];
+      for(i=0;i<area->width;i++) {
+          output[j*area->width+i] = estimate[(j+bord)*in_area.width+i+bord];
       }
   }
   else {
@@ -237,9 +237,9 @@ static void _worker(Filter *f, Eina_Array *in, Eina_Array *out, Rect *area, int 
     uint16_t *buf_out, *buf_in1, *buf_in2, *buf_in3;
     for(j=0;j<area->height;j++) {
       buf_out = tileptr16_3(out_td, area->corner.x, area->corner.y+j);
-      buf_in1 = estimate+(j+bord-1)*in_area.width*3+3*bord;
-      buf_in2 = estimate+(j+bord+0)*in_area.width*3+3*bord;
-      buf_in3 = estimate+(j+bord+1)*in_area.width*3+3*bord;
+      buf_in1 = estimate+(j+bord-1)*in_area.width+bord;
+      buf_in2 = estimate+(j+bord+0)*in_area.width+bord;
+      buf_in3 = estimate+(j+bord+1)*in_area.width+bord;
       for(i=0;i<area->width*3;i++) {
         *buf_out =  clip_u16(((1.0+4*s)*buf_in2[0] - s*(buf_in1[0] + buf_in2[-3] + buf_in2[3] + buf_in3[0])));
         buf_out++;
@@ -313,15 +313,15 @@ static Filter *_new(void)
   
   //tune color-space
   tune_color = meta_new_select(MT_COLOR, f, eina_array_new(3));
-  pushint(tune_color->select, CS_INT_RGB);
+  pushint(tune_color->select, CS_LAB_L);
   tune_color->replace = tune_color;
   tune_color->dep = tune_color;
   eina_array_push(f->tune, tune_color);
   
   //tune bitdepth
   bd_out = meta_new_select(MT_BITDEPTH, f, eina_array_new(2));
-  //pushint(bd_out->select, BD_U16);
   pushint(bd_out->select, BD_U16);
+  //pushint(bd_out->select, BD_U8);
   bd_out->dep = bd_out;
   eina_array_push(f->tune, bd_out);
   
