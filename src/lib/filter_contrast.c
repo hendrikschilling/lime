@@ -30,7 +30,6 @@ static void _worker_contrast(Filter *f, Eina_Array *in, Eina_Array *out, Rect *a
   uint8_t *input, *o;
   uint16_t *input2, *o2;
   _Contrast_Data *data = ea_data(f->data, 0);
-  int mult = 1024*data->c;
 
   assert(in && ea_count(in) == 1);
   assert(out && ea_count(out) == 1);
@@ -46,7 +45,7 @@ static void _worker_contrast(Filter *f, Eina_Array *in, Eina_Array *out, Rect *a
   if (*(int*)data->bd->data == BD_U8) {
     for(j=0;j<area->height;j++)
       for(i=0;i<area->width;i++) {
-          o[j*area->width+i] = clip_u8(((input[j*area->width+i]-127)*mult)/1024+127);
+          o[j*area->width+i] = clip_u8(((input[j*area->width+i]-128)*data->c)+128);
       }
   }
   else {
@@ -63,7 +62,6 @@ static void _worker_exposure(Filter *f, Eina_Array *in, Eina_Array *out, Rect *a
   uint8_t *input, *o;
   uint16_t *input2, *o2;
   _Contrast_Data *data = ea_data(f->data, 0);
-  int mult = 1024*data->c;
 
   assert(in && ea_count(in) == 1);
   assert(out && ea_count(out) == 1);
@@ -79,7 +77,7 @@ static void _worker_exposure(Filter *f, Eina_Array *in, Eina_Array *out, Rect *a
   if (*(int*)data->bd->data == BD_U8) {
     for(j=0;j<area->height;j++)
       for(i=0;i<area->width;i++) {
-          o[j*area->width+i] = clip_u8(((input[j*area->width+i])*mult)/1024);
+          o[j*area->width+i] = clip_u8((input[j*area->width+i])*data->c);
       }
   }
   else {
@@ -100,7 +98,7 @@ static Filter *_f_lightness_new(Filter_Core *fc, void worker_func(Filter *f, Ein
   filter->mode_buffer->worker = worker_func;
   filter->mode_buffer->threadsafe = 1;
   ea_push(filter->data, data);
-  data->c = 4.0;
+  data->c = 1.0;
   filter->fixme_outcount = 1;
   
   //tune color-space

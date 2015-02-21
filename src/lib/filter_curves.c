@@ -175,14 +175,15 @@ static int _prepare(Filter *f)
   
   if (bd_out == BD_U16)
     for (i=0;i<65536;i++) {
-      ye = lin2gamma(gsl_spline_eval(spline_exp, i*(1.0/65536.0), acc_exp));
+      ye = gsl_spline_eval(spline_exp, i*(1.0/65536.0), acc_exp);
       //ye = lin2gamma(i*(1.0/65536.0));
-      yc = gsl_spline_eval(spline, i*(1.0/65536.0), acc);
+      yc = gsl_spline_eval(spline, ye, acc);
       data->lut2[i] = imin((int)(yc*65536.0),65535);
     }
   else
     for (i=0;i<65536;i++) {
       ye = lin2gamma(gsl_spline_eval(spline_exp, i*(1.0/65536.0), acc_exp));
+      //ye = gsl_spline_eval(spline_exp, i*(1.0/65536.0), acc_exp);
       //ye = lin2gamma(i*(1.0/65536.0));
       yc = gsl_spline_eval(spline, ye, acc);
       data->lut[i] = imin((int)(yc*256.0),255);
@@ -231,7 +232,7 @@ static Filter *_new(void)
   
   //tune bitdepth
   bd_out = meta_new_select(MT_BITDEPTH, f, eina_array_new(2));
-  pushint(bd_out->select, BD_U16);
+  //pushint(bd_out->select, BD_U16);
   pushint(bd_out->select, BD_U8);
   bd_out->dep = bd_out;
   eina_array_push(f->tune, bd_out);

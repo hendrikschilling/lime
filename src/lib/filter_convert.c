@@ -35,6 +35,7 @@ typedef struct {
   int in_shuffle[3];
   int out_shuffle[3];
   cmsHTRANSFORM transform;
+  cmsHTRANSFORM transform_inv;
   int lav_fmt_in, lav_fmt_out;
 } _Common;
 
@@ -214,7 +215,7 @@ static int prepare(Filter *f)
   data->common->out_shuffle[1] = 1;
   data->common->out_shuffle[2] = 2;
   
-  if (in_bd == BD_U8 && out_bd == BD_U16) {
+  /*if (in_bd == BD_U8 && out_bd == BD_U16) {
     switch (*((Colorspace*)data->in_color->data)) {
       case CS_RGB :
         if (sws_isSupportedInput(PIX_FMT_GBRP)) {
@@ -259,22 +260,37 @@ static int prepare(Filter *f)
         return 0;
       }
     }
-  }
+  }*/
   
   switch (*((Colorspace*)data->in_color->data)) {
-    case CS_RGB :
-      hInProfile = cmsCreate_sRGBProfile();
-      if (in_bd == BD_U8)
+    case CS_RGB : 
+      if (in_bd == BD_U8) {
         in_type = TYPE_RGB_8_PLANAR;
-      else
+        hInProfile = cmsCreate_sRGBProfile();
+        printf("input sRGB 8\n");
+      }
+      else {
+        printf("input (s)RGB 16\n");
         in_type = TYPE_RGB_16_PLANAR;
+        cmsCIExyYTRIPLE p = {{0.6400, 0.3300, 1.0}, {0.3000, 0.6000, 1.0}, {0.1500, 0.0600, 1.0}};
+        cmsToneCurve *g[3];
+        g[0] = cmsBuildGamma(0, 1.0);
+        g[1] = g[0];
+        g[2] = g[0];
+        hInProfile = cmsCreateRGBProfile(cmsD50_xyY(), &p, g);
+        //hInProfile = cmsCreate_sRGBProfile();
+      }
       break;
     case CS_LAB : 
       hInProfile = cmsCreateLab4Profile(NULL);
-      if (in_bd == BD_U8)
+      if (in_bd == BD_U8) {
+        printf("input lab 8\n");
         in_type = TYPE_Lab_8_PLANAR;
-      else
+      }
+      else {
+        printf("input lab 16\n");
         in_type = TYPE_Lab_16_PLANAR;
+      }
       break;
     default:
       printf("FIXME unhandled input color-space!\n");
@@ -283,18 +299,33 @@ static int prepare(Filter *f)
   
   switch (*((Colorspace*)data->out_color->data)) {
     case CS_RGB :
-      hOutProfile = cmsCreate_sRGBProfile();
-      if (out_bd == BD_U8)
+      if (out_bd == BD_U8) {
+        printf("output sRGB 8\n");
         out_type = TYPE_RGB_8_PLANAR;
-      else
+        hOutProfile = cmsCreate_sRGBProfile();
+      }
+      else {
+        printf("output (s)RGB 16\n");
         out_type = TYPE_RGB_16_PLANAR;
+        cmsCIExyYTRIPLE p = {{0.6400, 0.3300, 1.0}, {0.3000, 0.6000, 1.0}, {0.1500, 0.0600, 1.0}};
+        cmsToneCurve *g[3];
+        g[0] = cmsBuildGamma(0, 1.0);
+        g[1] = g[0];
+        g[2] = g[0];
+        hOutProfile = cmsCreateRGBProfile(cmsD50_xyY(), &p, g);
+        //hOutProfile = cmsCreate_sRGBProfile();
+      }
       break;
     case CS_LAB : 
       hOutProfile = cmsCreateLab4Profile(NULL);
-      if (out_bd == BD_U8)
+      if (out_bd == BD_U8) {
+        printf("output lab 8\n");
         out_type = TYPE_Lab_8_PLANAR;
-      else
+      }
+      else {
+        printf("output lab 16\n");
         out_type = TYPE_Lab_16_PLANAR;
+      }
       break;
     default:
       printf("unhandled output color-space!\n");
@@ -307,7 +338,7 @@ static int prepare(Filter *f)
 					out_type, 
 //most useful for two-way conversion!
 					INTENT_PERCEPTUAL, 
-					cmsFLAGS_FORCE_CLUT);
+					cmsFLAGS_NOOPTIMIZE);
   data->common->initialized = INIT_LMCS;
   data->common->packed_input = EINA_TRUE;
   data->common->packed_output = EINA_TRUE;
@@ -412,8 +443,8 @@ Filter *filter_convert_new(void)
   
   if (!select_bitdepth) {
     select_bitdepth = eina_array_new(2);
-    pushint(select_bitdepth, BD_U8);
     pushint(select_bitdepth, BD_U16);
+    pushint(select_bitdepth, BD_U8);
     
     select_color = eina_array_new(4);
     pushint(select_color, CS_LAB);

@@ -124,8 +124,9 @@ Filter *filter_sharpen_new(void)
   color[0] = meta_new_data(MT_COLOR, filter, malloc(sizeof(int)));
   *(int*)(color[0]->data) = CS_LAB_L;
   meta_attach(channel, color[0]);
-  bd = meta_new_data(MT_COLOR, filter, malloc(sizeof(int)));
+  bd = meta_new_data(MT_BITDEPTH, filter, malloc(sizeof(int)));
   *(int*)(bd->data) = BD_U8;
+  bd->replace = bd;
   meta_attach(channel, bd);
   meta_attach(out, channel);
   ch_out[0] = channel;
@@ -152,6 +153,7 @@ Filter *filter_sharpen_new(void)
   color[0]->replace = color[0];
   channel->replace = ch_out[0];
   meta_attach(channel, color[0]);
+  meta_attach(channel, bd);
   meta_attach(in, channel);
   
   /*channel = meta_new_channel(filter, 2);
