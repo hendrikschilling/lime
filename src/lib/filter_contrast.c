@@ -21,46 +21,73 @@
 
 typedef struct {
   float c;
+  Meta *bd;
 } _Contrast_Data;
 
 static void _worker_contrast(Filter *f, Eina_Array *in, Eina_Array *out, Rect *area, int thread_id)
-{ 
+{
   int i, j;
-  uint8_t *input, *output;
+  uint8_t *input, *o;
+  uint16_t *input2, *o2;
   _Contrast_Data *data = ea_data(f->data, 0);
   int mult = 1024*data->c;
 
   assert(in && ea_count(in) == 1);
   assert(out && ea_count(out) == 1);
   
-  input = ((Tiledata*)ea_data(in, 0))->data;
-  output = ((Tiledata*)ea_data(out, 0))->data;
-
+  if (*(int*)data->bd->data == BD_U16)
+    hack_tiledata_fixsize(2, ea_data(out, 0));
   
-  for(j=0;j<area->height;j++)
-    for(i=0;i<area->width;i++) {
-	output[j*area->width+i] = clip_u8(((input[j*area->width+i]-127)*mult)/1024+127);
-    }
+  input = ((Tiledata*)ea_data(in, 0))->data;
+  o = ((Tiledata*)ea_data(out, 0))->data;
+  input2 = (uint16_t*)input;
+  o2 = (uint16_t*)o;
+
+  if (*(int*)data->bd->data == BD_U8) {
+    for(j=0;j<area->height;j++)
+      for(i=0;i<area->width;i++) {
+          o[j*area->width+i] = clip_u8(((input[j*area->width+i]-127)*mult)/1024+127);
+      }
+  }
+  else {
+    for(j=0;j<area->height;j++)
+      for(i=0;i<area->width;i++) {
+          o2[j*area->width+i] = clip_u16(((input2[j*area->width+i]-32768)*data->c)+32768);
+      }
+  }
 }
 
 static void _worker_exposure(Filter *f, Eina_Array *in, Eina_Array *out, Rect *area, int thread_id)
 { 
   int i, j;
-  uint8_t *input, *output;
+  uint8_t *input, *o;
+  uint16_t *input2, *o2;
   _Contrast_Data *data = ea_data(f->data, 0);
   int mult = 1024*data->c;
 
   assert(in && ea_count(in) == 1);
   assert(out && ea_count(out) == 1);
   
-  input = ((Tiledata*)ea_data(in, 0))->data;
-  output = ((Tiledata*)ea_data(out, 0))->data;
-
+  if (*(int*)data->bd->data == BD_U16)
+    hack_tiledata_fixsize(2, ea_data(out, 0));
   
-  for(j=0;j<area->height;j++)
-    for(i=0;i<area->width;i++) {
-	output[j*area->width+i] = clip_u8(((input[j*area->width+i])*mult)/1024);
-    }
+  input = ((Tiledata*)ea_data(in, 0))->data;
+  o = ((Tiledata*)ea_data(out, 0))->data;
+  input2 = (uint16_t*)input;
+  o2 = (uint16_t*)o;
+
+  if (*(int*)data->bd->data == BD_U8) {
+    for(j=0;j<area->height;j++)
+      for(i=0;i<area->width;i++) {
+          o[j*area->width+i] = clip_u8(((input[j*area->width+i])*mult)/1024);
+      }
+  }
+  else {
+    for(j=0;j<area->height;j++)
+      for(i=0;i<area->width;i++) {
+          o2[j*area->width+i] = clip_u16(((input2[j*area->width+i])*data->c));
+      }
+  }
 }
 
 static Filter *_f_lightness_new(Filter_Core *fc, void worker_func(Filter *f, Eina_Array *in, Eina_Array *out, Rect *area, int thread_id), float min, float max)
@@ -92,6 +119,7 @@ static Filter *_f_lightness_new(Filter_Core *fc, void worker_func(Filter *f, Ein
   tune_bitdepth->replace = tune_bitdepth;
   tune_bitdepth->dep = tune_bitdepth;
   eina_array_push(filter->tune, tune_bitdepth);
+  data->bd = tune_bitdepth;
   
   //output
   out = meta_new_channel(filter, 1);

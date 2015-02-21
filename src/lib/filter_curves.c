@@ -88,7 +88,7 @@ static int _prepare(Filter *f)
   
   if (bd_out == BD_U8 && !data->lut)
     data->lut = malloc(sizeof(uint8_t)*65536);
-  else if(bd_out == BD_U8 && !data->lut2)
+  else if(bd_out == BD_U16 && !data->lut2)
     data->lut2 = malloc(sizeof(uint16_t)*65536);
   
   exp = pow(2.0, data->exp);
@@ -177,8 +177,8 @@ static int _prepare(Filter *f)
     for (i=0;i<65536;i++) {
       ye = lin2gamma(gsl_spline_eval(spline_exp, i*(1.0/65536.0), acc_exp));
       //ye = lin2gamma(i*(1.0/65536.0));
-      yc = gsl_spline_eval(spline, ye, acc);
-      data->lut[i] = imin((int)(yc*65536.0),65535);
+      yc = gsl_spline_eval(spline, i*(1.0/65536.0), acc);
+      data->lut2[i] = imin((int)(yc*65536.0),65535);
     }
   else
     for (i=0;i<65536;i++) {
@@ -201,6 +201,8 @@ static int _del(Filter *f)
   
   if (data->lut)
     free(data->lut);
+  if (data->lut2)
+    free(data->lut2);
   free(data);
   
   return 0;

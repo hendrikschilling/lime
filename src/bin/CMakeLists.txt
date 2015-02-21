@@ -22,7 +22,7 @@ add_executable(limeview limeview.c cli.c tagfiles.c settings.c)
 
 add_executable(limedo limedo.c cli.c)
 
-target_link_libraries(limeview ${ECORE_LIBRARIES} ${EVAS_LIBRARIES} ${ELM_LIBRARIES} ${EIO_LIBRARIES} ${EXEMPI_LIBRARIES} ${EINA_LIBRARIES} lime tcmalloc)
+target_link_libraries(limeview ${ECORE_LIBRARIES} ${EVAS_LIBRARIES} ${ELM_LIBRARIES} ${EIO_LIBRARIES} ${EXEMPI_LIBRARIES} ${EINA_LIBRARIES} lime)
 target_link_libraries(limedo  ${EINA_LIBRARIES} lime)
 
 install (TARGETS limeview limedo

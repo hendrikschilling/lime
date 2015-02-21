@@ -440,8 +440,8 @@ void restr_remove_value(Tune_Restriction *restr, int idx)
 	  break;
 	}
       }
-    my_node->data = NULL;
-    other_node->data = NULL;
+    //my_node->data = NULL;
+    //other_node->data = NULL;
     //other_restr->tune->data = NULL;
   }
 
@@ -465,6 +465,7 @@ Tune_Restriction *restr_new(Meta *from, Config *c)
   restr->tune = from;
   
   assert(from->select);
+  //data could have a default value?
   assert(from->data == NULL);
   assert(ea_count(from->select));
   
@@ -903,9 +904,10 @@ int test_filter_config_real(Filter *f, int write_graph, Config *c)
   //fix tunings
   for(i=0;i<ea_count(restrictions);i++) {
     restr = ea_data(restrictions, i);
-    for(j=ea_count(restr->allowed_values)-1;j>=0;j--)
+    for(j=ea_count(restr->allowed_values)-1;j>=0;j--) {
       if (ea_data(restr->allowed_values, j) && restr->remain > 1)
 	restr_remove_value(restr, j);
+    }
   }
   
   if (write_graph) {

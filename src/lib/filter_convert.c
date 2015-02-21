@@ -45,7 +45,7 @@ typedef struct {
   Meta *in_color, *in_bd,
        *out_color, *out_bd;
   _Common *common;
-  void *buf;
+  void *buf, *buf2;
   struct SwsContext *sws;
 } _Data;
 
@@ -55,6 +55,7 @@ static void *_data_new(Filter *f, void *data)
   
   *newdata = *(_Data*)data;
   newdata->buf = NULL;
+  newdata->buf2 = NULL;
   
   if (newdata->common->initialized == INIT_SWS)
     newdata->sws = sws_getContext(DEFAULT_TILE_SIZE, DEFAULT_TILE_SIZE, newdata->common->lav_fmt_in, DEFAULT_TILE_SIZE, DEFAULT_TILE_SIZE, newdata->common->lav_fmt_out, SWS_POINT, NULL, NULL, NULL);
@@ -72,6 +73,7 @@ static int _del(Filter *f)
     data = ea_data(f->data, i);
     common = data->common;
     cache_buffer_del(data->buf, DEFAULT_TILE_AREA*3);
+    cache_buffer_del(data->buf2, 2*DEFAULT_TILE_AREA*3);
     if (common->initialized == INIT_SWS)
       sws_freeContext(data->sws);
     free(data);
@@ -88,29 +90,55 @@ static void _worker(Filter *f, Eina_Array *in, Eina_Array *out, Rect *area, int 
 {
   int i, j;
   _Data *data = ea_data(f->data, thread_id);
-  
+  void *in_buf, *out_buf;
   uint8_t *buf;
   const uint8_t *in_planes[3];
   uint8_t *out_planes[3];
   int in_strides[3] = {DEFAULT_TILE_SIZE, DEFAULT_TILE_SIZE, DEFAULT_TILE_SIZE};
   int out_strides[3] = {DEFAULT_TILE_SIZE, DEFAULT_TILE_SIZE, DEFAULT_TILE_SIZE};
+  int in_bd = *((Bitdepth*)data->in_bd->data);
+  int out_bd = *((Bitdepth*)data->out_bd->data);
+  int in_bytes;
+  int out_bytes;
   
   if (!data->buf)
     data->buf = cache_buffer_alloc(DEFAULT_TILE_AREA*3);
-  
+  if (!data->buf2)
+    data->buf2 = cache_buffer_alloc(2*DEFAULT_TILE_AREA*3);
   buf = data->buf;
+  
+  if (in_bd == BD_U16) {
+    in_bytes = 2;
+    in_buf = data->buf2;
+  }
+  else {
+    in_bytes = 1;
+    in_buf = data->buf;
+  }
+  
+  if (out_bd == BD_U16) {
+    out_bytes = 2;
+    out_buf = data->buf2;
+    hack_tiledata_fixsize(2, ea_data(out, 0));
+    hack_tiledata_fixsize(2, ea_data(out, 1));
+    hack_tiledata_fixsize(2, ea_data(out, 2));
+  }
+  else {
+    out_bytes = 1;
+    out_buf = data->buf;
+  }
   
   
   if (data->common->transform) {
-    memcpy(buf, ((Tiledata*)ea_data(in, 0))->data, DEFAULT_TILE_AREA);
-    memcpy(buf+DEFAULT_TILE_AREA,  ((Tiledata*)ea_data(in, 1))->data, DEFAULT_TILE_AREA);
-    memcpy(buf+2*DEFAULT_TILE_AREA,  ((Tiledata*)ea_data(in, 2))->data, DEFAULT_TILE_AREA);
+    memcpy(in_buf, ((Tiledata*)ea_data(in, 0))->data, in_bytes*DEFAULT_TILE_AREA);
+    memcpy(in_buf+in_bytes*DEFAULT_TILE_AREA,  ((Tiledata*)ea_data(in, 1))->data, in_bytes*DEFAULT_TILE_AREA);
+    memcpy(in_buf+2*in_bytes*DEFAULT_TILE_AREA,  ((Tiledata*)ea_data(in, 2))->data, in_bytes*DEFAULT_TILE_AREA);
     
-    cmsDoTransform(data->common->transform, buf, buf, DEFAULT_TILE_AREA);
+    cmsDoTransform(data->common->transform, in_buf, out_buf, DEFAULT_TILE_AREA);
     
-    memcpy(((Tiledata*)ea_data(out, 0))->data, buf, DEFAULT_TILE_AREA);
-    memcpy(((Tiledata*)ea_data(out, 1))->data, buf+DEFAULT_TILE_AREA, DEFAULT_TILE_AREA);
-    memcpy(((Tiledata*)ea_data(out, 2))->data, buf+2*DEFAULT_TILE_AREA, DEFAULT_TILE_AREA);
+    memcpy(((Tiledata*)ea_data(out, 0))->data, out_buf, out_bytes*DEFAULT_TILE_AREA);
+    memcpy(((Tiledata*)ea_data(out, 1))->data, out_buf+out_bytes*DEFAULT_TILE_AREA, out_bytes*DEFAULT_TILE_AREA);
+    memcpy(((Tiledata*)ea_data(out, 2))->data, out_buf+2*out_bytes*DEFAULT_TILE_AREA, out_bytes*DEFAULT_TILE_AREA);
   }
   else if (data->sws) {
     if (data->common->packed_input) {
@@ -156,6 +184,7 @@ static void _worker(Filter *f, Eina_Array *in, Eina_Array *out, Rect *area, int 
 
 #ifndef TYPE_Lab_8_PLANAR
   #define TYPE_Lab_8_PLANAR             (COLORSPACE_SH(PT_Lab)|CHANNELS_SH(3)|BYTES_SH(1)|PLANAR_SH(1))
+  #define TYPE_Lab_16_PLANAR             (COLORSPACE_SH(PT_Lab)|CHANNELS_SH(3)|BYTES_SH(2)|PLANAR_SH(1))
 #endif
 
 static int prepare(Filter *f)
@@ -163,9 +192,8 @@ static int prepare(Filter *f)
   cmsHPROFILE hInProfile, hOutProfile;
   uint32_t in_type, out_type;
   _Data *data = ea_data(f->data, 0);
-  
-  assert(*((Bitdepth*)data->in_bd->data) == BD_U8);
-  assert(*((Bitdepth*)data->out_bd->data) == BD_U8);
+  int in_bd = *((Bitdepth*)data->in_bd->data);
+  int out_bd = *((Bitdepth*)data->out_bd->data);
   
   if (data->common->initialized == INIT_LMCS)
     cmsDeleteTransform(data->common->transform);
@@ -186,59 +214,67 @@ static int prepare(Filter *f)
   data->common->out_shuffle[1] = 1;
   data->common->out_shuffle[2] = 2;
   
-  switch (*((Colorspace*)data->in_color->data)) {
-    case CS_RGB :
-      if (sws_isSupportedInput(PIX_FMT_GBRP)) {
-	data->common->lav_fmt_in = PIX_FMT_GBRP;
-	data->common->in_shuffle[0] = 1;
-	data->common->in_shuffle[1] = 2;
-	data->common->in_shuffle[2] = 0;
-      }
-      else if (sws_isSupportedInput(PIX_FMT_RGB24)) {
-	data->common->lav_fmt_in = PIX_FMT_RGB24;
-	data->common->packed_input = EINA_TRUE;
-      }
-      break;
-    case CS_YUV : 
-      data->common->lav_fmt_in = PIX_FMT_YUV444P;
-      break;
-  }
-  
-  switch (*((Colorspace*)data->out_color->data)) {
-    case CS_RGB :
-      if (sws_isSupportedOutput(PIX_FMT_GBRP)) {
-	data->common->lav_fmt_out = PIX_FMT_GBRP;
-	data->common->out_shuffle[0] = 2;
-	data->common->out_shuffle[1] = 0;
-	data->common->out_shuffle[2] = 1;
-      }
-      else if (sws_isSupportedOutput(PIX_FMT_RGB24)) {
-	data->common->lav_fmt_out = PIX_FMT_RGB24;
-	data->common->packed_output = EINA_TRUE;
-      }
-      break;
-    case CS_YUV : 
-      data->common->lav_fmt_out = PIX_FMT_YUV444P;
-      break;
-  }
-  
-  if (data->common->lav_fmt_in != PIX_FMT_NONE && data->common->lav_fmt_out != PIX_FMT_NONE) {
-    data->sws = sws_getContext(DEFAULT_TILE_SIZE, DEFAULT_TILE_SIZE, data->common->lav_fmt_in, DEFAULT_TILE_SIZE, DEFAULT_TILE_SIZE, data->common->lav_fmt_out, SWS_POINT, NULL, NULL, NULL);
+  if (in_bd == BD_U8 && out_bd == BD_U16) {
+    switch (*((Colorspace*)data->in_color->data)) {
+      case CS_RGB :
+        if (sws_isSupportedInput(PIX_FMT_GBRP)) {
+          data->common->lav_fmt_in = PIX_FMT_GBRP;
+          data->common->in_shuffle[0] = 1;
+          data->common->in_shuffle[1] = 2;
+          data->common->in_shuffle[2] = 0;
+        }
+        else if (sws_isSupportedInput(PIX_FMT_RGB24)) {
+          data->common->lav_fmt_in = PIX_FMT_RGB24;
+          data->common->packed_input = EINA_TRUE;
+        }
+        break;
+      case CS_YUV : 
+        data->common->lav_fmt_in = PIX_FMT_YUV444P;
+        break;
+    }
+    
+    switch (*((Colorspace*)data->out_color->data)) {
+      case CS_RGB :
+        if (sws_isSupportedOutput(PIX_FMT_GBRP)) {
+          data->common->lav_fmt_out = PIX_FMT_GBRP;
+          data->common->out_shuffle[0] = 2;
+          data->common->out_shuffle[1] = 0;
+          data->common->out_shuffle[2] = 1;
+        }
+        else if (sws_isSupportedOutput(PIX_FMT_RGB24)) {
+          data->common->lav_fmt_out = PIX_FMT_RGB24;
+          data->common->packed_output = EINA_TRUE;
+        }
+        break;
+      case CS_YUV : 
+        data->common->lav_fmt_out = PIX_FMT_YUV444P;
+        break;
+    }
+    
+    if (data->common->lav_fmt_in != PIX_FMT_NONE && data->common->lav_fmt_out != PIX_FMT_NONE) {
+      data->sws = sws_getContext(DEFAULT_TILE_SIZE, DEFAULT_TILE_SIZE, data->common->lav_fmt_in, DEFAULT_TILE_SIZE, DEFAULT_TILE_SIZE, data->common->lav_fmt_out, SWS_POINT, NULL, NULL, NULL);
 
-    if (data->sws) {
-      data->common->initialized = INIT_SWS;
-      return 0;
+      if (data->sws) {
+        data->common->initialized = INIT_SWS;
+        return 0;
+      }
     }
   }
   
   switch (*((Colorspace*)data->in_color->data)) {
     case CS_RGB :
       hInProfile = cmsCreate_sRGBProfile();
-      in_type = TYPE_RGB_8_PLANAR;
+      if (in_bd == BD_U8)
+        in_type = TYPE_RGB_8_PLANAR;
+      else
+        in_type = TYPE_RGB_16_PLANAR;
       break;
     case CS_LAB : 
       hInProfile = cmsCreateLab4Profile(NULL);
-      in_type = TYPE_Lab_8_PLANAR;
+      if (in_bd == BD_U8)
+        in_type = TYPE_Lab_8_PLANAR;
+      else
+        in_type = TYPE_Lab_16_PLANAR;
       break;
     default:
       printf("FIXME unhandled input color-space!\n");
@@ -248,11 +284,17 @@ static int prepare(Filter *f)
   switch (*((Colorspace*)data->out_color->data)) {
     case CS_RGB :
       hOutProfile = cmsCreate_sRGBProfile();
-      out_type = TYPE_RGB_8_PLANAR;
+      if (out_bd == BD_U8)
+        out_type = TYPE_RGB_8_PLANAR;
+      else
+        out_type = TYPE_RGB_16_PLANAR;
       break;
     case CS_LAB : 
       hOutProfile = cmsCreateLab4Profile(NULL);
-      out_type = TYPE_Lab_8_PLANAR;
+      if (out_bd == BD_U8)
+        out_type = TYPE_Lab_8_PLANAR;
+      else
+        out_type = TYPE_Lab_16_PLANAR;
       break;
     default:
       printf("unhandled output color-space!\n");
@@ -376,25 +418,25 @@ Filter *filter_convert_new(void)
     select_color = eina_array_new(4);
     pushint(select_color, CS_LAB);
     pushint(select_color, CS_RGB);
-    pushint(select_color, CS_YUV);
+    //pushint(select_color, CS_YUV);
     //pushint(select_color, CS_HSV);
     
     color1 = eina_array_new(4);
     pushint(color1, CS_LAB_L);
     pushint(color1, CS_RGB_R);
-    pushint(color1, CS_YUV_Y);
+    //pushint(color1, CS_YUV_Y);
     //pushint(color1, CS_HSV_V);
     
     color2 = eina_array_new(4);
     pushint(color2, CS_LAB_A);
     pushint(color2, CS_RGB_G);
-    pushint(color2, CS_YUV_U);
+    //pushint(color2, CS_YUV_U);
     //pushint(color2, CS_HSV_H);
     
     color3 = eina_array_new(4);
     pushint(color3, CS_LAB_B);
     pushint(color3, CS_RGB_B);
-    pushint(color3, CS_YUV_V);
+    //pushint(color3, CS_YUV_V);
     //pushint(color3, CS_HSV_S);
   }
   
@@ -402,15 +444,17 @@ Filter *filter_convert_new(void)
   meta_name_set(tune_out_bitdepth, "Output Bitdepth");
   tune_out_bitdepth->dep = tune_out_bitdepth;
   data->out_bd = tune_out_bitdepth;
+  
   tune_out_color = meta_new_select(MT_COLOR, filter, select_color);
   meta_name_set(tune_out_color, "Output CS");
   data->out_color = tune_out_color;
+  
   tune_in_bitdepth = meta_new_select(MT_BITDEPTH, filter, select_bitdepth);
   meta_name_set(tune_in_bitdepth, "Input Bitdepth");
   tune_in_bitdepth->dep = tune_in_bitdepth;
-  //FIXME why?
-  data->in_bd = tune_out_bitdepth;
+  data->in_bd = tune_in_bitdepth;
   tune_in_bitdepth->replace = tune_out_bitdepth;
+  
   tune_in_color = meta_new_select(MT_COLOR, filter, select_color);
   meta_name_set(tune_in_color, "Input CS");
   data->in_color = tune_out_color;

@@ -105,7 +105,7 @@ static void _worker(Filter *f, Eina_Array *in, Eina_Array *out, Rect *area, int 
 Filter *filter_sharpen_new(void)
 {
   Filter *filter = filter_new(&filter_core_sharpen);
-  Meta *in, *out, *channel, *color[3], *setting;
+  Meta *in, *out, *channel, *color[3], *setting, *bd;
   Meta *ch_out[3];
   _Data *data = malloc(sizeof(_Data));
   data->val = 100.0;
@@ -124,6 +124,9 @@ Filter *filter_sharpen_new(void)
   color[0] = meta_new_data(MT_COLOR, filter, malloc(sizeof(int)));
   *(int*)(color[0]->data) = CS_LAB_L;
   meta_attach(channel, color[0]);
+  bd = meta_new_data(MT_COLOR, filter, malloc(sizeof(int)));
+  *(int*)(bd->data) = BD_U8;
+  meta_attach(channel, bd);
   meta_attach(out, channel);
   ch_out[0] = channel;
   
