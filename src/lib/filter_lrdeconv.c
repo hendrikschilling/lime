@@ -175,7 +175,7 @@ static void _worker(Filter *f, Eina_Array *in, Eina_Array *out, Rect *area, int 
   int i, j;
   uint16_t *output;
   uint16_t *input;
-  _Data *data = ea_data(f->data, 0);
+  _Data *data = ea_data(f->data, thread_id);
   uint16_t *blur, *estimate, *fac;
   Tiledata *in_td, *out_td;
   Rect in_area;
@@ -305,7 +305,7 @@ static Filter *_new(void)
   f->mode_buffer = filter_mode_buffer_new();
   f->mode_buffer->worker = _worker;
   f->mode_buffer->area_calc = _area_calc;
-  f->mode_buffer->threadsafe = 0;
+  f->mode_buffer->threadsafe = 1;
   f->mode_buffer->data_new = &_data_new;
   f->del = _del;
   ea_push(f->data, data);

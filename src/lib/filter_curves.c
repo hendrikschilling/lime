@@ -100,7 +100,7 @@ static int _prepare(Filter *f)
     data->lut2 = malloc(sizeof(uint16_t)*65536);
   
   exp = pow(2.0, data->exp);
-  compress = data->compress;
+  compress = 1.0-lin_2_srgb_gamma(1.0-data->compress);
   clip = data->clip;
   
   x[0] = 0.0;

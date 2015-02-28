@@ -344,7 +344,7 @@ static int prepare(Filter *f)
 					out_type, 
 //most useful for two-way conversion!
 					INTENT_PERCEPTUAL, 
-					cmsFLAGS_NOOPTIMIZE);
+					cmsFLAGS_GRIDPOINTS(32) | cmsFLAGS_FORCE_CLUT | cmsFLAGS_CLUT_POST_LINEARIZATION | cmsFLAGS_CLUT_PRE_LINEARIZATION);
   data->common->initialized = INIT_LMCS;
   data->common->packed_input = EINA_TRUE;
   data->common->packed_output = EINA_TRUE;

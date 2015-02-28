@@ -382,7 +382,12 @@ void filter_render_tile(Render_Node *job, int thread_id)
   
   clock_gettime(CLOCK_THREAD_CPUTIME_ID,&t_start);
   
-  job->f->mode_buffer->worker(job->f, job->inputs, channels, &job->tile->area, thread_id);
+  if (job->f->mode_buffer->threadsafe)
+    job->f->mode_buffer->worker(job->f, job->inputs, channels, &job->tile->area, thread_id);
+  else
+    job->f->mode_buffer->worker(job->f, job->inputs, channels, &job->tile->area, 0);
+    
+  
   clock_gettime(CLOCK_THREAD_CPUTIME_ID,&t_stop);
   
   //if (!job->f->mode_buffer->threadsafe)
