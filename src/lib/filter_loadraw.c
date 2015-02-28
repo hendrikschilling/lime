@@ -24,8 +24,8 @@
 #include <jpeglib.h>
 #include <setjmp.h>
 
-#define JPEG_TILE_WIDTH 256
-#define JPEG_TILE_HEIGHT 256
+#define RAW_TILE_WIDTH 1024
+#define RAW_TILE_HEIGHT 1024
 
 #include <libraw.h>
 #include "jpeglib.h"
@@ -239,10 +239,10 @@ static int _input_fixed(Filter *f)
   f->tw_s = realloc(f->tw_s, sizeof(int)*(((Dim*)data->dim)->scaledown_max+1));
   f->th_s = realloc(f->th_s, sizeof(int)*(((Dim*)data->dim)->scaledown_max+1));
   
-  f->tw_s[0] = DEFAULT_TILE_SIZE;
-  f->th_s[0] = DEFAULT_TILE_SIZE;
-  f->tw_s[1] = DEFAULT_TILE_SIZE;
-  f->th_s[1] = DEFAULT_TILE_SIZE;
+  f->tw_s[0] = RAW_TILE_WIDTH;
+  f->th_s[0] = RAW_TILE_HEIGHT;
+  f->tw_s[1] = RAW_TILE_WIDTH;
+  f->th_s[1] = RAW_TILE_HEIGHT;
   
   data->common->unpacked = 0;
   
