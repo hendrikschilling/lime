@@ -270,11 +270,14 @@ static int prepare(Filter *f)
         printf("input sRGB 8\n");
       }
       else {
-        printf("input (s)RGB 16\n");
+        printf("input prophotoRGB 16\n");
         in_type = TYPE_RGB_16_PLANAR;
-        cmsCIExyYTRIPLE p = {{0.6400, 0.3300, 1.0}, {0.3000, 0.6000, 1.0}, {0.1500, 0.0600, 1.0}};
+        //from rawtherapee iplab2rgb.cc l370ff
+        cmsCIExyYTRIPLE p = {{0.7347,  0.2653,  1.0},
+                          {0.1596,  0.8404,  1.0},
+                          {0.0366,  0.0001,  1.0}};
         cmsToneCurve *g[3];
-        g[0] = cmsBuildGamma(0, 1.0);
+        g[0] = cmsBuildGamma(1, 1.0);
         g[1] = g[0];
         g[2] = g[0];
         hInProfile = cmsCreateRGBProfile(cmsD50_xyY(), &p, g);
@@ -307,9 +310,12 @@ static int prepare(Filter *f)
       else {
         printf("output (s)RGB 16\n");
         out_type = TYPE_RGB_16_PLANAR;
-        cmsCIExyYTRIPLE p = {{0.6400, 0.3300, 1.0}, {0.3000, 0.6000, 1.0}, {0.1500, 0.0600, 1.0}};
+        //from rawtherapee iplab2rgb.cc l370ff
+        cmsCIExyYTRIPLE p = {{0.7347,  0.2653,  1.0},
+                          {0.1596,  0.8404,  1.0},
+                          {0.0366,  0.0001,  1.0}};
         cmsToneCurve *g[3];
-        g[0] = cmsBuildGamma(0, 1.0);
+        g[0] = cmsBuildGamma(1, 1.0);
         g[1] = g[0];
         g[2] = g[0];
         hOutProfile = cmsCreateRGBProfile(cmsD50_xyY(), &p, g);

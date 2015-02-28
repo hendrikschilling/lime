@@ -30,7 +30,7 @@
 #include "opencv_helpers.h"
 
 static const int bord = 128;
-static const int mul_one = 256;
+static const int mul_one = 1024;
 
 typedef struct {
   int iterations;
@@ -61,7 +61,7 @@ static void lrdiv(Rect area, uint16_t *observed, uint16_t *blur, uint16_t *out)
       if (blur[pos])
         out[pos] = imin(observed[pos]*mul_one/blur[pos], 65535);
       else
-        out[pos] = 0;
+        out[pos] = 65535;
     }
 }
 
@@ -175,7 +175,7 @@ static void _worker(Filter *f, Eina_Array *in, Eina_Array *out, Rect *area, int 
   int i, j;
   uint16_t *output;
   uint16_t *input;
-  _Data *data = ea_data(f->data, thread_id);
+  _Data *data = ea_data(f->data, 0);
   uint16_t *blur, *estimate, *fac;
   Tiledata *in_td, *out_td;
   Rect in_area;
@@ -189,6 +189,7 @@ static void _worker(Filter *f, Eina_Array *in, Eina_Array *out, Rect *area, int 
   blur = data->blur_b,
   estimate = data->estimate_b,
   fac = data->fac_b;
+  void *fac2 = malloc(size);
 
   assert(in && ea_count(in) == 1);
   assert(out && ea_count(out) == 1);
@@ -204,6 +205,7 @@ static void _worker(Filter *f, Eina_Array *in, Eina_Array *out, Rect *area, int 
   
   if (area->corner.scale) {
     memcpy(output,input,sizeof(uint16_t)*in_td->area.width*in_td->area.height);
+    free(fac2);
     return;
   }
   
@@ -218,8 +220,8 @@ static void _worker(Filter *f, Eina_Array *in, Eina_Array *out, Rect *area, int 
         lrdiv(in_area, input, blur, fac);
       else
         lrdampdiv(in_area, input, blur, fac, data->common->damp/500.0);
-      simplegauss(in_area, fac, fac, data->common->radius);
-      lrmul(in_area, estimate, fac, newestimate);
+      simplegauss(in_area, fac, fac2, data->common->radius);
+      lrmul(in_area, estimate, fac2, newestimate);
       memcpy(estimate, newestimate, size);
     }
   
@@ -249,6 +251,8 @@ static void _worker(Filter *f, Eina_Array *in, Eina_Array *out, Rect *area, int 
       }
     }
   }
+  
+  free(fac2);
 }
 
 static void _area_calc(Filter *f, Rect *in, Rect *out)
@@ -301,7 +305,7 @@ static Filter *_new(void)
   f->mode_buffer = filter_mode_buffer_new();
   f->mode_buffer->worker = _worker;
   f->mode_buffer->area_calc = _area_calc;
-  f->mode_buffer->threadsafe = 1;
+  f->mode_buffer->threadsafe = 0;
   f->mode_buffer->data_new = &_data_new;
   f->del = _del;
   ea_push(f->data, data);

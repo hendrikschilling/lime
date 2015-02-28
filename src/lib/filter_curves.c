@@ -67,12 +67,20 @@ static void _worker(Filter *f, Eina_Array *in, Eina_Array *out, Rect *area, int 
   }
 }
 
-static double lin2gamma(double lin)
+static double lin_2_srgb_gamma(double lin)
 {
   if (lin <= 0.0031308)
     return 12.92*lin;
   else
     return (1+0.055)*pow(lin,1/2.4)-0.055;
+}
+
+static double srgb_gamma_2_lin(double gam)
+{
+  if (gam <= 0.04045)
+    return gam/12.92;
+  else
+    return pow(gam+0.055,2.4)/1.055;
 }
 
 static int _prepare(Filter *f)
@@ -176,17 +184,18 @@ static int _prepare(Filter *f)
   if (bd_out == BD_U16)
     for (i=0;i<65536;i++) {
       ye = gsl_spline_eval(spline_exp, i*(1.0/65536.0), acc_exp);
-      //ye = lin2gamma(i*(1.0/65536.0));
+      ye = lin_2_srgb_gamma(ye);
       yc = gsl_spline_eval(spline, ye, acc);
-      data->lut2[i] = imin((int)(yc*65536.0),65535);
+      yc = srgb_gamma_2_lin(yc);
+      data->lut2[i] = clip_u16((int)(yc*65536.0));
     }
   else
     for (i=0;i<65536;i++) {
-      ye = lin2gamma(gsl_spline_eval(spline_exp, i*(1.0/65536.0), acc_exp));
+      ye = lin_2_srgb_gamma(gsl_spline_eval(spline_exp, i*(1.0/65536.0), acc_exp));
       //ye = gsl_spline_eval(spline_exp, i*(1.0/65536.0), acc_exp);
       //ye = lin2gamma(i*(1.0/65536.0));
       yc = gsl_spline_eval(spline, ye, acc);
-      data->lut[i] = imin((int)(yc*256.0),255);
+      data->lut[i] = clip_u8((int)(yc*256.0));
     }
     
   gsl_spline_free (spline);
@@ -232,8 +241,8 @@ static Filter *_new(void)
   
   //tune bitdepth
   bd_out = meta_new_select(MT_BITDEPTH, f, eina_array_new(2));
-  //pushint(bd_out->select, BD_U16);
-  pushint(bd_out->select, BD_U8);
+  pushint(bd_out->select, BD_U16);
+  //pushint(bd_out->select, BD_U8);
   bd_out->dep = bd_out;
   eina_array_push(f->tune, bd_out);
   data->bd_out = bd_out;

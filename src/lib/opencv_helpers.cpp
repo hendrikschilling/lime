@@ -28,5 +28,5 @@ void cv_gauss(int w, int h, int type, void *in, void *out, float r)
   Mat in_m = Mat(h, w, type, in);
   Mat out_m = Mat(h, w, type, out);
   
-  GaussianBlur(in_m, out_m, Size((int)(2*r+1)/2*2+1, (int)(2*r+1)/2*2+1), r);
+  GaussianBlur(in_m, out_m, Size((int)(r+1)*2+5, (int)(r+1)*2+5), r);
 }

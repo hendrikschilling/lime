@@ -32,7 +32,7 @@
 #define MAX_CONS_TRIES 5
 
 //#define DEBUG_SPECIAL
-//#define PRINT_CONFIG_PROGRESS
+#define PRINT_CONFIG_PROGRESS
 
 //TODO replace by non-global filter-located variable! this here is bad for multiple filter graphs!
 struct _Config {
@@ -273,7 +273,7 @@ int metas_not_kompat_rec_all(Meta *source, Meta *sink, Eina_Array *match_source,
 	}
       if (!found && !meta_flag_get(ma_data(sink->childs,i), MT_FLAG_NOSOURCEREQUIRED)) {
 #ifdef PRINT_CONFIG_PROGRESS
-        printf("[metas_not_kompat_rec_all: no source match for sink node]");
+        //printf("[metas_not_kompat_rec_all: no source match for sink node]");
 #endif
 	//printf("rec no  match\n");
 	while (ea_count(match_source) > pre_count) {
@@ -392,7 +392,7 @@ int metas_not_kompat_rec(Meta *source, Meta *sink, Meta **ch_sink_source)
 
 
 
-void restr_remove_value(Tune_Restriction *restr, int idx)
+int restr_remove_value(Tune_Restriction *restr, int idx)
 {
   int i, j;
   Meta *my_node, *other_node;
@@ -433,9 +433,11 @@ void restr_remove_value(Tune_Restriction *restr, int idx)
 	assert(other_node->data);
 	
 	if (!metas_not_kompat(my_node, other_node)) {
-	  assert(other_restr->remain > 1);
+	  if (other_restr->remain <= 1)
+            return -1;
 	  
-	  restr_remove_value(other_restr, j);
+	  if (restr_remove_value(other_restr, j))
+            return -1;
 	  
 	  break;
 	}
@@ -453,6 +455,8 @@ void restr_remove_value(Tune_Restriction *restr, int idx)
   }
   else
     restr->tune->data = NULL;
+  
+  return 0;
 }
 
 Tune_Restriction *restr_new(Meta *from, Config *c)
@@ -481,7 +485,7 @@ Tune_Restriction *restr_new(Meta *from, Config *c)
   return restr;
 }
 
-void tunes_restrict(Meta *a, Meta *b, Eina_Array *restrictions, Config *c)
+int tunes_restrict(Meta *a, Meta *b, Eina_Array *restrictions, Config *c)
 {
   int i, j;
   int is_compatible;
@@ -489,7 +493,7 @@ void tunes_restrict(Meta *a, Meta *b, Eina_Array *restrictions, Config *c)
   Tune_Restriction *found_a = NULL, *found_b = NULL;
   
   if (!a->dep && !b->dep)
-    return;
+    return 0;
   
   assert(a->dep != b->dep);
   
@@ -521,10 +525,11 @@ void tunes_restrict(Meta *a, Meta *b, Eina_Array *restrictions, Config *c)
 	meta_dep_set_data_calc(a, ea_data(found_a->allowed_values, i));
     
 	if (metas_not_kompat(a, b))
-	  restr_remove_value(found_a, i);
+	  if (restr_remove_value(found_a, i))
+            return -1;
     }
     
-    return;
+    return 0;
   }
   
   if (!a->dep) {
@@ -535,10 +540,11 @@ void tunes_restrict(Meta *a, Meta *b, Eina_Array *restrictions, Config *c)
 	meta_dep_set_data_calc(b, ea_data(found_b->allowed_values, i));
 
 	if (metas_not_kompat(a, b))
-	  restr_remove_value(found_b, i);
+          if (restr_remove_value(found_b, i))
+            return -1;
     }
     
-    return;
+    return 0;
   }
   
   ea_push(found_a->my_node, a);
@@ -569,7 +575,8 @@ void tunes_restrict(Meta *a, Meta *b, Eina_Array *restrictions, Config *c)
     }
     
     if (!is_compatible)
-      restr_remove_value(found_a, i);
+      if (restr_remove_value(found_a, i))
+        return -1;
   }
   
   for(i=0;i<ea_count(found_b->allowed_values);i++) {
@@ -593,6 +600,8 @@ void tunes_restrict(Meta *a, Meta *b, Eina_Array *restrictions, Config *c)
     if (!is_compatible)
       restr_remove_value(found_b, i);
   }
+  
+  return 0;
 }
 
 /*
@@ -858,7 +867,24 @@ int test_filter_config_real(Filter *f, int write_graph, Config *c)
     
     for(i=0;i<ea_count(match_source);i++) {
       //printf("%d",i);   meta_print(global_meta_check); printf("\n");
-      tunes_restrict(ea_data(match_source, i), ea_data(match_sink, i), restrictions, c);
+      if (tunes_restrict(ea_data(match_source, i), ea_data(match_sink, i), restrictions, c)) {
+	_ea_metas_data_zero(c->applied_metas);
+	eina_array_free(matches_compat);
+	eina_array_free(match_source);
+	eina_array_free(match_sink);
+	for(i=0;i<ea_count(copied);i++)
+	  free(ea_data(copied, i));
+	eina_array_free(copied);
+	eina_array_free(copy);
+	eina_array_free(restrictions);
+	//for(i=0;i<ea_count(trash);i++)
+	  //free(ea_data(trash, i));
+	eina_array_free(trash);
+#ifdef PRINT_CONFIG_PROGRESS
+  printf(" failed: tunes restrict failed\n");
+#endif 
+	return pos;
+      }
     }
     
     //FIXME clean on reconfiguration!

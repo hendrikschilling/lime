@@ -123,7 +123,7 @@ static void _worker(Filter *f, Eina_Array *in, Eina_Array *out, Rect *area, int 
       data->common->raw->params.exp_preser = 0.0;
       
       //sRGB
-      data->common->raw->params.output_color = 1;
+      data->common->raw->params.output_color = 4;
       //BT709
       //data->common->raw->params.gamm[0]=1.0/2.222;
       //data->common->raw->params.gamm[1]=4.5;
