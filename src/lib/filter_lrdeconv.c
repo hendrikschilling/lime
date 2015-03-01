@@ -238,12 +238,12 @@ static void _worker(Filter *f, Eina_Array *in, Eina_Array *out, Rect *area, int 
     float s = data->common->sharpen*0.01;
     uint16_t *buf_out, *buf_in1, *buf_in2, *buf_in3;
     for(j=0;j<area->height;j++) {
-      buf_out = tileptr16_3(out_td, area->corner.x, area->corner.y+j);
+      buf_out = tileptr16(out_td, area->corner.x, area->corner.y+j);
       buf_in1 = estimate+(j+bord-1)*in_area.width+bord;
       buf_in2 = estimate+(j+bord+0)*in_area.width+bord;
       buf_in3 = estimate+(j+bord+1)*in_area.width+bord;
-      for(i=0;i<area->width*3;i++) {
-        *buf_out =  clip_u16(((1.0+4*s)*buf_in2[0] - s*(buf_in1[0] + buf_in2[-3] + buf_in2[3] + buf_in3[0])));
+      for(i=0;i<area->width;i++) {
+        *buf_out =  clip_u16(((1.0+4*s)*buf_in2[0] - s*(buf_in1[0] + buf_in2[-1] + buf_in2[1] + buf_in3[0])));
         buf_out++;
         buf_in1++;
         buf_in2++;

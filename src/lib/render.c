@@ -502,6 +502,7 @@ Render_Node *render_state_getjob( Render_State *state)
 	  else {
 	    if (node->mode == MODE_CLOBBER) {
 	      //TODO attention: we assume channels are always processed in the same order
+              printf("cache input tile for %s\n", node->f->fc->shortname);
 	      clobbertile_add(ea_data(node->inputs, node->channel), ea_data(tile->channels, node->channel));
 	      assert(ea_count(node->inputs) > node->channel);
 	    }
@@ -533,7 +534,9 @@ Render_Node *render_state_getjob( Render_State *state)
 	  cache_tile_add(tile);
 
 	node = render_node_new(node->f_source_curr, tile, state);
-		
+        
+        
+        //FIXME shouldn't we just put paren on tile->need, so it gets automatically clobbered and do an incnode?
 	//don't incnode so parent node will recheck for this tile
 	//the parent will propably be added to tile->need
 	
@@ -677,6 +680,7 @@ void lime_render_area(Rect *area, Filter *f, int thread_id)
     
     if (job->mode == MODE_CLOBBER || job->mode == MODE_INPUT) {
       assert(job->tile->refs > 0);
+      printf("rendering %s\n", job->f->fc->shortname);
       filter_render_tile(job, thread_id);
     }
     //MODE_ITER
@@ -687,8 +691,10 @@ void lime_render_area(Rect *area, Filter *f, int thread_id)
     else
       abort();
     
+    printf("%p - %p\n", job->tile, job->tile->want);
     if (job->tile && job->tile->want)
       while(ea_count(job->tile->want)) {
+        printf("tile was wanted!\n");
 	waiter = ea_pop(job->tile->want);
 	for(j=0;j<ea_count(waiter->f_source);j++)
 	  if (filter_hash_value_get(ea_data(waiter->f_source, j)) == job->tile->filterhash)
@@ -698,7 +704,15 @@ void lime_render_area(Rect *area, Filter *f, int thread_id)
 	if (!waiter->need) {
 	  ea_push(waiter->state->ready, waiter);
 	  waiter->state->pending--;
+          printf("%s became ready!\n", waiter->f->fc->shortname);
 	}
+	//FIXME add proper interface!
+	else if (!strcmp(waiter->f->fc->shortname, "savejpeg")) {
+          printf("need %d more tiles for savejpeg\n", waiter->need);
+          cache_stats_print();
+        }
+        else
+          printf("need %d more tiles for %s\n", waiter->need, waiter->f->fc->shortname);
       }
     
     if (job->tile)

@@ -28,6 +28,7 @@ typedef struct {
   float *rot;
   float sin_c, cos_c;
   int offx_src,offx_tgt, offy_src,offy_tgt;
+  Meta *bd;
 } _Data;
 
 int imin(int a, int b)
@@ -190,6 +191,23 @@ static inline uint8_t interpolate(Tiledata *tile, float x, float y)
         +ptr[tile->area.width+1]*(fx)*(fy);
 }
 
+static inline uint16_t interpolate16(Tiledata *tile, float x, float y)
+{ 
+    int ix = x;
+    int iy = y;
+    if (x < 0) ix--;
+    if (y < 0) iy--;
+    float fx = x - ix;
+    float fy = y - iy;
+    uint16_t *ptr = tileptr16(tile,ix,iy);
+
+    
+  return ptr[0]*(1.0-fx)*(1.0-fy)
+        +ptr[1]*(fx)*(1.0-fy)
+        +ptr[tile->area.width]*(1.0-fx)*(fy)
+        +ptr[tile->area.width+1]*(fx)*(fy);
+}
+
 static void _worker(Filter *f, Eina_Array *in, Eina_Array *out, Rect *area, int thread_id)
 {
     int ch;
@@ -200,14 +218,24 @@ static void _worker(Filter *f, Eina_Array *in, Eina_Array *out, Rect *area, int 
     assert(in && ea_count(in) == 3);
     assert(out && ea_count(out) == 3);
     
-    for(ch=0;ch<3;ch++) {
+    if (*(int*)data->bd->data == BD_U8) {
+      for(ch=0;ch<3;ch++) {
+          in_td = (Tiledata*)ea_data(in, ch);
+          out_td = (Tiledata*)ea_data(out, ch);
+          for(j=0;j<out_td->area.height;j++)
+              for(i=0;i<out_td->area.width;i++)
+                  *tileptr8(out_td, out_td->area.corner.x+i, out_td->area.corner.y+j) = interpolate(in_td, rx(data,out_td->area.corner.x+i,out_td->area.corner.y+j,out_td->area.corner.scale), ry(data,out_td->area.corner.x+i,out_td->area.corner.y+j,out_td->area.corner.scale));
+      }
+    }
+    else {
+      for(ch=0;ch<3;ch++) {
+        hack_tiledata_fixsize(3, ea_data(out, ch));
         in_td = (Tiledata*)ea_data(in, ch);
         out_td = (Tiledata*)ea_data(out, ch);
         for(j=0;j<out_td->area.height;j++)
-            //memcpy(tileptr8(out_td, out_td->area.corner.x, out_td->area.corner.y+j), tileptr8(in_td, in_td->area.corner.x, in_td->area.corner.y+j), out_td->area.width);
-            for(i=0;i<out_td->area.width;i++)
-                *tileptr8(out_td, out_td->area.corner.x+i, out_td->area.corner.y+j) = interpolate(in_td, rx(data,out_td->area.corner.x+i,out_td->area.corner.y+j,out_td->area.corner.scale), ry(data,out_td->area.corner.x+i,out_td->area.corner.y+j,out_td->area.corner.scale));
-                
+          for(i=0;i<out_td->area.width;i++)
+            *tileptr16(out_td, out_td->area.corner.x+i, out_td->area.corner.y+j) = interpolate16(in_td, rx(data,out_td->area.corner.x+i,out_td->area.corner.y+j,out_td->area.corner.scale), ry(data,out_td->area.corner.x+i,out_td->area.corner.y+j,out_td->area.corner.scale));
+      }
     }
 }
 
@@ -222,11 +250,10 @@ static int _del(Filter *f)
   return 0;
 }
 
-//FIXME specify bitdepth!
 static Filter *_new(void)
 {
   Filter *filter = filter_new(&filter_core_rotate);
-  Meta *in, *out, *channel, *color[3], *size_in, *size_out, *bound, *rotate;
+  Meta *in, *out, *channel, *color[3], *size_in, *size_out, *bound, *rotate, *bitdepth;
   Meta *ch_out[3];
   _Data *data = calloc(sizeof(_Data), 1);
   data->out_dim = calloc(sizeof(Dim), 1);
@@ -241,6 +268,14 @@ static Filter *_new(void)
   filter->input_fixed = &_input_fixed;
   ea_push(filter->data, data);
   
+  bitdepth = meta_new_select(MT_BITDEPTH, filter, eina_array_new(2));
+  pushint(bitdepth->select, BD_U16);
+  pushint(bitdepth->select, BD_U8);
+  bitdepth->replace = bitdepth;
+  bitdepth->dep = bitdepth;
+  eina_array_push(filter->tune, bitdepth);
+  data->bd = bitdepth;
+  
   size_in = meta_new(MT_IMGSIZE, filter);
   size_out = meta_new_data(MT_IMGSIZE, filter, data->out_dim);
   data->dim_in_meta = size_in;
@@ -253,6 +288,7 @@ static Filter *_new(void)
   color[0] = meta_new_data(MT_COLOR, filter, malloc(sizeof(int)));
   *(int*)(color[0]->data) = CS_RGB_R;
   meta_attach(channel, color[0]);
+  meta_attach(channel, bitdepth);
   meta_attach(channel, size_out);
   meta_attach(out, channel);
   ch_out[0] = channel;
@@ -261,6 +297,7 @@ static Filter *_new(void)
   color[1] = meta_new_data(MT_COLOR, filter, malloc(sizeof(int)));
   *(int*)(color[1]->data) = CS_RGB_G;
   meta_attach(channel, color[1]);
+  meta_attach(channel, bitdepth);
   meta_attach(channel, size_out);
   meta_attach(out, channel);
   ch_out[1] = channel;
@@ -269,6 +306,7 @@ static Filter *_new(void)
   color[2] = meta_new_data(MT_COLOR, filter, malloc(sizeof(int)));
   *(int*)(color[2]->data) = CS_RGB_B;
   meta_attach(channel, color[2]);
+  meta_attach(channel, bitdepth);
   meta_attach(channel, size_out);
   meta_attach(out, channel);
   ch_out[2] = channel;
@@ -295,6 +333,7 @@ static Filter *_new(void)
   color[0]->replace = color[0];
   channel->replace = ch_out[0];
   meta_attach(channel, color[0]);
+  meta_attach(channel, bitdepth);
   meta_attach(channel, size_in);
   meta_attach(in, channel);
   
@@ -306,7 +345,6 @@ static Filter *_new(void)
   meta_attach(in, channel);
   
   channel = meta_new_channel(filter, 3);
-  color[2]->replace = color[2];
   color[2]->replace = color[2];
   channel->replace = ch_out[2];
   meta_attach(channel, color[2]);
