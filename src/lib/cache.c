@@ -511,7 +511,7 @@ int lime_cache_set(int mem_max, int strategy)
   
   if (!(strategy & CACHE_MASK_M)) {
     strategy |= CACHE_M_LRU;
-    //strategy |= CACHE_M_TIME;
+    strategy |= CACHE_M_TIME;
   }
   
   if (cache) {

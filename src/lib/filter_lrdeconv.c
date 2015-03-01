@@ -65,6 +65,30 @@ static void lrdiv(Rect area, uint16_t *observed, uint16_t *blur, uint16_t *out)
     }
 }
 
+static void lrdampdiv2(Rect area, uint16_t *observed, uint16_t *blur, uint16_t *out, float damping)
+{
+  int i, j;
+  //h blur
+  for(j=0;j<area.height;j++)
+    for(i=0;i<area.width;i++) {
+      int pos = j*area.width+i;
+      float fac;
+      if (observed[pos] && blur[pos]) {
+        fac = fabs(observed[pos]/blur[pos]-1.0);
+        fac += fabs(blur[pos]/observed[pos]-1.0);
+        fac = fac + 1.0 - damping*0.02;
+        if (fac <= 0.0) fac = 0.0;
+        if (fac >= 1.0) fac = 1.0;
+      }
+      else fac = 1.0;
+      
+      if (blur[pos])
+        out[pos] = fac*imin(observed[pos]*mul_one/blur[pos], 65535)+(1.0-fac)*mul_one;
+      else
+        out[pos] = mul_one;
+    }
+}
+
 
 static inline int32_t floatToRawIntBits(float d) {
   union {
@@ -162,7 +186,28 @@ static void lrdampdiv(Rect area, uint16_t *observed, uint16_t *blur, uint16_t *o
 static void lrmul(Rect area, uint16_t *a, uint16_t *b, uint16_t *out)
 {
   int i, j;
-  //h blur
+  
+  for(j=0;j<bord/2;j++)
+    for(i=0;i<area.width;i++) {
+      int pos = j*area.width+i;
+      out[pos] = a[pos];
+    }
+  for(j=area.height-bord/2;j<area.height;j++)
+    for(i=0;i<area.width;i++) {
+      int pos = j*area.width+i;
+      out[pos] = a[pos];
+    }
+  for(j=bord/2;j<area.height-bord/2;j++)
+    for(i=0;i<bord/2;i++) {
+      int pos = j*area.width+i;
+      out[pos] = a[pos];
+    }
+  for(j=bord/2;j<area.height-bord/2;j++)
+    for(i=area.width-bord/2;i<area.width;i++) {
+      int pos = j*area.width+i;
+      out[pos] = a[pos];
+    }
+  
   for(j=bord/2;j<area.height-bord/2;j++)
     for(i=bord/2;i<area.width-bord/2;i++) {
       int pos = j*area.width+i;
@@ -219,7 +264,8 @@ static void _worker(Filter *f, Eina_Array *in, Eina_Array *out, Rect *area, int 
       if (data->common->damp == 0.0)
         lrdiv(in_area, input, blur, fac);
       else
-        lrdampdiv(in_area, input, blur, fac, data->common->damp/500.0);
+        //lrdampdiv(in_area, input, blur, fac, data->common->damp/500.0);
+        lrdampdiv2(in_area, input, blur, fac, data->common->damp);
       simplegauss(in_area, fac, fac2, data->common->radius);
       lrmul(in_area, estimate, fac2, newestimate);
       memcpy(estimate, newestimate, size);
@@ -360,7 +406,7 @@ static Filter *_new(void)
   meta_attach(setting, bound);
   
   bound = meta_new_data(MT_FLOAT, f, malloc(sizeof(float)));
-  *(float*)bound->data = 5.0;
+  *(float*)bound->data = 2.5;
   meta_name_set(bound, "PARENT_SETTING_MAX");
   meta_attach(setting, bound);
   

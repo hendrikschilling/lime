@@ -25,7 +25,7 @@
 #include <setjmp.h>
 
 #define RAW_TILE_WIDTH 1024
-#define RAW_TILE_HEIGHT 1024
+#define RAW_TILE_HEIGHT 256
 
 #include <libraw.h>
 #include "jpeglib.h"
