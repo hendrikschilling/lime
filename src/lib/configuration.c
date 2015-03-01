@@ -29,10 +29,10 @@
 
 #define DEBUG_OUT_GRAPH 
 
-#define MAX_CONS_TRIES 5
+#define MAX_CONS_TRIES 4
 
 //#define DEBUG_SPECIAL
-#define PRINT_CONFIG_PROGRESS
+//#define PRINT_CONFIG_PROGRESS
 
 //TODO replace by non-global filter-located variable! this here is bad for multiple filter graphs!
 struct _Config {

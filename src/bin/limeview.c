@@ -63,10 +63,10 @@
 
 //FIXME adjust depending on speed!
 //FIXME fix threaded config
-#define PRELOAD_CONFIG_RANGE 8
+#define PRELOAD_CONFIG_RANGE 32
 #define PRELOAD_IMG_RANGE 2
 #define KEEP_CONFIG_RANGE PRELOAD_IMG_RANGE
-#define PRELOAD_THRESHOLD 8
+#define PRELOAD_THRESHOLD 32
 
 //#define FIX_DISABLE_PRELOAD
 
@@ -1103,7 +1103,6 @@ _finished_tile(void *data, Ecore_Thread *th)
   
   thread_ids[tdata->t_id] = 0;
   tdata->t_id = -1;
-    
  
 #ifdef BENCHMARK_PREVIEW
   if (tagfiles_idx(files) >= BENCHMARK_LENGTH)
@@ -1154,7 +1153,6 @@ _finished_tile(void *data, Ecore_Thread *th)
         grid_setsize();
         fill_scroller();
       }
-      
       _display_preview(NULL);
     }
   }
@@ -1173,8 +1171,7 @@ _finished_tile(void *data, Ecore_Thread *th)
       _display_preview(NULL);
     }
     //this will schedule an idle enterer to only process func after we are finished with rendering
-    //workerfinish_schedule(pending_action, pending_data, pending_obj, EINA_TRUE);
-    pending_exe();
+    workerfinish_idle = ecore_job_add(workerfinish_idle_run, NULL);
   }
 #ifndef  FIX_DISABLE_PRELOAD
   else if (worker < max_workers && preload_pending() < PRELOAD_THRESHOLD) {
@@ -1864,7 +1861,6 @@ Config_Data *config_build(File_Group *group, int nth)
     }
   }
   else {
-    
     printf("no filterchain, check defaults\n");
     lime_exif *exif = lime_exif_handle_new_from_file(filename);
     char *cam = NULL;
@@ -2077,7 +2073,8 @@ void step_image_start_configs(int n)
   
   idx = tagfiles_idx(files);
   
-  for (i=0;i<n;i++) {
+  i=n;
+  //for (i=0;i<n;i++) {
     idx += step;
     
     group = tagfiles_nth(files, idx);
@@ -2088,7 +2085,7 @@ void step_image_start_configs(int n)
       for(group_idx=0;group_idx<filegroup_count(group);group_idx++)
 	config_thread_start(group, group_idx);
     }
-  }
+  //}
 }
 
 //FIXME 
