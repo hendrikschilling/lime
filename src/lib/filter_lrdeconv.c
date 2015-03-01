@@ -29,7 +29,7 @@
 
 #include "opencv_helpers.h"
 
-static const int bord = 128;
+static const int bord = 8;
 static const int mul_one = 1024;
 
 typedef struct {
