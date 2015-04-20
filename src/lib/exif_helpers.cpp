@@ -85,7 +85,8 @@ char *lime_exif_handle_find_str_by_tagname(lime_exif *h, const char *tagname)
   }
   
   Exiv2::ExifData &exifData = h->img->exifData();
-  assert (!exifData.empty());
+  if (exifData.empty())
+    return NULL;
   
   Exiv2::ExifData::const_iterator end = exifData.end();
   for (Exiv2::ExifData::const_iterator i = exifData.begin(); i != end; ++i)
