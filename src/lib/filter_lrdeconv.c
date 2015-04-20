@@ -24,8 +24,12 @@
 #include <math.h>
 #include <gsl/gsl_errno.h>
 #include <gsl/gsl_spline.h>
+#include <signal.h>
 
 #include <cv.h>
+
+#include "tvdeconv/tvreg.h"
+#include "tvdeconv/cliio.h"
 
 #include "opencv_helpers.h"
 
@@ -36,6 +40,8 @@ typedef struct {
   int iterations;
   float radius;
   float sharpen;
+  float gamma1;
+  float gamma2;
   float damp;
   void *blur_b, *estimate_b, *fac_b;
   uint8_t lut[65536];
@@ -215,6 +221,10 @@ static void lrmul(Rect area, uint16_t *a, uint16_t *b, uint16_t *out)
     }
 }
 
+static void catch_sigfpe(int signo) {
+    printf("encountered SIGFPE\n");
+}
+
 static void _worker(Filter *f, Eina_Array *in, Eina_Array *out, Rect *area, int thread_id)
 { 
   int i, j;
@@ -226,16 +236,6 @@ static void _worker(Filter *f, Eina_Array *in, Eina_Array *out, Rect *area, int 
   Rect in_area;
   const int size = sizeof(uint16_t)*(DEFAULT_TILE_SIZE+2*bord)*(DEFAULT_TILE_SIZE+2*bord);
   
-  if (!data->blur_b) {
-    data->blur_b = malloc(size);
-    data->estimate_b = malloc(size);
-    data->fac_b = malloc(size);
-  }
-  blur = data->blur_b,
-  estimate = data->estimate_b,
-  fac = data->fac_b;
-  void *fac2 = malloc(size);
-
   assert(in && ea_count(in) == 1);
   assert(out && ea_count(out) == 1);
   
@@ -247,6 +247,97 @@ static void _worker(Filter *f, Eina_Array *in, Eina_Array *out, Rect *area, int 
   out_td = ((Tiledata*)ea_data(out, 0));
   output = out_td->data;
   
+  if (signal(SIGFPE, catch_sigfpe) == SIG_ERR) {
+    fputs("An error occurred while setting a signal handler.\n", stderr);
+    return EXIT_FAILURE;
+  }
+  
+  if (area->corner.scale) {
+    memcpy(output,input,sizeof(uint16_t)*in_td->area.width*in_td->area.height);
+    return;
+  }
+
+    
+  {
+    image u, fi, kernel;
+    num Lambda = data->common->damp;
+    const char noise_str[64];
+    const char kernel_str[64];
+    tvregopt *Opt = NULL;
+    int Success;
+    
+    sprintf(kernel_str,"gaussian:%f", data->common->radius);
+    sprintf(noise_str,"poisson");
+    
+    
+    fi.Width = in_area.width;
+    fi.Height = in_area.height;
+    fi.NumChannels = 1;
+    fi.Data = malloc(sizeof(num)*fi.Width*fi.Height);
+    
+    u = fi;
+    u.Data = malloc(sizeof(num)*fi.Width*fi.Height);
+    
+    kernel.Data = NULL;
+    
+    for(i=0;i<fi.Width*fi.Height;i++)
+      fi.Data[i] = input[i]*1.0/65536.0;
+    
+    if(!(Opt = TvRegNewOpt()))
+    {
+        fputs("Out of memory.\n", stderr);
+        return;
+    }
+    
+    if(!(TvRegSetNoiseModel(Opt, noise_str)))
+    {
+        fprintf(stderr, "Unknown noise model, \"%s\".\n", noise_str);
+        TvRegFreeOpt(Opt);
+        return;
+    }
+    //FIXMe free kernel!
+    if (!ReadKernel(&kernel, kernel_str))
+    {
+      fprintf(stderr, "read kernel failed, \"%s\".\n", kernel_str);
+      TvRegFreeOpt(Opt);
+      return;
+    }
+    
+    memcpy(u.Data, fi.Data, sizeof(num)*((size_t)fi.Width)
+        *((size_t)fi.Height)*fi.NumChannels);
+    TvRegSetKernel(Opt, kernel.Data, kernel.Width, kernel.Height);
+    TvRegSetLambda(Opt, Lambda);
+    TvRegSetMaxIter(Opt, data->common->iterations);
+    TvRegSetGamma1(Opt, data->common->gamma1);
+    TvRegSetGamma2(Opt, data->common->gamma2);
+    TvRegSetTol(Opt, 0.0);
+    
+    TvRegPrintOpt(Opt);
+    if(!(Success = TvRestore(u.Data, fi.Data,
+        fi.Width, fi.Height, fi.NumChannels, Opt)))
+        fputs("Error in computation.\n", stderr);
+    
+    TvRegFreeOpt(Opt);
+    
+    for(j=0;j<area->height;j++)
+      for(i=0;i<area->width;i++)
+          output[j*area->width+i] = clip_u16(u.Data[(j+bord)*in_area.width+i+bord]*65536.0);
+    
+    free(u.Data);
+    free(fi.Data);
+      
+    return;
+  }
+  
+  if (!data->blur_b) {
+    data->blur_b = malloc(size);
+    data->estimate_b = malloc(size);
+    data->fac_b = malloc(size);
+  }
+  blur = data->blur_b,
+  estimate = data->estimate_b,
+  fac = data->fac_b;
+  void *fac2 = malloc(size);
   
   if (area->corner.scale) {
     memcpy(output,input,sizeof(uint16_t)*in_td->area.width*in_td->area.height);
@@ -351,7 +442,7 @@ static Filter *_new(void)
   f->mode_buffer = filter_mode_buffer_new();
   f->mode_buffer->worker = _worker;
   f->mode_buffer->area_calc = _area_calc;
-  f->mode_buffer->threadsafe = 1;
+  f->mode_buffer->threadsafe = 0;
   f->mode_buffer->data_new = &_data_new;
   f->del = _del;
   ea_push(f->data, data);
@@ -360,6 +451,8 @@ static Filter *_new(void)
   data->common = calloc(sizeof(_Common), 1);
   data->common->iterations = 30;
   data->common->radius = 1.0;
+  data->common->gamma1 = 5.0;
+  data->common->gamma2 = 8.0;
   
   //tune color-space
   tune_color = meta_new_select(MT_COLOR, f, eina_array_new(3));
@@ -416,13 +509,18 @@ static Filter *_new(void)
   eina_array_push(f->settings, setting);
   
   bound = meta_new_data(MT_FLOAT, f, malloc(sizeof(float)));
-  *(float*)bound->data = 0.0;
+  *(float*)bound->data = 1.0;
   meta_name_set(bound, "PARENT_SETTING_MIN");
   meta_attach(setting, bound);
   
   bound = meta_new_data(MT_FLOAT, f, malloc(sizeof(float)));
-  *(float*)bound->data = 100.0;
+  *(float*)bound->data = 10000.0;
   meta_name_set(bound, "PARENT_SETTING_MAX");
+  meta_attach(setting, bound);
+  
+  bound = meta_new_data(MT_FLOAT, f, malloc(sizeof(float)));
+  *(float*)bound->data = 10.0;
+  meta_name_set(bound, "PARENT_SETTING_STEP");
   meta_attach(setting, bound);
   
   //setting
@@ -455,6 +553,35 @@ static Filter *_new(void)
   meta_name_set(bound, "PARENT_SETTING_MAX");
   meta_attach(setting, bound);
   
+  //setting
+  setting = meta_new_data(MT_FLOAT, f, &data->common->gamma1);
+  meta_name_set(setting, "gamma1");
+  eina_array_push(f->settings, setting);
+  
+  bound = meta_new_data(MT_FLOAT, f, malloc(sizeof(float)));
+  *(float*)bound->data = 0.0;
+  meta_name_set(bound, "PARENT_SETTING_MIN");
+  meta_attach(setting, bound);
+  
+  bound = meta_new_data(MT_FLOAT, f, malloc(sizeof(float)));
+  *(float*)bound->data = 100.0;
+  meta_name_set(bound, "PARENT_SETTING_MAX");
+  meta_attach(setting, bound);
+  
+  //setting
+  setting = meta_new_data(MT_FLOAT, f, &data->common->gamma2);
+  meta_name_set(setting, "gamma2");
+  eina_array_push(f->settings, setting);
+  
+  bound = meta_new_data(MT_FLOAT, f, malloc(sizeof(float)));
+  *(float*)bound->data = 0.0;
+  meta_name_set(bound, "PARENT_SETTING_MIN");
+  meta_attach(setting, bound);
+  
+  bound = meta_new_data(MT_FLOAT, f, malloc(sizeof(float)));
+  *(float*)bound->data = 1000.0;
+  meta_name_set(bound, "PARENT_SETTING_MAX");
+  meta_attach(setting, bound);
   return f;
 }
 

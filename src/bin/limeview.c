@@ -130,6 +130,7 @@ typedef struct {
   Eina_List *filter_chain;
   Tagged_File *file;
   File_Group *group;
+  int file_group_idx;
 } Config_Data;
 
 typedef struct {
@@ -1841,6 +1842,7 @@ Config_Data *config_build(File_Group *group, int nth)
   config = calloc(sizeof(Config_Data), 1);
   config->group = group;
   config->file = filegroup_nth(group, nth);
+  config->file_group_idx = nth;
   
   if (filegroup_tags_valid(group) && tagged_file_filterchain(config->file)) {
     filters = lime_filter_chain_deserialize(tagged_file_filterchain(config->file));
@@ -1946,6 +1948,7 @@ void config_exe(void *data, Ecore_Thread *thread)
 
 void config_finish(void *data, Ecore_Thread *thread)
 {
+  int nth;
   Config_Data *config = data;
   _Img_Thread_Data *tdata = calloc(sizeof(_Img_Thread_Data), 1);
   uint8_t *buf;
@@ -1956,6 +1959,9 @@ void config_finish(void *data, Ecore_Thread *thread)
   
   if (config->failed || !size) {
     free(tdata);
+    nth = config->file_group_idx+1;
+    if (nth < filegroup_count(config->group))
+      config_thread_start(config->group, nth);
   }
   else {
     tdata->scale =  size->scaledown_max;
@@ -2073,8 +2079,12 @@ void step_image_start_configs(int n)
   
   idx = tagfiles_idx(files);
   
-  i=n;
-  //for (i=0;i<n;i++) {
+  group = tagfiles_nth(files, idx+step*n);
+  assert(group);
+  if (group_in_filters(group, tags_filter))
+      config_thread_start(group, 0);
+  
+  /*for (i=0;i<n;i++) {
     idx += step;
     
     group = tagfiles_nth(files, idx);
@@ -2085,7 +2095,7 @@ void step_image_start_configs(int n)
       for(group_idx=0;group_idx<filegroup_count(group);group_idx++)
 	config_thread_start(group, group_idx);
     }
-  //}
+  }*/
 }
 
 //FIXME 

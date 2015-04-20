@@ -344,7 +344,7 @@ static int prepare(Filter *f)
 					out_type, 
 //most useful for two-way conversion!
 					INTENT_PERCEPTUAL, 
-					cmsFLAGS_GRIDPOINTS(32) | cmsFLAGS_FORCE_CLUT | cmsFLAGS_CLUT_POST_LINEARIZATION | cmsFLAGS_CLUT_PRE_LINEARIZATION);
+					0/*cmsFLAGS_GRIDPOINTS(32) | cmsFLAGS_FORCE_CLUT | cmsFLAGS_CLUT_POST_LINEARIZATION | cmsFLAGS_CLUT_PRE_LINEARIZATION*/);
   data->common->initialized = INIT_LMCS;
   data->common->packed_input = EINA_TRUE;
   data->common->packed_output = EINA_TRUE;
@@ -440,7 +440,7 @@ Filter *filter_convert_new(void)
   Meta *ch_out_color[3];
   
   filter->mode_buffer = filter_mode_buffer_new();
-  filter->mode_buffer->threadsafe = 1;
+  filter->mode_buffer->threadsafe = 0;
   filter->mode_buffer->data_new = &_data_new;
   filter->mode_buffer->worker = &_worker;
   filter->fixme_outcount = 3;

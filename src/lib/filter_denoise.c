@@ -22,13 +22,16 @@
 #include <math.h>
 
 #define MAX_MATCH_COUNT 40
-#define MAX_AVG_COUNT 20
+#define MAX_AVG_COUNT 40
 
 #define MAX_SCALE_DIFF 100
 
-#define SEARCH_SIZE 16
+#define SEARCH_SIZE 8
+#define BORDER_SIZE (SEARCH_SIZE*2)
 
 #define TILE_SIZE DEFAULT_TILE_SIZE
+
+#define PATCH_SIZE 5
 
 typedef struct {
   int x, y;
@@ -38,7 +41,7 @@ typedef struct {
 
 typedef struct {
   _Match *matches;
-  uint8_t *avgs;
+  //uint8_t *avgs;
   uint8_t *changed;
   int *counts;
   int *worsts;
@@ -46,6 +49,18 @@ typedef struct {
   float *max_diff;
   float *max_diff_c;
 } _Data;
+
+const float CHROMA_PENALTY = 0.25;
+
+uint32_t u = 12345678, v = 87654321;
+
+
+static inline uint32_t fast_rand(void)
+{
+  v = 36969*(v & 65535) + (v >> 16);
+  u = 18000*(u & 65535) + (u >> 16);
+  return (v << 16) + u;
+}
 
 void *_denoise_data_new(Filter *f, void *data)
 {
@@ -55,7 +70,7 @@ void *_denoise_data_new(Filter *f, void *data)
   new->changed = malloc(sizeof(uint8_t)*TILE_SIZE*TILE_SIZE);
   new->counts = malloc(sizeof(int)*TILE_SIZE*TILE_SIZE);
   new->worsts = malloc(sizeof(int)*TILE_SIZE*TILE_SIZE);
-  new->avgs = malloc(sizeof(uint8_t)*(TILE_SIZE+2*SEARCH_SIZE)*(TILE_SIZE+2*SEARCH_SIZE)*3);
+  //new->avgs = malloc(sizeof(uint8_t)*(TILE_SIZE+2*SEARCH_SIZE)*(TILE_SIZE+2*SEARCH_SIZE)*3);
   new->max_diff = ((_Data*)data)->max_diff;
   new->max_diff_c = ((_Data*)data)->max_diff_c;
   new->iters = ((_Data*)data)->iters;
@@ -67,10 +82,10 @@ static void _area_calc(Filter *f, Rect *in, Rect *out)
 { 
   if (!in->corner.scale) {
     out->corner.scale = in->corner.scale;
-    out->corner.x = in->corner.x-SEARCH_SIZE;
-    out->corner.y = in->corner.y-SEARCH_SIZE;
-    out->width = in->width+2*SEARCH_SIZE;
-    out->height = in->height+2*SEARCH_SIZE;
+    out->corner.x = in->corner.x-BORDER_SIZE;
+    out->corner.y = in->corner.y-BORDER_SIZE;
+    out->width = in->width+2*BORDER_SIZE;
+    out->height = in->height+2*BORDER_SIZE;
   }
   else
     *out = *in;
@@ -88,33 +103,37 @@ static void add_diff(_Data *data, _Match *m, int x, int y, Rect *area, Tiledata 
   int avg_ref, avg_m;
   int width = td->area.width;
   int sum = 0;
-  int ax, ay; //absolute coordinates
-  int ix, iy; //input relative coordinates
-  //  x   y     output relateive coordinates
+  int ax, ay;
+  int ix, iy;
   
   ax = area->corner.x+x;
   ay = area->corner.y+y;
-  ix = ax - td->area.corner.x;
-  iy = ay - td->area.corner.y;
+  ix = ax + m->x;
+  iy = ay + m->y;
   
-  buf_ref = tileptr8(td, ax-1, ay-1);
-  buf_m = tileptr8(td, ax+m->x-1, ay+m->y-1);
+  buf_ref = tileptr8(td, ax-2, ay-2);
+  buf_m = tileptr8(td, ix-2, iy-2);
   
-  avg_ref = data->avgs[(iy*td->area.width + ix)*3+ch];
-  avg_m = data->avgs[((iy+m->y)*td->area.width + ix+m->x)*3+ch];
+  /*avg_ref = data->avgs[(iy*td->area.width + ix)*3+ch];
+  avg_m = data->avgs[((iy+m->y)*td->area.width + ix+m->x)*3+ch];*/
   
   /*m->diff += abs(buf_ref[-width-1]-avg_ref+avg_m-buf_m[-width-1]) + abs(buf_ref[-width]-avg_ref+avg_m-buf_m[-width]) + abs(buf_ref[-width+1]-avg_ref+avg_m-buf_m[-width+1]);
   m->diff += abs(buf_ref[-1]-avg_ref+avg_m-buf_m[-1]) + abs(buf_ref[0]-avg_ref+avg_m-buf_m[0]) + abs(buf_ref[1]-avg_ref+avg_m-buf_m[1]);
   m->diff += abs(buf_ref[width-1]-avg_ref+avg_m-buf_m[width-1]) + abs(buf_ref[width]-avg_ref+avg_m-buf_m[width]) + abs(buf_ref[width+1]-avg_ref+avg_m-buf_m[width+1]);*/
 
-  for(j=0,buf_ref,buf_m;j<3;j++,buf_ref+=width,buf_m+=width) {
-    for(i=0,buf_ref,buf_m;i<3;i++,buf_ref++,buf_m++)
-      sum += abs(buf_ref[0]-avg_ref+avg_m-buf_m[0]);
-    buf_m -= 3;
-    buf_ref -= 3;
+  for(j=0,buf_ref,buf_m;j<5;j++,buf_ref+=width,buf_m+=width) {
+    for(i=0,buf_ref,buf_m;i<5;i++,buf_ref++,buf_m++)
+      sum += abs(buf_ref[0]/*-avg_ref+avg_m*/-buf_m[0]);
+    buf_m -= 5;
+    buf_ref -= 5;
   }
   
-  m->diff += sum;
+  //printf("%d\n", sum);
+  
+  if (!ch)
+    m->diff += sum;
+  else 
+    m->diff += sum*CHROMA_PENALTY;
 }
 
 static void insert_match(_Data *data, _Match m, int x, int y)
@@ -135,14 +154,18 @@ static void insert_match(_Data *data, _Match m, int x, int y)
   
   assert(*count < MAX_MATCH_COUNT);
   
-    for(i=0;i<*count;i++)
-      if (m.x == matches[i].x && m.y == matches[i].y)
-	return;
+  for(i=0;i<*count;i++)
+    if (m.x == matches[i].x && m.y == matches[i].y)
+      return;
     
     matches[*count] = m;
     (*count)++;
     if (*worst < m.diff)
       *worst = m.diff;
+    
+  /*for(i=0;i<*count;i++)
+    printf("%d:%dx%d - ",matches[i].diff, matches[i].x, matches[i].y);
+  printf("\n");*/
     
     data->changed[y*TILE_SIZE+x] = 1;
  /* }
@@ -164,7 +187,7 @@ static void insert_match(_Data *data, _Match m, int x, int y)
   }*/
 }
 
-static void calc_avg(_Data *data, Eina_Array *in)
+/*static void calc_avg(_Data *data, Eina_Array *in)
 {
   int ch;
   Tiledata *td;
@@ -193,14 +216,40 @@ static void calc_avg(_Data *data, Eina_Array *in)
 	data->avgs[(j*td->area.width+i)*3+ch] = sum;
       }
   }
-}
+}*/
 
 static void sort_matches(_Data *data, int x, int y)
 { 
   if (!data->changed[y*TILE_SIZE + x])
     return;
   
+  int i;
+  /*int count = data->counts[y*TILE_SIZE + x];
+  _Match *matches = &data->matches[(y*TILE_SIZE + x)*MAX_MATCH_COUNT];
+  printf("pre sort:\n");
+  for(i=0;i<count;i++)
+    printf("%d:%dx%d - ",matches[i].diff, matches[i].x, matches[i].y);
+  printf("\n");*/
   qsort(&data->matches[(y*TILE_SIZE + x)*MAX_MATCH_COUNT], data->counts[y*TILE_SIZE + x], sizeof(_Match), cmp_mtach);
+  /*printf("post sort:\n");
+  for(i=0;i<count;i++)
+    printf("%d:%dx%d - ",matches[i].diff, matches[i].x, matches[i].y);
+  printf("\n");*/
+
+  /*int same = 0;
+  _Match last, cur;
+  last.x = -1000;
+  last.y = -1000;
+  for(i=0;i<data->counts[y*TILE_SIZE + x];i++) {
+    cur = data->matches[(y*TILE_SIZE + x)*MAX_MATCH_COUNT+i];
+    if (cur.x == last.x && cur.y == last.y)
+      same++;
+    last = cur;
+  }
+  if (same)
+    printf("%d of %d matches identical!\n", same, data->counts[y*TILE_SIZE + x]);
+  else
+    printf("%d matches!\n", data->counts[y*TILE_SIZE + x]);*/
   
   if (data->counts[y*TILE_SIZE + x] > MAX_AVG_COUNT) {  
     data->worsts[y*TILE_SIZE + x] = data->matches[(y*TILE_SIZE + x)*MAX_MATCH_COUNT + MAX_AVG_COUNT - 1].diff;
@@ -219,21 +268,22 @@ static void match_rand(_Data *data, int x, int y, Eina_Array *in, Rect *area, fl
   m.diff = 0;
   m.origin = 0;
   while (!m.x && !m.y) {
-    if (rand() % 2)
-      m.x = rand() * max / RAND_MAX;
+    if (fast_rand() % 2)
+      m.x = fast_rand() * max / RAND_MAX;
     else
-      m.x = -rand() * max / RAND_MAX;
+      m.x = -fast_rand() * max / RAND_MAX;
     
-    if (rand() % 2)
-      m.y = rand() * max / RAND_MAX;
+    if (fast_rand() % 2)
+      m.y = fast_rand() * max / RAND_MAX;
     else
-      m.y = -rand() * max / RAND_MAX;
+      m.y = -fast_rand() * max / RAND_MAX;
   }
   
   for(ch=0;ch<3;ch++) {
     td = (Tiledata*)ea_data(in, ch);
     add_diff(data, &m, x, y, area, td, ch);
   }
+  //printf("added %d\n", m.diff);
   
   insert_match(data, m, x, y);
 }
@@ -248,7 +298,7 @@ static void match_rand_from_match(_Data *data, int x, int y, Eina_Array *in, Rec
   
   if (max > MAX_AVG_COUNT) max = MAX_AVG_COUNT;
   
-  m = data->matches[(y*TILE_SIZE + x)*MAX_MATCH_COUNT+(rand() % max)];
+  m = data->matches[(y*TILE_SIZE + x)*MAX_MATCH_COUNT+(fast_rand() % max)];
   
   if (x + m.x < 0 || x + m.x >= TILE_SIZE)
     return;
@@ -262,7 +312,7 @@ static void match_rand_from_match(_Data *data, int x, int y, Eina_Array *in, Rec
   max = data->counts[(y+m.y)*TILE_SIZE + (x+m.x)];
   if (max > MAX_AVG_COUNT) max = MAX_AVG_COUNT;
   
-  m2 = data->matches[((y+m.y)*TILE_SIZE + (x+m.x))*MAX_MATCH_COUNT + (rand() % max)];
+  m2 = data->matches[((y+m.y)*TILE_SIZE + (x+m.x))*MAX_MATCH_COUNT + (fast_rand() % max)];
   m.x += m2.x;
   m.y += m2.y;
   m.diff = 0;
@@ -285,7 +335,12 @@ static void match_rand_from(_Data *data, int x, int y, int x_off, int y_off, Ein
   
   if (max > MAX_AVG_COUNT) max = MAX_AVG_COUNT;
   
-  m = data->matches[((y+y_off)*TILE_SIZE + (x+x_off))*MAX_MATCH_COUNT + (rand() % max)];
+  if (max > 4)
+    max /= 2;
+  if (max > 8)
+    max /= 2;
+  
+  m = data->matches[((y+y_off)*TILE_SIZE + (x+x_off))*MAX_MATCH_COUNT + (fast_rand() % max)];
   m.diff = 0;
   m.origin = 2;
   
@@ -345,12 +400,13 @@ static void avg_matches(_Data *data, Eina_Array *in, Eina_Array *out, Rect *area
   int n;
   int ch;
   int i, j;
-  float sum;
+  float sum, mul;
   Tiledata *in_td, *out_td;
   _Match m;
   int max;
   float count;
   int origins[3] = {0, 0, 0};
+  int match_sum = 0, match_sum_c = 0;
   int orig_sum;
   int rough;
   
@@ -360,7 +416,7 @@ static void avg_matches(_Data *data, Eina_Array *in, Eina_Array *out, Rect *area
       //TODO sort, limit to MAX_AVG_COUNT!
       //printf("best: %d worst: %d\n", data->matches[(j*TILE_SIZE + i)*MAX_MATCH_COUNT].diff,data->matches[(j*TILE_SIZE + i)*MAX_MATCH_COUNT+data->counts[j*TILE_SIZE + j]-1].diff);
 
-      qsort(&data->matches[(j*TILE_SIZE + i)*MAX_MATCH_COUNT], data->counts[j*TILE_SIZE + j], sizeof(_Match), cmp_mtach);
+      /*qsort(&data->matches[(j*TILE_SIZE + i)*MAX_MATCH_COUNT], data->counts[j*TILE_SIZE + j], sizeof(_Match), cmp_mtach);*/
       
       max = data->counts[j*TILE_SIZE + j];
       if (MAX_AVG_COUNT < max) max = MAX_AVG_COUNT;
@@ -369,15 +425,32 @@ static void avg_matches(_Data *data, Eina_Array *in, Eina_Array *out, Rect *area
 	in_td = (Tiledata*)ea_data(in, ch);
 	out_td = (Tiledata*)ea_data(out, ch);
 	
-	sum = tileptr8(in_td, area->corner.x + i, area->corner.y + j)[ch] 
-	      - data->avgs[((area->corner.y + j - in_td->area.corner.y)*in_td->area.width + area->corner.x + i - in_td->area.corner.x)*3+ch];
-	count = 1.0/(max_diff+0.00000001);
-        sum *= count;
-	rough = abs(sum);
+	sum =  0; 
+	count = 0;
 	
 	for(n=0;n<max;n++) {
 	  m = data->matches[(j*TILE_SIZE + i)*MAX_MATCH_COUNT + n];
+          if (!ch && m.diff > max_diff)
+            break;
+          else if (ch && m.diff > max_diff_c)
+            break;
 	  
+          if (ch)
+            match_sum_c++;
+          else {
+           /* _Match m2 = m;
+            m2.diff = 0;
+            add_diff(data, &m2, i, j, area, (Tiledata*)ea_data(in, 0), 0);
+            add_diff(data, &m2, i, j, area, (Tiledata*)ea_data(in, 1), 1);
+            add_diff(data, &m2, i, j, area, (Tiledata*)ea_data(in, 2), 2);
+            if (m2.diff != m.diff) {
+              printf("offset %dx%d %dx%d incorrect (%d/%d)!\n", i, j, m2.x, m2.y, m.diff, m2.diff);
+              continue;
+            }*/
+            //assert(m2.diff == m.diff);
+            match_sum++;
+          }
+          
 	  /*if (ch) {
 	    if (m.diff*m.diff < max_diff_c*(rough+10)*10) {
 	      origins[m.origin]++;
@@ -389,21 +462,35 @@ static void avg_matches(_Data *data, Eina_Array *in, Eina_Array *out, Rect *area
 	  else {*/
 	    //if (m.diff*m.diff < max_diff*(rough+10)*10) {
 	      origins[m.origin]++;
-              float mul = 1.0/fmax(m.diff, max_diff);
-	      sum += mul*clip_u8(tileptr8(in_td, area->corner.x + i + m.x, area->corner.y + j + m.y)[0]
-	      - data->avgs[((area->corner.y + j + m.y - in_td->area.corner.y)*in_td->area.width + area->corner.x + i + m.x - in_td->area.corner.x)*3+ch]);
+              if (!ch)
+                mul = 1.0/fmax(max_diff/2+m.diff, max_diff);
+              else
+                mul = 1.0/fmax(max_diff_c/2+m.diff, max_diff_c);
+        mul=1.0;
+	      sum += mul*clip_u8(tileptr8(in_td, area->corner.x + i + m.x, area->corner.y + j + m.y)[0]);/*
+	      - data->avgs[((area->corner.y + j + m.y - in_td->area.corner.y)*in_td->area.width + area->corner.x + i + m.x - in_td->area.corner.x)*3+ch]);*/
 	      count += mul;
 	    //}
 	  //}
 	}
+	//printf("averaged %d mathces\n", n);
+  
+        if (!ch)
+          mul = 1.0/fmax(max_diff/2+m.diff, max_diff);
+        else
+          mul = 1.0/fmax(max_diff_c/2+m.diff, max_diff_c);
+        mul=1.0;
+          
+	sum += mul*tileptr8(in_td, area->corner.x + i, area->corner.y + j)[ch];
+        count += mul;
 	
-	tileptr8(out_td, area->corner.x + i, area->corner.y + j)[0] = clip_u8(sum / count
-	    + data->avgs[((area->corner.y + j - in_td->area.corner.y)*in_td->area.width + area->corner.x + i - in_td->area.corner.x)*3+ch]);
+	tileptr8(out_td, area->corner.x + i, area->corner.y + j)[0] = clip_u8(sum / count);/*
+	    + data->avgs[((area->corner.y + j - in_td->area.corner.y)*in_td->area.width + area->corner.x + i - in_td->area.corner.x)*3+ch]);*/
       }
     }
     
     orig_sum = origins[0] + origins[1] + origins[2];
-    printf("rand: %.1f%% match: %.1f%% neigh: %.1f%%\n", origins[0]*100.0/orig_sum, origins[1]*100.0/orig_sum, origins[2]*100.0/orig_sum);
+    printf("rand: %.1f%% match: %.1f%% neigh: %.1f%% avg #matches l %.1f avg #matches a/b %.1f\n", origins[0]*100.0/orig_sum, origins[1]*100.0/orig_sum, origins[2]*100.0/orig_sum, (float)match_sum/TILE_SIZE/TILE_SIZE, (float)match_sum_c/2/TILE_SIZE/TILE_SIZE);
 }
 
 static void _worker(Filter *f, Eina_Array *in, Eina_Array *out, Rect *area, int thread_id)
@@ -414,8 +501,8 @@ static void _worker(Filter *f, Eina_Array *in, Eina_Array *out, Rect *area, int 
   int k;
   Tiledata *in_td, *out_td;
   _Data *data = ea_data(f->data, 0);
-  int max_diff = *data->max_diff*9*255*3*0.001;
-  int max_diff_c = *data->max_diff_c*9*255*3*0.001;
+  int max_diff = *data->max_diff*PATCH_SIZE*PATCH_SIZE*255*3*0.01;
+  int max_diff_c = *data->max_diff_c*PATCH_SIZE*PATCH_SIZE*255*3*0.01;
   float dist_mult = log(SEARCH_SIZE)/(*data->iters)/log(2);
   float dist;
   
@@ -436,10 +523,11 @@ static void _worker(Filter *f, Eina_Array *in, Eina_Array *out, Rect *area, int 
   memset(data->counts, 0, sizeof(int)*TILE_SIZE*TILE_SIZE);
   memset(data->worsts, 127, sizeof(int)*TILE_SIZE*TILE_SIZE);
   
-  calc_avg(data, in);
+  //calc_avg(data, in);
   
   for(n=0;n<*data->iters;n++) {
-    dist = pow(2.0, (*data->iters - n )*dist_mult);
+    //dist = pow(2.0, (*data->iters - n )*dist_mult);
+    dist = SEARCH_SIZE;
     
     for(j=0;j<TILE_SIZE;j++)
       for(i=0;i<TILE_SIZE;i++)
@@ -451,19 +539,19 @@ static void _worker(Filter *f, Eina_Array *in, Eina_Array *out, Rect *area, int 
 	if (i) match_rand_from(data, i, j, -1, 0, in, area);
 	//if (i && j) match_rand_from(data, i, j, -1, -1, in, area);
 	//for(k=0;k<n/2;k++)
-	//  match_rand_from_match(data, i, j, in, area);
+          match_rand_from_match(data, i, j, in, area);
 	sort_matches(data, i, j);
     }
     
     n++;
-    if (!(n<*data->iters)) {
+    /*if (!(n<*data->iters)) {
       for(j=TILE_SIZE-1;j>=0;j--)
 	for(i=TILE_SIZE-1;i>=0;i--)
 	sort_matches(data, i, j);
       break;
-    }
+    }*/
     
-    dist = pow(2.0, (*data->iters - n)*dist_mult);
+    //dist = pow(2.0, (*data->iters - n)*dist_mult);
     
     for(j=TILE_SIZE-1;j>=0;j--)
       for(i=TILE_SIZE-1;i>=0;i--)
@@ -473,9 +561,9 @@ static void _worker(Filter *f, Eina_Array *in, Eina_Array *out, Rect *area, int 
 	//match_rand(data, i, j, in, area, dist);
 	if (j<TILE_SIZE-1) match_rand_from(data, i, j, 0, 1, in, area);
 	if (i<TILE_SIZE-1) match_rand_from(data, i, j, 1, 0, in, area);
-	if (i<TILE_SIZE-1 && j<TILE_SIZE-1) match_rand_from(data, i, j, 1, 1, in, area);
+	//if (i<TILE_SIZE-1 && j<TILE_SIZE-1) match_rand_from(data, i, j, 1, 1, in, area);
 	//for(k=0;k<n/2;k++)
-	//  match_rand_from_match(data, i, j, in, area);
+	  match_rand_from_match(data, i, j, in, area);
 	sort_matches(data, i, j);
     }
     
@@ -483,7 +571,7 @@ static void _worker(Filter *f, Eina_Array *in, Eina_Array *out, Rect *area, int 
   }
     
   avg_matches(data, in, out, area, max_diff, max_diff_c);
-  limit(in, out, area);
+  //limit(in, out, area);
 }
 
 
@@ -497,7 +585,7 @@ static Filter *filter_denoise_new(void)
   data->changed = malloc(sizeof(uint8_t)*TILE_SIZE*TILE_SIZE);
   data->counts = malloc(sizeof(int)*TILE_SIZE*TILE_SIZE);
   data->worsts = malloc(sizeof(int)*TILE_SIZE*TILE_SIZE);
-  data->avgs = malloc(sizeof(uint8_t)*(TILE_SIZE+2*SEARCH_SIZE)*(TILE_SIZE+2*SEARCH_SIZE)*3);
+  //data->avgs = malloc(sizeof(uint8_t)*(TILE_SIZE+2*SEARCH_SIZE)*(TILE_SIZE+2*SEARCH_SIZE)*3);
   data->max_diff = malloc(sizeof(float));
   *data->max_diff = 20.0;
   data->max_diff_c = malloc(sizeof(float));
