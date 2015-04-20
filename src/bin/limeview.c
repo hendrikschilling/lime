@@ -68,7 +68,8 @@
 #define KEEP_CONFIG_RANGE PRELOAD_IMG_RANGE
 #define PRELOAD_THRESHOLD 32
 
-//#define FIX_DISABLE_PRELOAD
+//#define DISABLE_CONFIG_PRELOAD
+//#define DISABLE_IMG_PRELOAD
 
 #ifdef IF_FREE
 # undef IF_FREE
@@ -1138,13 +1139,6 @@ _finished_tile(void *data, Ecore_Thread *th)
 	  _display_preview(NULL);
 	}
 	
-#ifndef FIX_DISABLE_PRELOAD
-      if (worker < max_workers && preload_pending() < PRELOAD_THRESHOLD)
-	step_image_preload_next(PRELOAD_IMG_RANGE);
-      else
-	run_preload_threads();
-#endif
-	
       first_preview = 0;
 
       return;
@@ -1174,7 +1168,7 @@ _finished_tile(void *data, Ecore_Thread *th)
     //this will schedule an idle enterer to only process func after we are finished with rendering
     workerfinish_idle = ecore_job_add(workerfinish_idle_run, NULL);
   }
-#ifndef  FIX_DISABLE_PRELOAD
+#ifndef  DISABLE_IMG_PRELOAD
   else if (worker < max_workers && preload_pending() < PRELOAD_THRESHOLD) {
     step_image_preload_next(PRELOAD_IMG_RANGE);
   }
@@ -2344,7 +2338,9 @@ void step_image_do(void *data, Evas_Object *obj)
   
   elm_slider_value_set(file_slider, tagfiles_idx(files)+0.1);
   
+#ifndef DISABLE_CONFIG_PRELOAD
   step_image_start_configs(PRELOAD_CONFIG_RANGE);
+#endif
   
   if (step) free(step);
 }
