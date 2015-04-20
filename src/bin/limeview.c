@@ -1617,8 +1617,7 @@ void delgrid(void)
 void jump_image_do(void *data, Evas_Object *obj)
 {
   step_image_config_reset_range(files, tagfiles_idx(files)-PRELOAD_CONFIG_RANGE-1, tagfiles_idx(files)+PRELOAD_CONFIG_RANGE+1);
-  group_config_reset(config_curr);
-  config_curr = NULL;
+  //FIXME reset current config but only after processing in step_image do??? and only if outside config range...
   
   tagfiles_idx_set(files, (intptr_t)data);
   step_image_do(NULL, NULL);
