@@ -1171,6 +1171,9 @@ _finished_tile(void *data, Ecore_Thread *th)
 #ifndef  DISABLE_IMG_PRELOAD
   else if (!worker /*worker < max_workers*/ /*&& preload_pending() < PRELOAD_THRESHOLD*/) {
     step_image_preload_next(PRELOAD_IMG_RANGE);
+#ifndef DISABLE_CONFIG_PRELOAD
+    step_image_start_configs(PRELOAD_CONFIG_RANGE);
+#endif
   }
   else {
     run_preload_threads();
@@ -1752,9 +1755,6 @@ void group_config_reset(File_Group *group)
   
   //FIXME clean pending refs to config from preload_list (and other?)
   
-  //FIXME delete group cb
-  //printf("FIXME delete group_changed_cb for %s\n", filegroup_basename(group));
-  tagfiles_group_changed_cb_delete(files, group);
   
   if (!filegroup_basename(group)) {
     printf("FIXME what does this mean?\n");
@@ -1778,6 +1778,11 @@ void group_config_reset(File_Group *group)
       config->sink = NULL;
     }
   }
+  
+  //FIXME delete group cb
+  //printf("FIXME delete group_changed_cb for %s\n", filegroup_basename(group));
+  if (config) //at least one config was created for the group
+    tagfiles_group_changed_cb_delete(files, group);
 }
 
 void filegroup_changed_cb(File_Group *group)
@@ -2354,10 +2359,6 @@ void step_image_do(void *data, Evas_Object *obj)
     refresh();
   
   elm_slider_value_set(file_slider, tagfiles_idx(files)+0.1);
-  
-#ifndef DISABLE_CONFIG_PRELOAD
-  step_image_start_configs(PRELOAD_CONFIG_RANGE);
-#endif
   
   if (step) free(step);
 }
