@@ -65,8 +65,7 @@
 //FIXME fix threaded config
 #define PRELOAD_CONFIG_RANGE 32
 #define PRELOAD_IMG_RANGE 2
-#define KEEP_CONFIG_RANGE PRELOAD_IMG_RANGE
-#define PRELOAD_THRESHOLD 32
+#define PRELOAD_THRESHOLD 4
 
 //#define DISABLE_CONFIG_PRELOAD
 //#define DISABLE_IMG_PRELOAD
@@ -93,6 +92,7 @@ int preload_count = 0;
 int quick_preview_only = 0;
 int cur_key_down = 0;
 int key_repeat = 0;
+int preloaded_configs = 0;
 
 const double zoom_fac = 1.4142136;
 
@@ -1169,7 +1169,7 @@ _finished_tile(void *data, Ecore_Thread *th)
     workerfinish_idle = ecore_job_add(workerfinish_idle_run, NULL);
   }
 #ifndef  DISABLE_IMG_PRELOAD
-  else if (worker < max_workers && preload_pending() < PRELOAD_THRESHOLD) {
+  else if (!worker /*worker < max_workers*/ /*&& preload_pending() < PRELOAD_THRESHOLD*/) {
     step_image_preload_next(PRELOAD_IMG_RANGE);
   }
   else {
@@ -1611,6 +1611,7 @@ void delgrid(void)
 void jump_image_do(void *data, Evas_Object *obj)
 {
   step_image_config_reset_range(files, tagfiles_idx(files)-PRELOAD_CONFIG_RANGE-1, tagfiles_idx(files)+PRELOAD_CONFIG_RANGE+1);
+  preloaded_configs = 0;
   //FIXME reset current config but only after processing in step_image do??? and only if outside config range...
   
   tagfiles_idx_set(files, (intptr_t)data);
@@ -1752,8 +1753,8 @@ void group_config_reset(File_Group *group)
   //FIXME clean pending refs to config from preload_list (and other?)
   
   //FIXME delete group cb
-  printf("FIXME delete group_changed_cb for %s\n", filegroup_basename(group));
-  //tagfiles_group_changed_cb_delete(files);
+  //printf("FIXME delete group_changed_cb for %s\n", filegroup_basename(group));
+  tagfiles_group_changed_cb_delete(files, group);
   
   if (!filegroup_basename(group)) {
     printf("FIXME what does this mean?\n");
@@ -1924,6 +1925,10 @@ Config_Data *config_data_get(File_Group *group, int nth)
   
   if (!config)
     return NULL;
+  
+  //FIXME check if config has already been run?!
+  /*if (config && config->sink)
+    return config;*/
 
   config->failed = lime_config_test(config->sink);
   
@@ -2054,6 +2059,7 @@ void config_thread_start(File_Group *group, int nth)
 void step_image_start_configs(int n)
 {
   int i;
+  int config_upto;
   int group_idx;
   int idx;
   File_Group *group;
@@ -2077,9 +2083,19 @@ void step_image_start_configs(int n)
   if (group_in_filters(group, tags_filter))
       config_thread_start(group, 0);
   
-  /*for (i=0;i<n;i++) {
-    idx += step;
-    
+  /*if (n > preloaded_configs) {
+    if (preloaded_configs == 0) {
+      preloaded_configs = 1;
+      return;
+    }
+    else
+      config_upto = 2+preloaded_configs;
+    if (config_upto > n)
+      config_upto = n;
+  }
+  printf("preload from %d: %d (%d %d)", idx, idx + preloaded_configs*step, preloaded_configs, config_upto);
+  idx = idx + preloaded_configs*step;
+  for (i=preloaded_configs;i<config_upto;i++,idx+=step) {
     group = tagfiles_nth(files, idx);
     
     assert(group);
@@ -2088,7 +2104,8 @@ void step_image_start_configs(int n)
       for(group_idx=0;group_idx<filegroup_count(group);group_idx++)
 	config_thread_start(group, group_idx);
     }
-  }*/
+  }
+  preloaded_configs = config_upto-1;*/
 }
 
 //FIXME 
@@ -2240,7 +2257,7 @@ void step_image_do(void *data, Evas_Object *obj)
   }
   
   if (last_file_step == 1 || last_file_step == -1)
-    step_image_config_reset_range(files, tagfiles_idx(files)-PRELOAD_CONFIG_RANGE-2, tagfiles_idx(files)-KEEP_CONFIG_RANGE-1);
+    step_image_config_reset_range(files, tagfiles_idx(files)-last_file_step*PRELOAD_CONFIG_RANGE, tagfiles_idx(files)-last_file_step*(PRELOAD_CONFIG_RANGE+1));
   
   del_filter_settings();  
   

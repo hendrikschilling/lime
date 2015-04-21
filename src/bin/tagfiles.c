@@ -120,6 +120,28 @@ void tagfiles_group_changed_cb_insert(Tagfiles *tagfiles, File_Group *group, voi
   tagfiles->group_changed_cb = eina_list_append(tagfiles->group_changed_cb, data);
 }
 
+void tagfiles_group_changed_cb_delete(Tagfiles *tagfiles, File_Group *group)
+{
+  Group_Changed_Cb_Data *data;
+  Eina_List *l;
+  
+  printf("stored config (app. by callbacks): %d\n", eina_list_count(tagfiles->group_changed_cb));
+  
+  if (!tagfiles->group_changed_cb)
+    return;
+  
+  EINA_LIST_FOREACH(tagfiles->group_changed_cb, l, data)
+    if (data->group == group)
+      break;
+    
+  if (!data || data->group != group) {
+    printf("FIXME could not find specified group in group_changed_cb list\n");
+    return;
+  }
+  
+  tagfiles->group_changed_cb = eina_list_remove_list(tagfiles->group_changed_cb, l);
+}
+
 void tagfiles_group_changed_cb_flush(Tagfiles *files)
 {
   //FIXME free data (use inarray?)
