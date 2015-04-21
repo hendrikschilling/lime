@@ -56,6 +56,7 @@
 #define PENDING_ACTIONS_BEFORE_SKIP_STEP 10
 #define REPEATS_ON_STEP_HOLD 10
 #define EXTRA_THREADING_FACTOR 4
+#define PRELOAD_EXTRA_WORKERS 32
 
 //#define BENCHMARK
 //#define BENCHMARK_PREVIEW
@@ -75,6 +76,7 @@
 #endif
 #define IF_FREE(ptr) if (ptr) {free(ptr); } ptr = NULL;
 
+int max_preload_workers = -1;
 int high_quality_delay =  300;
 int max_reaction_delay =  1000;
 int fullscreen = 0;
@@ -1060,7 +1062,7 @@ void run_preload_threads(void)
 {
   _Img_Thread_Data *tdata;
   
-  while (worker_preload+worker < max_workers && preload_pending()) {
+  while (worker_preload<max_preload_workers && preload_pending()) {
     tdata = preload_get();
     //config was reset...
     if (!tdata->config->sink)
@@ -1168,17 +1170,16 @@ _finished_tile(void *data, Ecore_Thread *th)
     //this will schedule an idle enterer to only process func after we are finished with rendering
     workerfinish_idle = ecore_job_add(workerfinish_idle_run, NULL);
   }
+  else if (!worker /*&& preload_pending() < PRELOAD_THRESHOLD*/) {
 #ifndef  DISABLE_IMG_PRELOAD
-  else if (!worker /*worker < max_workers*/ /*&& preload_pending() < PRELOAD_THRESHOLD*/) {
     step_image_preload_next(PRELOAD_IMG_RANGE);
+#endif
 #ifndef DISABLE_CONFIG_PRELOAD
     step_image_start_configs(PRELOAD_CONFIG_RANGE);
 #endif
   }
-  else {
-    run_preload_threads();
-  }
-#endif
+  
+  run_preload_threads();
   
 #ifdef BENCHMARK
   if (!worker && !idle_render) {
@@ -3823,6 +3824,9 @@ elm_main(int argc, char **argv)
   
   max_workers = ecore_thread_max_get();
   ecore_thread_max_set(max_workers*EXTRA_THREADING_FACTOR);
+  max_preload_workers = max_workers*(EXTRA_THREADING_FACTOR-1);
+  if (PRELOAD_EXTRA_WORKERS < max_preload_workers)
+    max_preload_workers = PRELOAD_EXTRA_WORKERS;
   max_thread_id = max_workers+PRELOAD_CONFIG_RANGE+100;
   
   lime_init();
