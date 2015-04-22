@@ -566,13 +566,13 @@ int lime_cache_set(int mem_max, int strategy)
   
   if (!(strategy & CACHE_MASK_M)) {
     strategy |= CACHE_M_LRU;
-    strategy |= CACHE_M_TIME;
+    //strategy |= CACHE_M_TIME;
   }
   
   if (cache) {
     if (mem_max > cache->mem_max) {
-      if (10*mem_max > cache->count_max)
-        cache->count_max = 10*mem_max;
+      if (32*mem_max > cache->count_max)
+        cache->count_max = 32*mem_max;
       cache->tiles = realloc(cache->tiles, sizeof(Tile*)*cache->count_max);
       memset(cache->tiles+cache->mem_max*sizeof(Tile*), 0, mem_max - cache->mem_max);
       cache->strategy = strategy;
@@ -593,7 +593,7 @@ int lime_cache_set(int mem_max, int strategy)
   mallopt(M_MMAP_THRESHOLD, DEFAULT_TILE_SIZE*DEFAULT_TILE_SIZE);
   
   cache->table = eina_hash_new(NULL, &cache_tile_cmp, &cache_tile_tilehash, NULL, 8);
-  cache->count_max = 10*mem_max;
+  cache->count_max = 32*mem_max;
   cache->tiles = calloc(sizeof(Tile*)*cache->count_max, 1);
   cache->mem_max = mem_max*1024*1024;
   cache->strategy = strategy;

@@ -70,7 +70,7 @@
 
 //#define DISABLE_CONFIG_PRELOAD
 //FIXME leaks memory (configs get called again and again when stepping forth back one)
-#define DISABLE_IMG_PRELOAD
+//#define DISABLE_IMG_PRELOAD
 
 #ifdef IF_FREE
 # undef IF_FREE
@@ -130,7 +130,7 @@ typedef struct {
 typedef struct {
   int failed;
   Filter *load, *sink;
-  int running;
+  int running, configured;
   Eina_List *filter_chain;
   Tagged_File *file;
   File_Group *group;
@@ -1942,7 +1942,8 @@ Config_Data *config_data_get(File_Group *group, int nth)
   /*if (config && config->sink)
     return config;*/
 
-  config->failed = lime_config_test(config->sink);
+  if (!config->configured)
+    config->failed = lime_config_test(config->sink);
   
   return config;
 }
@@ -1953,6 +1954,7 @@ void config_exe(void *data, Ecore_Thread *thread)
   
   config->failed = lime_config_test(config->sink);
   
+  config->configured = EINA_TRUE;
   config->running = EINA_FALSE;
 }
 
