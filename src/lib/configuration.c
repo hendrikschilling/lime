@@ -95,12 +95,15 @@ void lime_filter_config_unref(Filter *f)
   if (!f)
     return;
   
+  pthread_mutex_lock(&f->lock);
+  
   Config * c = filter_chain_last_filter(f)->c;
 
   assert(c);
     
   if (!c->refcount) {
     printf("FIXME lime_filter_config_unref called with refcount == 0!\n");
+    pthread_mutex_unlock(&f->lock);
     return;
   }
   
@@ -110,6 +113,8 @@ void lime_filter_config_unref(Filter *f)
   
   if (!c->refcount && c->delete)
     lime_config_reset(f);
+  
+  pthread_mutex_unlock(&f->lock);
 }
 
 void meta_dep_set_data_calc(Meta *m, void *dep_data)
@@ -1278,9 +1283,7 @@ void _config_reset_internal(Filter *f)
 }
 
 void lime_config_reset(Filter *f)
-{  
-  pthread_mutex_lock(&f->lock);
-  
+{    
   Config *c = filter_chain_last_filter(f)->c;
   
   if (!c) {
@@ -1295,7 +1298,6 @@ void lime_config_reset(Filter *f)
     return;
   }
   _config_reset_internal(f);
-  pthread_mutex_unlock(&f->lock);
 }
 
 //insert nop filters if necessary
@@ -1361,7 +1363,7 @@ int lime_config_test(Filter *f_sink)
   ea_push(insert_f, filter_core_deinterleave.filter_new_f);
   ea_push(insert_f, filter_core_interleave.filter_new_f);
   ea_push(insert_f, filter_core_loadjpeg.filter_new_f);
-  ea_push(insert_f, filter_core_loadraw.filter_new_f);
+  //ea_push(insert_f, filter_core_loadraw.filter_new_f);
   ea_push(insert_f, filter_core_convert.filter_new_f);
   ea_push(insert_f, filter_core_loadtiff.filter_new_f);
   ea_push(insert_f, filter_core_fliprot.filter_new_f);

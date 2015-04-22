@@ -44,7 +44,7 @@ static void _worker(Filter *f, Eina_Array *in, Eina_Array *out, Rect *area, int 
   assert(out && ea_count(out) == 1);
   
   if (bd_out == BD_U16) {
-    hack_tiledata_fixsize(6, ea_data(out, 0));
+    hack_tiledata_fixsize_mt(6, ea_data(out, 0));
     
     i2 = ((Tiledata*)ea_data(in, 0))->data;
     o2 = ((Tiledata*)ea_data(out, 0))->data;
@@ -55,7 +55,7 @@ static void _worker(Filter *f, Eina_Array *in, Eina_Array *out, Rect *area, int 
       }
   }
   else {
-    hack_tiledata_fixsize(3, ea_data(out, 0));
+    hack_tiledata_fixsize_mt(3, ea_data(out, 0));
     
     i2 = ((Tiledata*)ea_data(in, 0))->data;
     o = ((Tiledata*)ea_data(out, 0))->data;

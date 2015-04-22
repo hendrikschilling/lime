@@ -111,7 +111,7 @@ static void _worker(Filter *f, Eina_Array *in, Eina_Array *out, Rect *area, int 
   assert(in && ea_count(in) == 1);
   assert(out && ea_count(out) == 1);
   
-  hack_tiledata_fixsize(6, ea_data(out, 0));
+  hack_tiledata_fixsize_mt(6, ea_data(out, 0));
   
   in_td = ((Tiledata*)ea_data(in, 0));
   in_area = in_td->area;

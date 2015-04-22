@@ -35,7 +35,7 @@ static void _worker_contrast(Filter *f, Eina_Array *in, Eina_Array *out, Rect *a
   assert(out && ea_count(out) == 1);
   
   if (*(int*)data->bd->data == BD_U16)
-    hack_tiledata_fixsize(2, ea_data(out, 0));
+    hack_tiledata_fixsize_mt(2, ea_data(out, 0));
   
   input = ((Tiledata*)ea_data(in, 0))->data;
   o = ((Tiledata*)ea_data(out, 0))->data;
@@ -67,7 +67,7 @@ static void _worker_exposure(Filter *f, Eina_Array *in, Eina_Array *out, Rect *a
   assert(out && ea_count(out) == 1);
   
   if (*(int*)data->bd->data == BD_U16)
-    hack_tiledata_fixsize(2, ea_data(out, 0));
+    hack_tiledata_fixsize_mt(2, ea_data(out, 0));
   
   input = ((Tiledata*)ea_data(in, 0))->data;
   o = ((Tiledata*)ea_data(out, 0))->data;

@@ -440,6 +440,7 @@ Filter *filter_convert_new(void)
   Meta *ch_out_color[3];
   
   filter->mode_buffer = filter_mode_buffer_new();
+  //FIXME maybe possible when using cache_buffer_alloc_mt?
   filter->mode_buffer->threadsafe = 0;
   filter->mode_buffer->data_new = &_data_new;
   filter->mode_buffer->worker = &_worker;

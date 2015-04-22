@@ -51,6 +51,7 @@ Tiledata *tiledata_new(Rect *area, int size, Tile *parent)
   return tile;
 }
 
+
 void hack_tiledata_fixsize(int size, Tiledata *tile)
 {
   if (tile->size == size)
@@ -70,6 +71,18 @@ void hack_tiledata_fixsize(int size, Tiledata *tile)
     cache_mem_add(tile->area.width*tile->area.height*tile->size);
   else
     cache_uncached_add(tile->area.width*tile->area.height*tile->size);
+}
+
+void hack_tiledata_fixsize_mt(int size, Tiledata *tile)
+{
+  if (tile->size == size)
+    return;
+  
+  lime_lock();
+  
+  hack_tiledata_fixsize(size, tile);
+  
+  lime_unlock();
 }
 
 void tiledata_del(Tiledata *td)

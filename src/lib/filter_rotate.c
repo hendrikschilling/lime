@@ -229,7 +229,7 @@ static void _worker(Filter *f, Eina_Array *in, Eina_Array *out, Rect *area, int 
     }
     else {
       for(ch=0;ch<3;ch++) {
-        hack_tiledata_fixsize(3, ea_data(out, ch));
+        hack_tiledata_fixsize_mt(3, ea_data(out, ch));
         in_td = (Tiledata*)ea_data(in, ch);
         out_td = (Tiledata*)ea_data(out, ch);
         for(j=0;j<out_td->area.height;j++)

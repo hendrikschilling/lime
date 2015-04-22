@@ -19,6 +19,7 @@
 
 #include <sys/time.h>
 #include <sys/resource.h>
+#include <malloc.h>
 
 #include "cache.h"
 #include "math.h"
@@ -31,11 +32,11 @@ typedef struct _Cache Cache;
 struct _Cache {
   Eina_Hash *table;
   uint64_t generation;
-  uint64_t mem;
+  uint64_t mem, mem_peak;
   uint64_t mem_max;
-  uint64_t uncached;
-  uint64_t buffers;
-  uint64_t app;
+  uint64_t uncached,uncached_peak;
+  uint64_t buffers, buffers_peak;
+  uint64_t app, app_peak;
   Tile **tiles;
   int count;
   int count_max;
@@ -325,6 +326,8 @@ void cache_uncached_sub(int mem)
 void *cache_buffer_alloc(int mem)
 {
   cache->buffers += mem;
+  if (cache->buffers > cache->buffers_peak)
+    cache->buffers_peak = cache->buffers;
   
   return malloc(mem);
 }
@@ -340,6 +343,9 @@ void *cache_app_alloc(int mem)
 {
   cache->app += mem;
   
+  if (cache->app > cache->app_peak)
+    cache->app_peak = cache->app;
+  
   return malloc(mem);
 }
 
@@ -352,6 +358,9 @@ void cache_app_del(void *data, int mem)
 void cache_mem_add(int mem)
 {
   cache->mem += mem;
+  
+  if (cache->mem > cache->mem_peak)
+    cache->mem_peak = cache->mem;
 }
 
 void cache_mem_sub(int mem)
@@ -359,7 +368,7 @@ void cache_mem_sub(int mem)
   cache->mem -= mem;
 }
 
-void cache_tile_channelmem_add(Tile *tile)
+/*void cache_tile_channelmem_add(Tile *tile)
 {
   int i;
   
@@ -370,9 +379,9 @@ void cache_tile_channelmem_add(Tile *tile)
     if (((Tiledata *)ea_data(tile->channels, i))->data)
       cache_mem_add(tile->area.width*tile->area.height*((Tiledata *)ea_data(tile->channels, i))->size);
   }
-}
+}*/
 
-void cache_tile_channelmem_sub(Tile *tile)
+/*void cache_tile_channelmem_sub(Tile *tile)
 {
   int i;
   
@@ -383,7 +392,7 @@ void cache_tile_channelmem_sub(Tile *tile)
     if (((Tiledata *)ea_data(tile->channels, i))->data)
       cache_mem_sub(tile->area.width*tile->area.height*((Tiledata *)ea_data(tile->channels, i))->size);
   }
-}
+}*/
 
 int chache_tile_cleanone(Tile *tile)
 {
@@ -408,8 +417,10 @@ int chache_tile_cleanone(Tile *tile)
   if (cache->strategy & CACHE_MASK_M  & CACHE_M_LRU)
     ea_push(metrics, &tile_score_lru);
     
-  if (select_func(tile, metrics, &pos, &del))
+  if (select_func(tile, metrics, &pos, &del)) {
+    printf("DEBUG: could not find a tile to clean!\n");
     return -1;
+  }
   
   assert (del->channels);
   
@@ -445,6 +456,31 @@ int get_my_pss(void)
   return size/1024;
 }
 
+uint64_t check_cache_size(void)
+{
+  int i, j;
+  uint64_t size = 0;
+  
+  for(i=0;i<cache->count_max;i++) {
+    Tile *t = cache->tiles[i];
+    if (!t)
+      continue;
+    if (t->channels) {
+      for(j=0;j<ea_count(t->channels);j++) {
+        if (((Tiledata *)ea_data(t->channels, j))->data) {
+          size += t->area.width*t->area.height*((Tiledata *)ea_data(t->channels, j))->size;
+          if (malloc_usable_size(((Tiledata *)ea_data(t->channels, j))->data) - t->area.width*t->area.height*((Tiledata *)ea_data(t->channels, j))->size > 4096)
+          {
+            printf("%d > %d\n", malloc_usable_size(((Tiledata *)ea_data(t->channels, j))->data),t->area.width*t->area.height*((Tiledata *)ea_data(t->channels, j))->size);
+            abort();
+          }
+        }
+      }
+    }
+  }
+  return size;
+}
+
 void cache_tile_add(Tile *tile)
 {
   int i;
@@ -471,8 +507,10 @@ void cache_tile_add(Tile *tile)
   }
   cache->count++;
   
-  //size = get_my_pss();
-  //printf("memory usage: %dMB cache: %.1fMB rendering: %.1fMB buffers: %.1fMB app(img): %.1fMB rest: %.1f\n", size, cache->mem/1048576.0, cache->uncached/1048576.0, cache->buffers/1048576.0, cache->app/1048576.0, (size*1048576.0-cache->mem-cache->uncached-cache->buffers-cache->app)/1048576.0);
+  size = get_my_pss();
+  printf("memory usage: %dMB cache: %.1f(%.1f)MB rendering: %.1f(%.1f)MB buffers: %.1f(%.1f)MB app(img): %.1f(%.1f)MB rest: %.1f\n", size, cache->mem/1048576.0,cache->mem_peak/1048576.0, cache->uncached/1048576.0,0.0, cache->buffers/1048576.0,cache->buffers_peak/1048576.0, cache->app/1048576.0,cache->app_peak/1048576.0, (size*1048576.0-cache->mem-cache->uncached-cache->buffers-cache->app)/1048576.0);
+  printf("checking cache size: %f\n", check_cache_size()/(1024.0*1024.0));
+  malloc_stats();
   
   //need to delete some tile
   while (cache->mem >= cache->mem_max || cache->count >= cache->count_max/2)
@@ -506,6 +544,23 @@ Tile *cache_tile_get(Tilehash *hash)
   return tile;
 }
 
+void lime_cache_flush(void)
+{
+  int i;
+  
+  for(i=0;i<cache->count_max;i++) {
+    Tile *t = cache->tiles[i];
+    if (!t)
+      continue;
+    //WARNING this will free required memory!!!
+    //t->want = 0;
+    //t->refs = NULL;
+    //WARNING end
+    tile_del(t);
+    cache->tiles[i] = NULL;
+  }
+}
+
 int lime_cache_set(int mem_max, int strategy)
 {
   
@@ -516,11 +571,13 @@ int lime_cache_set(int mem_max, int strategy)
   
   if (cache) {
     if (mem_max > cache->mem_max) {
-      cache->count_max = 10*mem_max;
+      if (10*mem_max > cache->count_max)
+        cache->count_max = 10*mem_max;
       cache->tiles = realloc(cache->tiles, sizeof(Tile*)*cache->count_max);
       memset(cache->tiles+cache->mem_max*sizeof(Tile*), 0, mem_max - cache->mem_max);
       cache->strategy = strategy;
       cache->mem_max = mem_max*1024*1024;
+      return 0;
     }
     else {
       cache->mem_max = mem_max*1024*1024;
@@ -531,6 +588,9 @@ int lime_cache_set(int mem_max, int strategy)
   }
   
   cache = calloc(sizeof(Cache), 1);
+  
+  //this allows us to use mmap for all tiles - so memory gets freed again!
+  //mallopt(M_MMAP_THRESHOLD, 256*256);
   
   cache->table = eina_hash_new(NULL, &cache_tile_cmp, &cache_tile_tilehash, NULL, 8);
   cache->count_max = 10*mem_max;

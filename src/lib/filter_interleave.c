@@ -63,14 +63,14 @@ static void _interleave_worker(Filter *f, Eina_Array *in, Eina_Array *out, Rect 
   
   if (bd == BD_U8) {
     if (*(int*)data->colorspace->data == CS_INT_ABGR) {
-      hack_tiledata_fixsize(4, ea_data(out, 0));
+      hack_tiledata_fixsize_mt(4, ea_data(out, 0));
       buf_int = ((Tiledata*)ea_data(out, 0))->data;
       buf_max = (int*)((Tiledata*)ea_data(out, 0))->data+area->width*area->height;
       for(;buf_int<buf_max;buf_int++)
         *buf_int = (255 << 24) | (*(r++) << 16) | (*(g++) << 8) | (*(b++));
     }
     else {
-      hack_tiledata_fixsize(3, ea_data(out, 0));
+      hack_tiledata_fixsize_mt(3, ea_data(out, 0));
       buf = ((Tiledata*)ea_data(out, 0))->data;
       
       for(j=0;j<area->height;j++)

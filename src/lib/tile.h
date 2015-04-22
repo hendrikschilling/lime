@@ -78,7 +78,9 @@ static inline uint16_t *tileptr16_3(Tiledata *tile, int x, int y)
 
 
 Tiledata *tiledata_new(Rect *area, int size, Tile *parent);
+//calls lime_lock!
 void hack_tiledata_fixsize(int size, Tiledata *tile);
+void hack_tiledata_fixsize_raw(int size, Tiledata *tile);
 Tile *tile_new(Rect *area, Tilehash hash, Filter *f, Filter *f_req);
 void tile_del(Tile *tile);
 void tiledata_del(Tiledata *td);

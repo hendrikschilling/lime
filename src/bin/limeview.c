@@ -68,8 +68,9 @@
 #define PRELOAD_IMG_RANGE 2
 #define PRELOAD_THRESHOLD 4
 
-//#define DISABLE_CONFIG_PRELOAD
-//#define DISABLE_IMG_PRELOAD
+#define DISABLE_CONFIG_PRELOAD
+//FIXME leaks memory (configs get called again and again when stepping forth back one)
+#define DISABLE_IMG_PRELOAD
 
 #ifdef IF_FREE
 # undef IF_FREE
@@ -703,6 +704,8 @@ void mat_cache_flush(Mat_Cache *mat_cache)
     mat_cache->low_of_layer[i] = NULL;
     mat_cache->high_of_layer[i] = NULL;
   }
+  
+  evas_image_cache_flush(evas_object_evas_get(win));
 }
 
 void mat_cache_check(Mat_Cache *mat_cache)
@@ -830,7 +833,7 @@ void mat_free_func(void *user_data, void *cell_data)
 {
   _Img_Thread_Data *cell = cell_data;
   
-  evas_object_image_data_set(cell->img, NULL);
+  //evas_object_image_data_set(cell->img, NULL);
   evas_object_del(cell->img);
   cache_app_del(cell->buf, TILE_SIZE*TILE_SIZE*4);
   free(cell);
@@ -1012,6 +1015,7 @@ void _insert_image(_Img_Thread_Data *tdata)
   evas_object_image_smooth_scale_set(tdata->img, EINA_FALSE); 
   evas_object_image_scale_hint_set(tdata->img, EVAS_IMAGE_SCALE_HINT_DYNAMIC);
   evas_object_image_scale_hint_set(tdata->img, EVAS_IMAGE_SCALE_HINT_DYNAMIC);
+  //evas_object_image_data_set(tdata->img, NULL);
   evas_object_image_data_set(tdata->img, tdata->buf);
   //evas_object_image_data_update_add(tdata->img, 0, 0, TILE_SIZE, TILE_SIZE);
   evas_object_show(tdata->img);
@@ -1600,6 +1604,7 @@ void delgrid(void)
 {  
   if (mat_cache_old) {
     //we have not yet shown the current image (which would delete mat_cache_old)
+    mat_cache_del(mat_cache_old);
     mat_cache_old = NULL;
   }
   
@@ -1898,6 +1903,7 @@ Config_Data *config_build(File_Group *group, int nth)
       }      
       break;
     }
+    lime_exif_handle_destroy(exif);
     
     if (!config->load) {
       config->load = lime_filter_new("load");
@@ -2261,6 +2267,9 @@ void step_image_do(void *data, Evas_Object *obj)
     if (step->step)
       last_file_step = step->step;
   }
+  
+  //FIXME uncoditional reset only for memleak testing (still leaks!)
+  step_image_config_reset_range(files, 0, tagfiles_count(files));
   
   if (last_file_step == 1 || last_file_step == -1)
     step_image_config_reset_range(files, tagfiles_idx(files)-last_file_step*PRELOAD_CONFIG_RANGE, tagfiles_idx(files)-last_file_step*(PRELOAD_CONFIG_RANGE+1));
@@ -4137,10 +4146,20 @@ elm_main(int argc, char **argv)
   //bench_time_mark(BENCHMARK_INIT);
   elm_run();
   //bench_time_mark(BENCHMARK_PROCESSING);
+  
+  while (ecore_thread_active_get())
+    ecore_main_loop_iterate();
+  
+  if (mat_cache)
+    mat_cache_del(mat_cache);
+  if (mat_cache_old)
+    mat_cache_del(mat_cache_old);
+  
   if (verbose)
     cache_stats_print();
   if (bench)
     bench_report();
+  lime_cache_flush();
   lime_shutdown();
   
   lv_settings_shutdown();

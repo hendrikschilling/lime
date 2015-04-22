@@ -176,7 +176,11 @@ static void _worker(Filter *f, Eina_Array *in, Eina_Array *out, Rect *area, int 
   w = imin(area->width, data->raw->sizes.width-offx);
   h = imin(area->height, data->raw->sizes.height-offy);
   
+#ifdef RAW_THREADSAFE_BUT_LEAK
+  hack_tiledata_fixsize_mt(6, ea_data(out, 0));
+#else
   hack_tiledata_fixsize(6, ea_data(out, 0));
+#endif
   out_td = (Tiledata*)ea_data(out, 0);
   
   for(j=0;j<h;j++)
@@ -212,8 +216,11 @@ static int _input_fixed(Filter *f)
     //libraw_close(data->common->raw);
   }
   
-  if (libraw_open_file(data->common->raw, data->input->data))
+  if (libraw_open_file(data->common->raw, data->input->data)) {
+    libraw_close(data->common->raw);
+    data->common->raw = NULL;
     return -1;
+  }
   
   data->common->opened = 1;
   
