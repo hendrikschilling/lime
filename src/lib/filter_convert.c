@@ -73,8 +73,10 @@ static int _del(Filter *f)
   for(i=0;i<ea_count(f->data);i++) {
     data = ea_data(f->data, i);
     common = data->common;
-    cache_buffer_del(data->buf, DEFAULT_TILE_AREA*3);
-    cache_buffer_del(data->buf2, 2*DEFAULT_TILE_AREA*3);
+    if (data->buf)
+      cache_buffer_del(data->buf, DEFAULT_TILE_AREA*3);
+    if (data->buf2)
+      cache_buffer_del(data->buf2, 2*DEFAULT_TILE_AREA*3);
     if (common->initialized == INIT_SWS)
       sws_freeContext(data->sws);
     free(data);
