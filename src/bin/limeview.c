@@ -833,7 +833,7 @@ void mat_free_func(void *user_data, void *cell_data)
 {
   _Img_Thread_Data *cell = cell_data;
   
-  //evas_object_image_data_set(cell->img, NULL);
+  evas_object_image_data_set(cell->img, NULL);
   evas_object_del(cell->img);
   cache_app_del(cell->buf, TILE_SIZE*TILE_SIZE*4);
   free(cell);
