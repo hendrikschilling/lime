@@ -68,7 +68,7 @@
 #define PRELOAD_IMG_RANGE 2
 #define PRELOAD_THRESHOLD 4
 
-#define DISABLE_CONFIG_PRELOAD
+//#define DISABLE_CONFIG_PRELOAD
 //FIXME leaks memory (configs get called again and again when stepping forth back one)
 #define DISABLE_IMG_PRELOAD
 
