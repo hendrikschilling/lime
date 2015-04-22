@@ -1619,7 +1619,7 @@ void delgrid(void)
 
 void jump_image_do(void *data, Evas_Object *obj)
 {
-  step_image_config_reset_range(files, tagfiles_idx(files)-PRELOAD_CONFIG_RANGE-1, tagfiles_idx(files)+PRELOAD_CONFIG_RANGE+1);
+  step_image_config_reset_range(files, tagfiles_idx(files)-PRELOAD_CONFIG_RANGE-4, tagfiles_idx(files)+PRELOAD_CONFIG_RANGE+4);
   preloaded_configs = 0;
   //FIXME reset current config but only after processing in step_image do??? and only if outside config range...
   
@@ -2269,10 +2269,10 @@ void step_image_do(void *data, Evas_Object *obj)
   }
   
   //FIXME uncoditional reset only for memleak testing (still leaks!)
-  step_image_config_reset_range(files, 0, tagfiles_count(files));
+  //step_image_config_reset_range(files, 0, tagfiles_count(files));
   
   if (last_file_step == 1 || last_file_step == -1)
-    step_image_config_reset_range(files, tagfiles_idx(files)-last_file_step*PRELOAD_CONFIG_RANGE, tagfiles_idx(files)-last_file_step*(PRELOAD_CONFIG_RANGE+1));
+    step_image_config_reset_range(files, tagfiles_idx(files)-(last_file_step*PRELOAD_CONFIG_RANGE+4), tagfiles_idx(files)-last_file_step*(PRELOAD_CONFIG_RANGE));
   
   del_filter_settings();  
   
