@@ -44,7 +44,7 @@ struct _Cache {
   Eina_Hash *stats;
 };
 
-#define CACHE_ITERS 100
+#define CACHE_ITERS 128
 
 static Cache *cache = NULL;
 
@@ -148,8 +148,18 @@ double tile_score_time(Tile *tile, Tile *newtile)
 
 double tile_score_lru(Tile *tile, Tile *newtile)
 {
-  return tile->generation;
+  return 1.0/(newtile->generation-tile->generation);
 }
+
+double tile_score_depth(Tile *tile, Tile *newtile)
+{
+  //return 1.0/(tile->depth*tile->depth);
+  if (tile->depth == 1)
+    return 100;
+  else
+    return 1.0/tile->depth;
+}
+
 
 //normalized hit-rate: hit-rate per #cached items
 float tile_score_hitrate_norm(Tile *tile, Tile *newtile)
@@ -416,6 +426,8 @@ int chache_tile_cleanone(Tile *tile)
     ea_push(metrics, &tile_score_hitrate_norm);
   if (cache->strategy & CACHE_MASK_M  & CACHE_M_LRU)
     ea_push(metrics, &tile_score_lru);
+  if (cache->strategy & CACHE_MASK_M  & CACHE_M_DEEP)
+    ea_push(metrics, &tile_score_depth);
     
   if (select_func(tile, metrics, &pos, &del)) {
     printf("DEBUG: could not find a tile to clean!\n");
@@ -566,6 +578,7 @@ int lime_cache_set(int mem_max, int strategy)
   
   if (!(strategy & CACHE_MASK_M)) {
     strategy |= CACHE_M_LRU;
+    strategy |= CACHE_M_DEEP;
     //strategy |= CACHE_M_TIME;
   }
   

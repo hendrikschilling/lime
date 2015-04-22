@@ -49,6 +49,7 @@ struct _Render_Node {
   int mode;
   int need;
   Render_State *state;
+  int depth;
   void *iter;
 };
 
@@ -199,7 +200,7 @@ void render_node_del(Render_Node *node)
 }
 
 //f_source: source-filter by channel
-Render_Node *render_node_new(Filter *f, Tile *tile, Render_State *state)
+Render_Node *render_node_new(Filter *f, Tile *tile, Render_State *state, int depth)
 {
   int i;
   Rect inputs_area;
@@ -212,6 +213,7 @@ Render_Node *render_node_new(Filter *f, Tile *tile, Render_State *state)
     area = NULL;
   
   node->state = state;
+  node->depth = depth;
 
   if (f->node->con_ch_in && ea_count(f->node->con_ch_in))
       node->f_source = eina_array_new(4);
@@ -516,7 +518,7 @@ Render_Node *render_state_getjob( Render_State *state)
       }
       //this node does not need any input tiles
       else if (!ea_count(node->f_source_curr->node->con_ch_in)) {
-	jobnode = render_node_new(node->f_source_curr, tile_new(&area, hash, node->f_source_curr, node->f), state);
+	jobnode = render_node_new(node->f_source_curr, tile_new(&area, hash, node->f_source_curr, node->f, node->depth), state, node->depth+1);
 	assert(jobnode->f->fixme_outcount);
 	cache_tile_add(jobnode->tile);
 	cache_stats_update(jobnode->tile, 0, 1, 0, 0);
@@ -527,12 +529,12 @@ Render_Node *render_state_getjob( Render_State *state)
       }
       //node needs input tiles
       else {
-	tile = tile_new(&area, hash, node->f_source_curr, node->f);
+	tile = tile_new(&area, hash, node->f_source_curr, node->f, node->depth);
 	cache_stats_update(tile, 0, 1, 0, 0);
 	if (node->f->fixme_outcount);
 	  cache_tile_add(tile);
         
-	jobnode = render_node_new(node->f_source_curr, tile, state);
+	jobnode = render_node_new(node->f_source_curr, tile, state, node->depth+1);
         
         tile->want = eina_array_new(4);
         node->need++;
@@ -614,12 +616,12 @@ Render_State *render_state_new(Rect *area, Filter *f)
   Tile *tile;
   
   if (area) {
-    tile = tile_new(area, tile_hash_calc(f, area), f, NULL);
+    tile = tile_new(area, tile_hash_calc(f, area), f, NULL, 1);
   }
   else
     tile = NULL;
   
-  Render_Node *node =  render_node_new(f, tile, state); 
+  Render_Node *node =  render_node_new(f, tile, state, 1); 
   
   node->need = 1000;
 

@@ -127,7 +127,7 @@ void tiledata_save(Tiledata *tile, const char *path)
   fclose(file);
 }
 
-Tile *tile_new(Rect *area, Tilehash hash, Filter *f, Filter *f_req)
+Tile *tile_new(Rect *area, Tilehash hash, Filter *f, Filter *f_req, int depth)
 {
   Tile *tile = calloc(sizeof(Tile), 1);
   
@@ -137,6 +137,7 @@ Tile *tile_new(Rect *area, Tilehash hash, Filter *f, Filter *f_req)
   tile->hash = hash;
   tile->fc = f->fc;
   tile->filterhash = filter_hash_value_get(f);
+  tile->depth = depth;
   assert(hash_hash_value_get(hash.filterhash) == filter_hash_value_get(f));
   if (f_req)
     tile->fc_req = f_req->fc;

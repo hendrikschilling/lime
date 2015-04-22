@@ -90,7 +90,6 @@ Ecore_Idler *idle_progress_print = NULL;
 Ecore_Timer *timer_render = NULL;
 Eina_Array *taglist_add = NULL;
 Eina_List *preload_list = NULL;
-Eina_Array *preload_array = NULL;
 int preload_count = 0;
 int quick_preview_only = 0;
 int cur_key_down = 0;
@@ -929,28 +928,51 @@ void workerfinish_idle_run(void *data)
   return ECORE_CALLBACK_CANCEL;
 }
 
-
+void workerfinish_idle_preload(void *data)
+{ 
+  workerfinish_idle = NULL;
+  
+  if (pending_action()) {
+    workerfinish_idle_run(NULL);
+    return ECORE_CALLBACK_CANCEL;
+  }
+  
+  #ifndef  DISABLE_IMG_PRELOAD
+  step_image_preload_next(PRELOAD_IMG_RANGE);
+  #endif
+  #ifndef DISABLE_CONFIG_PRELOAD
+  step_image_start_configs(PRELOAD_CONFIG_RANGE);
+  #endif
+  
+  run_preload_threads();
+}
 
 void preload_add(_Img_Thread_Data *tdata)
 {
-  ea_push(preload_array, tdata);
+  preload_list = eina_list_append(preload_list, tdata);
 }
 
 int preload_pending(void)
 { 
-  return ea_count(preload_array);
+  if (!preload_list)
+    return 0;
+  return eina_list_count(preload_list);
 }
 
 
 void preload_flush(void)
 {
-  eina_array_flush(preload_array);
+  preload_list = NULL;
+  printf("FIXME prelaod flush\n");
 }
 
 
 _Img_Thread_Data *preload_get(void)
 {
-  return ea_pop(preload_array);
+  _Img_Thread_Data *tdata = eina_list_data_get(preload_list);
+  preload_list = eina_list_remove_list(preload_list, preload_list);
+  
+  return tdata;
 }
 
 void workerfinish_schedule(void (*func)(void *data, Evas_Object *obj), void *data, Evas_Object *obj, Eina_Bool append)
@@ -1066,11 +1088,14 @@ void run_preload_threads(void)
 {
   _Img_Thread_Data *tdata;
   
-  while (worker_preload<max_preload_workers && preload_pending()) {
+  while (worker_preload+worker<max_workers && preload_pending()) {
     tdata = preload_get();
     //config was reset...
-    if (!tdata->config->sink)
+    if (!tdata->config->sink) {
+      free(tdata);
       continue;
+    //just delete all preloads!
+    }
     worker_preload++;
     tdata->t_id = lock_free_thread_id();
     filter_memsink_buffer_set(tdata->config->sink, NULL, tdata->t_id);
@@ -1175,15 +1200,8 @@ _finished_tile(void *data, Ecore_Thread *th)
     workerfinish_idle = ecore_job_add(workerfinish_idle_run, NULL);
   }
   else if (!worker /*&& preload_pending() < PRELOAD_THRESHOLD*/) {
-#ifndef  DISABLE_IMG_PRELOAD
-    step_image_preload_next(PRELOAD_IMG_RANGE);
-#endif
-#ifndef DISABLE_CONFIG_PRELOAD
-    step_image_start_configs(PRELOAD_CONFIG_RANGE);
-#endif
+    workerfinish_idle = ecore_job_add(workerfinish_idle_preload, NULL);
   }
-  
-  run_preload_threads();
   
 #ifdef BENCHMARK
   if (!worker && !idle_render) {
@@ -1302,8 +1320,6 @@ int fill_area_blind(int xm, int ym, int wm, int hm, int minscale, Config_Data *c
 	  preload_add(tdata);
       }
   }
-  
-  run_preload_threads();
 }
 
 int fill_area(int xm, int ym, int wm, int hm, int minscale, int preview)
@@ -3810,7 +3826,6 @@ elm_main(int argc, char **argv)
   Eina_List *filters = NULL;
   select_filter_func = NULL;
   int winsize;
-  preload_array = eina_array_new(64);
   
   delay_cur = malloc(sizeof(struct timespec));
   bench_delay_start(delay_cur);

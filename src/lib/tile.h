@@ -54,6 +54,7 @@ struct _Tile {
   uint32_t filterhash; //for exact filter identification
   Eina_Array *want; //render_nodes that need this tile when it's finished
   uint64_t generation;
+  int depth;
 };
 
 static inline uint8_t *tileptr8(Tiledata *tile, int x, int y)
@@ -81,7 +82,7 @@ Tiledata *tiledata_new(Rect *area, int size, Tile *parent);
 //calls lime_lock!
 void hack_tiledata_fixsize(int size, Tiledata *tile);
 void hack_tiledata_fixsize_raw(int size, Tiledata *tile);
-Tile *tile_new(Rect *area, Tilehash hash, Filter *f, Filter *f_req);
+Tile *tile_new(Rect *area, Tilehash hash, Filter *f, Filter *f_req, int depth);
 void tile_del(Tile *tile);
 void tiledata_del(Tiledata *td);
 int tile_wanted(Tile *tile);
