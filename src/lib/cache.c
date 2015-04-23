@@ -347,7 +347,7 @@ void *cache_buffer_alloc_mt(int mem)
   void *m;
   
   lime_lock();
-  m = cache_buffer_alloc_mt(mem);
+  m = cache_buffer_alloc(mem);
   lime_unlock();
   
   return m;

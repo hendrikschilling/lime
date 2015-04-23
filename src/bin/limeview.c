@@ -58,7 +58,7 @@
 #define EXTRA_THREADING_FACTOR 4
 #define PRELOAD_EXTRA_WORKERS 32
 
-#define BENCHMARK
+//#define BENCHMARK
 //#define BENCHMARK_PREVIEW
 #define BENCHMARK_LENGTH 20
 
@@ -3862,8 +3862,7 @@ elm_main(int argc, char **argv)
   
   elm_config_scroll_thumbscroll_enabled_set(EINA_TRUE);
   
-  max_workers = ecore_thread_max_get();
-  max_workers = 4*max_workers;
+  max_workers = 4*ecore_thread_max_get();
   ecore_thread_max_set(max_workers*EXTRA_THREADING_FACTOR);
   max_preload_workers = max_workers*(EXTRA_THREADING_FACTOR-1);
   if (PRELOAD_EXTRA_WORKERS < max_preload_workers)
@@ -4187,8 +4186,10 @@ elm_main(int argc, char **argv)
   if (mat_cache_old)
     mat_cache_del(mat_cache_old);
   
-  if (verbose)
+  if (verbose) {
     cache_stats_print();
+    printf("threading blocked for %.3fs\n",lime_get_global_stat_thread_blocked());
+  }
   if (bench)
     bench_report();
   lime_cache_flush();

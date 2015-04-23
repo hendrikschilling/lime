@@ -26,5 +26,6 @@
 
 void lime_render(Filter *f);
 void lime_render_area(Rect *area, Filter *f, int thread_id);
+double lime_get_global_stat_thread_blocked(void);
 
 #endif

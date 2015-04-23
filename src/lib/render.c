@@ -36,6 +36,13 @@ typedef struct _Render_Node Render_Node;
 struct _Render_State;
 typedef struct _Render_State Render_State;
 
+double global_stat_thread_blocked = 0.0;
+
+double lime_get_global_stat_thread_blocked(void)
+{
+  return global_stat_thread_blocked;
+}
+
 struct _Render_Node {
   Rect area; //area that f needs
   int channel; //current channel in this node
@@ -437,6 +444,8 @@ Render_Node *render_state_getjob( Render_State *state)
   Tile *tile;
   Render_Node *jobnode;
   int found;
+  struct timespec t_start;
+  struct timespec t_stop;
   
   if (ea_count(state->ready))
     return ea_pop(state->ready);
@@ -444,14 +453,22 @@ Render_Node *render_state_getjob( Render_State *state)
   if (!ea_count(state->currstate)) {
     
     if (state->pending) {
-      lime_unlock();
-      while(state->pending && !ea_count(state->ready)) {
-	usleep(1000);
-	lime_lock();
-	lime_unlock();
-      }
       
-      lime_lock();
+      if (!ea_count(state->ready)) {
+        clock_gettime(CLOCK_MONOTONIC,&t_start);
+        lime_unlock();
+        while(state->pending && !ea_count(state->ready)) {
+          usleep(1000);
+          lime_lock();
+          lime_unlock();
+        }
+        lime_lock();
+        
+        clock_gettime(CLOCK_MONOTONIC,&t_stop);
+        printf("we were blocked!\n");
+        global_stat_thread_blocked += t_stop.tv_sec - t_start.tv_sec
+        +  (t_stop.tv_nsec - t_start.tv_nsec)*1.0/1000000000.0;
+      }
       
       assert(ea_count(state->ready));
       
