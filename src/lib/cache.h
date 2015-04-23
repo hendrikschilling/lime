@@ -36,6 +36,7 @@ void cache_uncached_sub(int mem);
 void *cache_buffer_alloc(int mem);
 void cache_buffer_del(void *data, int mem);
 void *cache_app_alloc(int mem);
+void *cache_buffer_alloc_mt(int mem);
 void cache_app_del(void *data, int mem);
 void cache_mem_add(int mem);
 void cache_mem_sub(int mem);

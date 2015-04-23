@@ -105,9 +105,9 @@ static void _worker(Filter *f, Eina_Array *in, Eina_Array *out, Rect *area, int 
   int out_bytes;
   
   if (!data->buf)
-    data->buf = cache_buffer_alloc(DEFAULT_TILE_AREA*3);
+    data->buf = cache_buffer_alloc_mt(DEFAULT_TILE_AREA*3);
   if (!data->buf2)
-    data->buf2 = cache_buffer_alloc(2*DEFAULT_TILE_AREA*3);
+    data->buf2 = cache_buffer_alloc_mt(2*DEFAULT_TILE_AREA*3);
   buf = data->buf;
   
   if (in_bd == BD_U16) {
@@ -443,7 +443,7 @@ Filter *filter_convert_new(void)
   
   filter->mode_buffer = filter_mode_buffer_new();
   //FIXME maybe possible when using cache_buffer_alloc_mt?
-  filter->mode_buffer->threadsafe = 0;
+  filter->mode_buffer->threadsafe = 1;
   filter->mode_buffer->data_new = &_data_new;
   filter->mode_buffer->worker = &_worker;
   filter->fixme_outcount = 3;

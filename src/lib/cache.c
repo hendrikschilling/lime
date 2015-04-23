@@ -332,7 +332,6 @@ void cache_uncached_sub(int mem)
   cache->uncached -= mem;
 }
 
-//FIXME not threadsafe but used in worker threads!
 void *cache_buffer_alloc(int mem)
 {
   cache->buffers += mem;
@@ -340,6 +339,18 @@ void *cache_buffer_alloc(int mem)
     cache->buffers_peak = cache->buffers;
   
   return malloc(mem);
+}
+
+//FIXME not threadsafe but used in worker threads!
+void *cache_buffer_alloc_mt(int mem)
+{
+  void *m;
+  
+  lime_lock();
+  m = cache_buffer_alloc_mt(mem);
+  lime_unlock();
+  
+  return m;
 }
 
 void cache_buffer_del(void *data, int mem)
@@ -519,8 +530,8 @@ void cache_tile_add(Tile *tile)
   }
   cache->count++;
   
-  size = get_my_pss();
-  printf("memory usage: %dMB cache: %.1f(%.1f)MB rendering: %.1f(%.1f)MB buffers: %.1f(%.1f)MB app(img): %.1f(%.1f)MB rest: %.1f\n", size, cache->mem/1048576.0,cache->mem_peak/1048576.0, cache->uncached/1048576.0,0.0, cache->buffers/1048576.0,cache->buffers_peak/1048576.0, cache->app/1048576.0,cache->app_peak/1048576.0, (size*1048576.0-cache->mem-cache->uncached-cache->buffers-cache->app)/1048576.0);
+  //size = get_my_pss();
+  //printf("memory usage: %dMB cache: %.1f(%.1f)MB rendering: %.1f(%.1f)MB buffers: %.1f(%.1f)MB app(img): %.1f(%.1f)MB rest: %.1f\n", size, cache->mem/1048576.0,cache->mem_peak/1048576.0, cache->uncached/1048576.0,0.0, cache->buffers/1048576.0,cache->buffers_peak/1048576.0, cache->app/1048576.0,cache->app_peak/1048576.0, (size*1048576.0-cache->mem-cache->uncached-cache->buffers-cache->app)/1048576.0);
   //printf("checking cache size: %f\n", check_cache_size()/(1024.0*1024.0));
   //malloc_stats();
   
@@ -603,7 +614,7 @@ int lime_cache_set(int mem_max, int strategy)
   cache = calloc(sizeof(Cache), 1);
   
   //this allows us to use mmap for all tiles - so memory gets freed immediately - but might be a good idea to keep a few tiles in a free list for reuse (maybe ~1MB = 16 default sized tiles?)
-  mallopt(M_MMAP_THRESHOLD, DEFAULT_TILE_SIZE*DEFAULT_TILE_SIZE);
+  //mallopt(M_MMAP_THRESHOLD, DEFAULT_TILE_SIZE*DEFAULT_TILE_SIZE);
   
   cache->table = eina_hash_new(NULL, &cache_tile_cmp, &cache_tile_tilehash, NULL, 8);
   cache->count_max = 32*mem_max;

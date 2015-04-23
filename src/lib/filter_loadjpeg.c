@@ -897,8 +897,9 @@ static void _loadjpeg_worker(Filter *f, Eina_Array *in, Eina_Array *out, Rect *a
     return;
   
   //FIXME use thumb only on smallest scale
-  if (area->corner.scale < data->seekable)
+  if (area->corner.scale < data->seekable) {
     _loadjpeg_worker_ijg(f, in, out, area, thread_id);
+  }
   else if (area->corner.scale >= 4)
     _loadjpeg_worker_ijg_thumb(f, in, out, area, thread_id);
   else

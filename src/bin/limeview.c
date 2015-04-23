@@ -58,9 +58,9 @@
 #define EXTRA_THREADING_FACTOR 4
 #define PRELOAD_EXTRA_WORKERS 32
 
-//#define BENCHMARK
+#define BENCHMARK
 //#define BENCHMARK_PREVIEW
-#define BENCHMARK_LENGTH 2000
+#define BENCHMARK_LENGTH 20
 
 //FIXME adjust depending on speed!
 //FIXME fix threaded config
@@ -84,7 +84,8 @@ int fullscreen = 0;
 int max_fast_scaledown = 5;
 int first_preview = 0;
 int filtered_image_count = 0;
-Ecore_Job *workerfinish_idle = NULL;
+Ecore_Idler *workerfinish_idle = NULL;
+Ecore_Idler *workerfinish_idle_preload = NULL;
 Ecore_Idler *idle_render = NULL;
 Ecore_Idler *idle_progress_print = NULL;
 Ecore_Timer *timer_render = NULL;
@@ -914,7 +915,7 @@ Eina_Bool idle_run_render(void *data)
   return ECORE_CALLBACK_CANCEL;
 }
 
-void workerfinish_idle_run(void *data)
+int workerfinish_idle_run(void *data)
 { 
   workerfinish_idle = NULL;
   
@@ -928,9 +929,9 @@ void workerfinish_idle_run(void *data)
   return ECORE_CALLBACK_CANCEL;
 }
 
-void workerfinish_idle_preload(void *data)
+int workerfinish_idle_preload_run(void *data)
 { 
-  workerfinish_idle = NULL;
+  workerfinish_idle_preload = NULL;
   
   if (pending_action()) {
     workerfinish_idle_run(NULL);
@@ -945,6 +946,8 @@ void workerfinish_idle_preload(void *data)
   #endif
   
   run_preload_threads();
+  
+  return ECORE_CALLBACK_CANCEL;
 }
 
 void preload_add(_Img_Thread_Data *tdata)
@@ -986,9 +989,15 @@ void workerfinish_schedule(void (*func)(void *data, Evas_Object *obj), void *dat
     idle_render = NULL;
   }
   
-  if (timer_render) {
-    ecore_timer_del(timer_render);
-    timer_render = NULL;
+  if (idle_render) {    
+    ecore_idler_del(idle_render);
+    idle_render = NULL;
+  }
+  
+  if (workerfinish_idle_preload) {
+    preload_flush();
+    ecore_idler_del(workerfinish_idle_preload);
+    workerfinish_idle_preload = NULL;
   }
   
   if (append || !pending_action())
@@ -1197,14 +1206,19 @@ _finished_tile(void *data, Ecore_Thread *th)
       _display_preview(NULL);
     }
     //this will schedule an idle enterer to only process func after we are finished with rendering
-    workerfinish_idle = ecore_job_add(workerfinish_idle_run, NULL);
+    workerfinish_idle = ecore_idler_add(workerfinish_idle_run, NULL);
   }
   else if (!worker /*&& preload_pending() < PRELOAD_THRESHOLD*/) {
-    workerfinish_idle = ecore_job_add(workerfinish_idle_preload, NULL);
+    workerfinish_idle_preload = ecore_idler_add(workerfinish_idle_preload_run, NULL);
   }
   
 #ifdef BENCHMARK
-  if (!worker && !idle_render) {
+  if (!worker && !idle_render && !workerfinish_idle) {
+    printf("step  benchmark!\n");
+    if (workerfinish_idle == workerfinish_idle_preload)
+      printf("preload pending!\n");
+    else
+      printf("%p\n", workerfinish_idle);
     if (tagfiles_idx(files) >= BENCHMARK_LENGTH)
       workerfinish_schedule(&elm_exit_do, NULL, NULL, EINA_TRUE);
     else
@@ -3849,6 +3863,7 @@ elm_main(int argc, char **argv)
   elm_config_scroll_thumbscroll_enabled_set(EINA_TRUE);
   
   max_workers = ecore_thread_max_get();
+  max_workers = 4*max_workers;
   ecore_thread_max_set(max_workers*EXTRA_THREADING_FACTOR);
   max_preload_workers = max_workers*(EXTRA_THREADING_FACTOR-1);
   if (PRELOAD_EXTRA_WORKERS < max_preload_workers)
