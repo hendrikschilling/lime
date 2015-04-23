@@ -673,8 +673,8 @@ static void _loadjpeg_worker_ijg(Filter *f, Eina_Array *in, Eina_Array *out, Rec
   
   assert(cinfo.jpeg_color_space == JCS_YCbCr);
   //cinfo.out_color_space   = JCS_YCbCr;
-  cinfo.dct_method = JDCT_IFAST;
-  cinfo.do_fancy_upsampling = FALSE;
+  cinfo.dct_method = JDCT_FASTEST;
+  cinfo.do_fancy_upsampling = TRUE;
   jpeg_start_decompress(&cinfo);
   
   assert(!cinfo.coef_bits);
@@ -767,8 +767,8 @@ static void _loadjpeg_worker_ijg_original(Filter *f, Eina_Array *in, Eina_Array 
   
   assert(cinfo.jpeg_color_space == JCS_YCbCr);
   //cinfo.out_color_space   = JCS_YCbCr;
-  cinfo.dct_method = JDCT_IFAST;
-  cinfo.do_fancy_upsampling = FALSE;
+  cinfo.dct_method = JDCT_FASTEST;
+  cinfo.do_fancy_upsampling = TRUE;
   jpeg_start_decompress(&cinfo);
   
   row_stride = cinfo.output_width * cinfo.output_components;
@@ -851,8 +851,8 @@ static void _loadjpeg_worker_ijg_thumb(Filter *f, Eina_Array *in, Eina_Array *ou
   
   assert(cinfo.jpeg_color_space == JCS_YCbCr);
   //cinfo.out_color_space   = JCS_YCbCr;
-  cinfo.dct_method = JDCT_IFAST;
-  cinfo.do_fancy_upsampling = FALSE;
+  cinfo.dct_method = JDCT_FASTEST;
+  cinfo.do_fancy_upsampling = TRUE;
   jpeg_start_decompress(&cinfo);
      
   row_stride = cinfo.output_width * cinfo.output_components;

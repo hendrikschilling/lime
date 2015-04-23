@@ -160,6 +160,11 @@ double tile_score_depth(Tile *tile, Tile *newtile)
     return 1.0/tile->depth;
 }
 
+double tile_score_scale(Tile *tile, Tile *newtile)
+{
+  return tile->area.corner.scale;
+}
+
 
 //normalized hit-rate: hit-rate per #cached items
 float tile_score_hitrate_norm(Tile *tile, Tile *newtile)
@@ -439,6 +444,8 @@ int chache_tile_cleanone(Tile *tile)
     ea_push(metrics, &tile_score_lru);
   if (cache->strategy & CACHE_MASK_M  & CACHE_M_DEEP)
     ea_push(metrics, &tile_score_depth);
+  if (cache->strategy & CACHE_MASK_M  & CACHE_M_SCALE)
+    ea_push(metrics, &tile_score_scale);
     
   if (select_func(tile, metrics, &pos, &del)) {
     printf("DEBUG: could not find a tile to clean!\n");
@@ -590,6 +597,7 @@ int lime_cache_set(int mem_max, int strategy)
   if (!(strategy & CACHE_MASK_M)) {
     strategy |= CACHE_M_LRU;
     strategy |= CACHE_M_DEEP;
+    strategy |= CACHE_M_SCALE;
     //strategy |= CACHE_M_TIME;
   }
   
@@ -614,7 +622,7 @@ int lime_cache_set(int mem_max, int strategy)
   cache = calloc(sizeof(Cache), 1);
   
   //this allows us to use mmap for all tiles - so memory gets freed immediately - but might be a good idea to keep a few tiles in a free list for reuse (maybe ~1MB = 16 default sized tiles?)
-  //mallopt(M_MMAP_THRESHOLD, DEFAULT_TILE_SIZE*DEFAULT_TILE_SIZE);
+  mallopt(M_MMAP_THRESHOLD, DEFAULT_TILE_SIZE*DEFAULT_TILE_SIZE);
   
   cache->table = eina_hash_new(NULL, &cache_tile_cmp, &cache_tile_tilehash, NULL, 8);
   cache->count_max = 32*mem_max;

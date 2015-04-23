@@ -1149,7 +1149,7 @@ int _cons_fix_err(Filter *start_f, Eina_Array *cons, Eina_Array *insert_f, int e
   sink_f = con_failed->sink->filter;
   con_del_real(con_failed);
   
-  printf("failed between %s-%s\n", source_f->fc->name, sink_f->fc->name);
+  //printf("failed between %s-%s\n", source_f->fc->name, sink_f->fc->name);
   
   try_cache = eina_inarray_count(c->succ_inserts);
   if (try_cache)
@@ -1292,7 +1292,7 @@ void lime_config_reset(Filter *f)
   }
   
   if (c->refcount) {
-    printf("lime config reset: exiting references to config!\n");
+    printf("lime config reset: existing references to config!\n");
     pthread_mutex_unlock(&f->lock);
     c->delete = EINA_TRUE;
     return;
@@ -1382,21 +1382,21 @@ int lime_config_test(Filter *f_sink)
     }
   }
    
-  printf("configured!!\n");
+  /*printf("configured!!\n");
   meta_print(global_meta_check);
-  printf("\n");
+  printf("\n");*/
   
   c->configured = 1;
   
   filter_hash_recalc(f);
   
-  printf("[CONFIG] actual filter chain:\n");
+  /*printf("[CONFIG] actual filter chain:\n");
   f = f_sink;
   while (f->node->con_trees_in && ea_count(f->node->con_trees_in)) {
     printf("         %s\n", f->fc->name);
     f = ((Con*)ea_data(f->node->con_trees_in, 0))->source->filter;
   }
-  printf("         %s\n", f->fc->name);
+  printf("         %s\n", f->fc->name);*/
   
   eina_array_free(cons);
   eina_array_free(insert_f);

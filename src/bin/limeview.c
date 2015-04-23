@@ -65,7 +65,7 @@
 //FIXME adjust depending on speed!
 //FIXME fix threaded config
 #define PRELOAD_CONFIG_RANGE 32
-#define PRELOAD_IMG_RANGE 2
+#define PRELOAD_IMG_RANGE 1
 #define PRELOAD_THRESHOLD 4
 
 //#define DISABLE_CONFIG_PRELOAD
@@ -78,7 +78,7 @@
 #define IF_FREE(ptr) if (ptr) {free(ptr); } ptr = NULL;
 
 int max_preload_workers = -1;
-int high_quality_delay =  300;
+int high_quality_delay =  0;
 int max_reaction_delay =  1000;
 int fullscreen = 0;
 int max_fast_scaledown = 5;
@@ -902,15 +902,19 @@ Eina_Bool idle_run_render(void *data)
   
   idle_render = NULL;
   
-  
+  /*
 #ifdef BENCHMARK
   if (!worker) {
     if (tagfiles_idx(files) >= BENCHMARK_LENGTH)
       workerfinish_schedule(&elm_exit_do, NULL, NULL, EINA_TRUE);
-    else
-      workerfinish_schedule(&step_image_do, tagfiles_step_new(1,0), NULL, EINA_TRUE);
+    else {
+      if (!tagfiles_idx(files))
+        workerfinish_schedule(&step_image_do, tagfiles_step_new(1,0), NULL, EINA_TRUE);
+      else
+        workerfinish_schedule(&step_image_do, tagfiles_step_new(-1,0), NULL, EINA_TRUE);
+    }
   }
-#endif
+#endif*/
   
   return ECORE_CALLBACK_CANCEL;
 }
@@ -934,18 +938,29 @@ int workerfinish_idle_preload_run(void *data)
   workerfinish_idle_preload = NULL;
   
   if (pending_action()) {
-    workerfinish_idle_run(NULL);
+    preload_flush();
     return ECORE_CALLBACK_CANCEL;
   }
   
-  #ifndef  DISABLE_IMG_PRELOAD
+#ifndef  DISABLE_IMG_PRELOAD
   step_image_preload_next(PRELOAD_IMG_RANGE);
-  #endif
-  #ifndef DISABLE_CONFIG_PRELOAD
+#endif
+#ifndef DISABLE_CONFIG_PRELOAD
   step_image_start_configs(PRELOAD_CONFIG_RANGE);
-  #endif
+#endif
   
   run_preload_threads();
+  
+#ifdef BENCHMARK
+    if (tagfiles_idx(files) >= BENCHMARK_LENGTH)
+      workerfinish_schedule(&elm_exit_do, NULL, NULL, EINA_TRUE);
+    else {
+      if (!tagfiles_idx(files))
+        workerfinish_schedule(&step_image_do, tagfiles_step_new(1,0), NULL, EINA_TRUE);
+      else
+        workerfinish_schedule(&step_image_do, tagfiles_step_new(-1,0), NULL, EINA_TRUE);
+    }
+#endif
   
   return ECORE_CALLBACK_CANCEL;
 }
@@ -989,16 +1004,14 @@ void workerfinish_schedule(void (*func)(void *data, Evas_Object *obj), void *dat
     idle_render = NULL;
   }
   
-  if (idle_render) {    
-    ecore_idler_del(idle_render);
-    idle_render = NULL;
-  }
-  
   if (workerfinish_idle_preload) {
     preload_flush();
     ecore_idler_del(workerfinish_idle_preload);
     workerfinish_idle_preload = NULL;
   }
+  
+  if (!high_quality_delay && (worker || worker_preload))
+    quick_preview_only = 1;
   
   if (append || !pending_action())
     pending_add(func, data, obj);
@@ -1008,13 +1021,9 @@ void workerfinish_schedule(void (*func)(void *data, Evas_Object *obj), void *dat
       workerfinish_idle = ecore_job_add(workerfinish_idle_run, NULL);
       if (delay_cur)
 	free(delay_cur);
-      delay_cur = malloc(sizeof(struct timespec));
-      bench_delay_start(delay_cur);
+      delay_cur = NULL;
     }
     //pending_exe();
-  }
-  else {  
-    quick_preview_only = 1;
   }
 }
 
@@ -1156,12 +1165,10 @@ _finished_tile(void *data, Ecore_Thread *th)
   worker--;
   
   if (!pending_action()) {
-    if (first_preview) {
+    if (first_preview)
       idle_render = ecore_idler_add(idle_run_render, NULL);
-    }
-    else {
+    else
       fill_scroller();
-    }
   }
   
   if (mat_cache_old) {
@@ -1191,13 +1198,13 @@ _finished_tile(void *data, Ecore_Thread *th)
       _display_preview(NULL);
     }
   }
-  
-  if (!worker && verbose)
-    printf("final delay: %f\n", bench_delay_get(delay_cur));
-  
+    
   _insert_image(tdata);
   
   first_preview = 0;
+  
+  if (idle_render)
+      printf("preview delay: %f\n", bench_delay_get(delay_cur));
   
   if (!worker && pending_action()) {
     if (mat_cache_old) {
@@ -1208,23 +1215,24 @@ _finished_tile(void *data, Ecore_Thread *th)
     //this will schedule an idle enterer to only process func after we are finished with rendering
     workerfinish_idle = ecore_idler_add(workerfinish_idle_run, NULL);
   }
-  else if (!worker /*&& preload_pending() < PRELOAD_THRESHOLD*/) {
+  else if (!worker && !pending_action() && !idle_render/*&& preload_pending() < PRELOAD_THRESHOLD*/) {
+    if (!worker && verbose)
+      printf("final delay: %f\n", bench_delay_get(delay_cur));
     workerfinish_idle_preload = ecore_idler_add(workerfinish_idle_preload_run, NULL);
   }
-  
+  /*
 #ifdef BENCHMARK
-  if (!worker && !idle_render && !workerfinish_idle) {
-    printf("step  benchmark!\n");
-    if (workerfinish_idle == workerfinish_idle_preload)
-      printf("preload pending!\n");
-    else
-      printf("%p\n", workerfinish_idle);
+  if (!worker && !workerfinish_idle && !idle_render) {
     if (tagfiles_idx(files) >= BENCHMARK_LENGTH)
       workerfinish_schedule(&elm_exit_do, NULL, NULL, EINA_TRUE);
-    else
-      workerfinish_schedule(&step_image_do, tagfiles_step_new(1,0), NULL, EINA_TRUE);
+    else {
+      if (!tagfiles_idx(files))
+        workerfinish_schedule(&step_image_do, tagfiles_step_new(1,0), NULL, EINA_TRUE);
+      else
+        workerfinish_schedule(&step_image_do, tagfiles_step_new(-1,0), NULL, EINA_TRUE);
+    }
   }
-#endif
+#endif*/
   
 }
 
@@ -1810,6 +1818,7 @@ void group_config_reset(File_Group *group)
         pthread_mutex_unlock(&barrier_lock);
       }
       //FIXME del filters?
+      //FIXME refcount config?!
       lime_config_reset(config->sink);
       config->sink = NULL;
     }
@@ -1853,8 +1862,6 @@ Config_Data *config_build(File_Group *group, int nth)
   //FIXME include some fast file compatibility checks!
   if (!filename)
     return NULL;
-  printf("config for %s\n", filename);
-
 
   config = filegroup_data_get(group, nth);
   
@@ -1898,7 +1905,6 @@ Config_Data *config_build(File_Group *group, int nth)
     }
   }
   else {
-    printf("no filterchain, check defaults\n");
     lime_exif *exif = lime_exif_handle_new_from_file(filename);
     char *cam = NULL;
     Eina_List *l;
@@ -2200,9 +2206,7 @@ void step_image_preload_next(int n)
 void step_image_config_reset_range(Tagfiles *files, int start, int end)
 {
   int i;
-  
-  printf("reset range %d-%d\n", start, end);
-  
+   
   for(i=start;i<=end;i++)
     group_config_reset(tagfiles_nth(files, i));
 }
@@ -2283,7 +2287,7 @@ void step_image_do(void *data, Evas_Object *obj)
   Config_Data *config = NULL;
   
   if (verbose)
-    printf("non-chancellation delay: %f\n", bench_delay_get(delay_cur));
+    printf("non-cancellation delay: %f\n", bench_delay_get(delay_cur));
   
   assert(!worker);
   assert(files);
@@ -2368,10 +2372,9 @@ void step_image_do(void *data, Evas_Object *obj)
   config_curr = config;
   {
     char *cam = NULL;
-    printf("\n\nexif infos!\n");
     config_exif_infos(config_curr, &cam, NULL);
-    if (cam)
-      printf("camera: %s\n", cam);
+    //if (cam)
+      //printf("camera: %s\n", cam);
   }
   //create gui only if necessary (tab selected) or if filter_chain is needed?
   fc_gui_from_config(config_curr);
@@ -2387,7 +2390,7 @@ void step_image_do(void *data, Evas_Object *obj)
     
   //we start as early as possible with rendering!
   forbid_fill--;
-  if (quick_preview_only)
+  if (quick_preview_only || !high_quality_delay)
     first_preview = 1;
   
   if (verbose)
@@ -3512,7 +3515,7 @@ Evas_Object *settings_box_add(Evas_Object *parent)
   
   evas_object_size_hint_weight_set(spinner_hq, EVAS_HINT_EXPAND, 0);
   evas_object_size_hint_align_set(spinner_hq, EVAS_HINT_FILL, 0);
-  elm_spinner_min_max_set (spinner_hq, 0, 0);
+  elm_spinner_min_max_set (spinner_hq, 0, 1000);
   elm_spinner_step_set (spinner_hq, 10);
   elm_spinner_round_set(spinner_hq, 10);
   elm_spinner_value_set (spinner_hq, high_quality_delay);
@@ -3527,7 +3530,7 @@ Evas_Object *settings_box_add(Evas_Object *parent)
   
   evas_object_size_hint_weight_set(spinner_mr, EVAS_HINT_EXPAND, 0);
   evas_object_size_hint_align_set(spinner_mr, EVAS_HINT_FILL, 0);
-  elm_spinner_min_max_set (spinner_mr, 0, 0);
+  elm_spinner_min_max_set (spinner_mr, 0, 1000);
   elm_spinner_step_set (spinner_mr, 10);
   elm_spinner_round_set(spinner_mr, 10);
   elm_spinner_value_set (spinner_mr, max_reaction_delay);
@@ -3862,7 +3865,7 @@ elm_main(int argc, char **argv)
   
   elm_config_scroll_thumbscroll_enabled_set(EINA_TRUE);
   
-  max_workers = 4*ecore_thread_max_get();
+  max_workers = ecore_thread_max_get();
   ecore_thread_max_set(max_workers*EXTRA_THREADING_FACTOR);
   max_preload_workers = max_workers*(EXTRA_THREADING_FACTOR-1);
   if (PRELOAD_EXTRA_WORKERS < max_preload_workers)

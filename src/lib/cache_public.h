@@ -24,14 +24,15 @@
 #define CACHE_F_RAND 0b01
 #define CACHE_F_PROB 0b10
 
-#define CACHE_M_LRU  0b0000100
-#define CACHE_M_DIST 0b0001000
-#define CACHE_M_TIME 0b0010000
-#define CACHE_M_HITN 0b0100000
-#define CACHE_M_DEEP 0b1000000
+#define CACHE_M_LRU   0b00000100
+#define CACHE_M_DIST  0b00001000
+#define CACHE_M_TIME  0b00010000
+#define CACHE_M_HITN  0b00100000
+#define CACHE_M_DEEP  0b01000000
+#define CACHE_M_SCALE 0b10000000
 
-#define CACHE_MASK_F 0b0000011
-#define CACHE_MASK_M 0b1111100
+#define CACHE_MASK_F  0b00000011
+#define CACHE_MASK_M  0b11111100
 
 void cache_stats_print(void);
 int lime_cache_set(int mem_max, int strategy);
