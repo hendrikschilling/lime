@@ -18,3 +18,18 @@
  */
 
 #include "common.h"
+
+Eina_Array *ea_copy(Eina_Array *a)
+{
+  int i;
+  Eina_Array *b;
+  if (ea_count(a))
+    b = ea_new(ea_count(a));
+  else
+    b = ea_new(4);
+  
+  for(i=0;i<ea_count(a);i++)
+    ea_push(b, ea_data(a, i));
+  
+  return b;
+}

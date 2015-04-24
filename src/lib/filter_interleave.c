@@ -22,6 +22,7 @@
 typedef struct {
   Meta *colorspace;
   Eina_Array *select_color;
+  Eina_Array *bd_select;
   Meta *dim_in_meta;
   Meta *bitdepth;
   Dim *out_dim;
@@ -154,6 +155,7 @@ static int _del(Filter *f)
   _Data *data = ea_data(f->data, 0);
   
   eina_array_free(data->select_color);
+  eina_array_free(data->bd_select);
   free(data);
   
   return 0;
@@ -166,6 +168,9 @@ static Filter *filter_interleave_new(void)
   Meta *ch_out, *tune_color;
   _Data *data = calloc(sizeof(_Data), 1);
   ea_push(filter->data, data);
+  data->bd_select = eina_array_new(2);
+  pushint(data->bd_select, BD_U16);
+  pushint(data->bd_select, BD_U8);
   
   filter->del = &_del;
   filter->mode_buffer = filter_mode_buffer_new();
@@ -178,9 +183,7 @@ static Filter *filter_interleave_new(void)
   pushint(data->select_color, CS_INT_ABGR);
   pushint(data->select_color, CS_INT_RGB);
   
-  bitdepth = meta_new_select(MT_BITDEPTH, filter, eina_array_new(2));
-  pushint(bitdepth->select, BD_U16);
-  pushint(bitdepth->select, BD_U8);
+  bitdepth = meta_new_select(MT_BITDEPTH, filter, data->bd_select);
   bitdepth->replace = bitdepth;
   bitdepth->dep = bitdepth;
   eina_array_push(filter->tune, bitdepth);
@@ -244,6 +247,9 @@ static Filter *filter_deinterleave_new(void)
   _Data *data = calloc(sizeof(_Data), 1);
   data->out_dim = calloc(sizeof(Dim), 1);
   ea_push(filter->data, data);
+  data->bd_select = eina_array_new(2);
+  pushint(data->bd_select, BD_U16);
+  pushint(data->bd_select, BD_U8);
   
   filter->del = &_del;
   filter->mode_buffer = filter_mode_buffer_new();
@@ -257,9 +263,7 @@ static Filter *filter_deinterleave_new(void)
   *(int*)(bitdepth->data) = BD_U8;
   bitdepth->replace = bitdepth;*/
   
-  bitdepth = meta_new_select(MT_BITDEPTH, filter, eina_array_new(2));
-  pushint(bitdepth->select, BD_U16);
-  pushint(bitdepth->select, BD_U8);
+  bitdepth = meta_new_select(MT_BITDEPTH, filter, data->bd_select);
   bitdepth->replace = bitdepth;
   bitdepth->dep = bitdepth;
   eina_array_push(filter->tune, bitdepth);

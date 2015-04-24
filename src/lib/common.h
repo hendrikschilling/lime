@@ -23,11 +23,14 @@
 #include <Eina.h>
 #include <assert.h>
 
+#define ea_new eina_array_new
 #define ea_count eina_array_count
 #define ea_data eina_array_data_get
 #define ea_set eina_array_data_set
 #define ea_pop eina_array_pop
 #define ea_push eina_array_push
+
+Eina_Array *ea_copy(Eina_Array *a);
 
 typedef struct _Pos {
   int x; //in scaled coordinates

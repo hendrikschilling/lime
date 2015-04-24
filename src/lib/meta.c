@@ -143,6 +143,8 @@ void meta_del(Meta *m)
 {
   if (m->childs)
     meta_array_del(m->childs);
+  if (m->select)
+    eina_array_free(m->select);
   free(m);
 }
 
@@ -182,7 +184,7 @@ Meta *meta_new_select(int type, Filter *filter, Eina_Array *select)
   
   meta->type = type;
   meta->filter = filter;
-  meta->select = select;
+  meta->select = ea_copy(select);
   
   eina_array_push(filter->metas, meta);
   

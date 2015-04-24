@@ -58,15 +58,17 @@
 #define EXTRA_THREADING_FACTOR 4
 #define PRELOAD_EXTRA_WORKERS 32
 
-//#define BENCHMARK
-//#define BENCHMARK_PREVIEW
-#define BENCHMARK_LENGTH 20
+#define BENCHMARK
+#define BENCHMARK_PREVIEW
+#define BENCHMARK_LENGTH 50
 
 //FIXME adjust depending on speed!
 //FIXME fix threaded config
-#define PRELOAD_CONFIG_RANGE 32
+#define PRELOAD_CONFIG_RANGE 2
 #define PRELOAD_IMG_RANGE 1
 #define PRELOAD_THRESHOLD 4
+
+//TODO update/invalided config->filterchain on file update?
 
 //#define DISABLE_CONFIG_PRELOAD
 //FIXME leaks memory (configs get called again and again when stepping forth back one)
@@ -293,6 +295,24 @@ Filter_Chain *fc_new(Filter *f)
 {
   Filter_Chain *fc = calloc(sizeof(Filter_Chain), 1);
   fc->f = f;
+  
+  return fc;
+}
+
+void fc_del(Filter_Chain *fc)
+{
+  filter_del(fc->f);
+}
+
+Filter_Chain *fc_list_del(Eina_List *list)
+{
+  Eina_List *l;
+  Filter_Chain *fc;
+  
+  EINA_LIST_FREE(list, fc) {
+    fc_gui_del(fc);
+    fc_del(fc);
+  }
   
   return fc;
 }
@@ -953,10 +973,10 @@ int workerfinish_idle_preload_run(void *data)
     if (tagfiles_idx(files) >= BENCHMARK_LENGTH)
       workerfinish_schedule(&elm_exit_do, NULL, NULL, EINA_TRUE);
     else {
-      if (!tagfiles_idx(files))
+      //if (!tagfiles_idx(files))
         workerfinish_schedule(&step_image_do, tagfiles_step_new(1,0), NULL, EINA_TRUE);
-      else
-        workerfinish_schedule(&step_image_do, tagfiles_step_new(-1,0), NULL, EINA_TRUE);
+      //else
+        //workerfinish_schedule(&step_image_do, tagfiles_step_new(-1,0), NULL, EINA_TRUE);
     }
 #endif
   
@@ -1490,17 +1510,21 @@ int fill_area(int xm, int ym, int wm, int hm, int minscale, int preview)
   return started;
 }
 
-
-void fc_del_gui(Eina_List *filter_chain)
+void fc_gui_del(Filter_Chain *fc)
 {
-  Eina_List *list_iter;
+  if (fc->item) {
+    elm_object_item_del(fc->item);
+    fc->item = NULL;
+  }
+}
+
+void fc_list_gui_del(Eina_List *filter_chain)
+{
+  Eina_List *l;
   Filter_Chain *fc;
   
-  EINA_LIST_FOREACH(filter_chain, list_iter, fc) {
-    //FIXME actually remove filters!
-    if (fc->item) {
-      elm_object_item_del(fc->item);
-    }
+  EINA_LIST_FOREACH(filter_chain, l, fc) {
+    fc_gui_del(fc);
   }
 }
 
@@ -1811,14 +1835,19 @@ void group_config_reset(File_Group *group)
     
     if (config && config != config_curr && config->sink) {
       while(config->running) {
+        printf("DEBUG: blocked on getting config!\n");
+        usleep(50000);
         pthread_mutex_lock(&barrier_lock);
-        usleep(20);
         pthread_mutex_unlock(&barrier_lock);
       }
       //FIXME del filters?
       //FIXME refcount config?!
+      filegroup_data_attach(group, i, NULL);
       lime_config_reset(config->sink);
+      fc_list_del(config->filter_chain);
       config->sink = NULL;
+      config->load = NULL;
+      free(config);
     }
   }
   
@@ -2361,9 +2390,7 @@ void step_image_do(void *data, Evas_Object *obj)
   }
   
   if (config_curr) {
-    //FIXME free ->filter_chain
-    fc_del_gui(config_curr->filter_chain);
-    config_curr->filter_chain = NULL;
+    fc_list_gui_del(config_curr->filter_chain);
     //config_curr->filters = NULL;
     //config_curr = NULL;
   }
@@ -3330,52 +3357,32 @@ void fc_connect_from_list(Eina_List *filters)
   }
 }
 
-void fc_gui_from_list(Eina_List *filters)
-{
-  Filter *f, *last;
-  Eina_List *list_iter;
-  Filter_Chain *fc;
-  
-  assert(filters);
-  assert(config_curr);
-  
-  last = NULL;
-  EINA_LIST_FOREACH(filters, list_iter, f) {
-    //filter chain
-    fc = fc_new(f);
-    config_curr->filter_chain = eina_list_append(config_curr->filter_chain, fc);
-    
-    //create gui, but not for first and last filters
-    if (list_iter != filters && list_iter != eina_list_last(filters))
-      fc->item = elm_list_item_append(filter_list, f->fc->name, NULL, NULL, &_on_filter_select, eina_list_last(config_curr->filter_chain));
-    
-    last = f;
-  }
-  elm_list_go(filter_list);
-}
-
-
 void fc_gui_from_config(Config_Data *config)
 {
   Filter *f, *last;
-  Eina_List *list_iter;
+  Eina_List *l;
   Filter_Chain *fc;
   
   assert(config);
   
-  f = config->load;
-  while(f) {
-    //filter chain
-    fc = fc_new(f);
-    config_curr->filter_chain = eina_list_append(config_curr->filter_chain, fc);
-    
+  if (!config->filter_chain) {
+    f = config->load;
+    while(f) {
+      //filter chain
+      fc = fc_new(f);
+      config_curr->filter_chain = eina_list_append(config_curr->filter_chain, fc);     
+      last = f;
+      f = filter_chain_next_filter(f);
+    }
+  }
+  
+  EINA_LIST_FOREACH(config_curr->filter_chain, l, fc) {
+    f = fc->f;
     //create gui, but not for first and last filters
     if (f != config->load && f != config->sink)
       fc->item = elm_list_item_append(filter_list, f->fc->name, NULL, NULL, &_on_filter_select, eina_list_last(config_curr->filter_chain));
-    
-    last = f;
-    f = filter_chain_next_filter(f);
   }
+
   elm_list_go(filter_list);
 }
 
@@ -4151,8 +4158,11 @@ elm_main(int argc, char **argv)
   elm_run();
   //bench_time_mark(BENCHMARK_PROCESSING);
   
+  //wait for stuff to finish
   while (ecore_thread_active_get())
     ecore_main_loop_iterate();
+  //del configs
+  step_image_config_reset_range(files, 0, tagfiles_count(files));
   
   if (mat_cache)
     mat_cache_del(mat_cache);
