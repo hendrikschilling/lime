@@ -78,8 +78,6 @@
 #define IF_FREE(ptr) if (ptr) {free(ptr); } ptr = NULL;
 
 int max_preload_workers = -1;
-int high_quality_delay =  0;
-int max_reaction_delay =  1000;
 int fullscreen = 0;
 int max_fast_scaledown = 5;
 int first_preview = 0;
@@ -1010,7 +1008,7 @@ void workerfinish_schedule(void (*func)(void *data, Evas_Object *obj), void *dat
     workerfinish_idle_preload = NULL;
   }
   
-  if (!high_quality_delay && (worker || worker_preload))
+  if (!settings->high_quality_delay && (worker || worker_preload))
     quick_preview_only = 1;
   
   if (append || !pending_action())
@@ -1172,13 +1170,13 @@ _finished_tile(void *data, Ecore_Thread *th)
   }
   
   if (mat_cache_old) {
-    if ((!pending_action() && delay < (1-quick_preview_only)*high_quality_delay && (worker || first_preview))) {
+    if ((!pending_action() && delay < (1-quick_preview_only)*settings->high_quality_delay && (worker || first_preview))) {
       //printf("delay for now: %f (%d)\n", delay, tdata->scale);
       eina_array_push(finished_threads, tdata);
       
       if (first_preview) {
 	if (!preview_timer) {
-	    preview_timer = ecore_timer_add((high_quality_delay - delay)*0.001, &_display_preview, NULL);
+	    preview_timer = ecore_timer_add((settings->high_quality_delay - delay)*0.001, &_display_preview, NULL);
 	}
       }
       else
@@ -2390,7 +2388,7 @@ void step_image_do(void *data, Evas_Object *obj)
     
   //we start as early as possible with rendering!
   forbid_fill--;
-  if (quick_preview_only || !high_quality_delay)
+  if (quick_preview_only || !settings->high_quality_delay)
     first_preview = 1;
   
   if (verbose)
@@ -3398,21 +3396,8 @@ void _on_hq_delay_set(void *data, Evas_Object *obj, void *event_info)
 {
   Evas_Object *other_spinner = (Evas_Object*)data;
   
-  
-  high_quality_delay = elm_spinner_value_get(obj);
-  
-  if (max_reaction_delay < high_quality_delay)
-    elm_spinner_value_set(other_spinner, high_quality_delay);
-}
-
-void _on_max_reaction_set(void *data, Evas_Object *obj, void *event_info)
-{ 
-  Evas_Object *other_spinner = (Evas_Object*)data;
-  
-  max_reaction_delay = elm_spinner_value_get(obj);
-  
-  if (max_reaction_delay < high_quality_delay)
-    elm_spinner_value_set(other_spinner, max_reaction_delay);
+  settings->high_quality_delay = elm_spinner_value_get(obj);
+  lv_setting_save(settings);
 }
 
 void _on_max_scaledown_set(void *data, Evas_Object *obj, void *event_info)
@@ -3518,25 +3503,10 @@ Evas_Object *settings_box_add(Evas_Object *parent)
   elm_spinner_min_max_set (spinner_hq, 0, 1000);
   elm_spinner_step_set (spinner_hq, 10);
   elm_spinner_round_set(spinner_hq, 10);
-  elm_spinner_value_set (spinner_hq, high_quality_delay);
+  elm_spinner_value_set (spinner_hq, settings->high_quality_delay);
   evas_object_smart_callback_add(spinner_hq, "delay,changed", _on_hq_delay_set, spinner_mr);
   elm_box_pack_end(inbox, spinner_hq);
   evas_object_show(spinner_hq);  
-
-  lbl = elm_label_add(parent);
-  elm_object_text_set(lbl, "max delay");
-  elm_box_pack_end(inbox, lbl);
-  evas_object_show(lbl);
-  
-  evas_object_size_hint_weight_set(spinner_mr, EVAS_HINT_EXPAND, 0);
-  evas_object_size_hint_align_set(spinner_mr, EVAS_HINT_FILL, 0);
-  elm_spinner_min_max_set (spinner_mr, 0, 1000);
-  elm_spinner_step_set (spinner_mr, 10);
-  elm_spinner_round_set(spinner_mr, 10);
-  elm_spinner_value_set (spinner_mr, max_reaction_delay);
-  evas_object_smart_callback_add(spinner_mr, "delay,changed", _on_max_reaction_set, spinner_hq);
-  elm_box_pack_end(inbox, spinner_mr);
-  evas_object_show(spinner_mr);
   
   lbl = elm_label_add(parent);
   elm_object_text_set(lbl, "preview scale steps");
