@@ -169,19 +169,23 @@ static void _worker(Filter *f, Eina_Array *in, Eina_Array *out, Rect *area, int 
   offx = (area->corner.x<<area->corner.scale) - data->raw->params.cropbox[0];
   offy = (area->corner.y<<area->corner.scale) - data->raw->params.cropbox[1];
   
-  libraw_dcraw_process(data->raw);
-  assert(data->raw->image);
-  img = libraw_dcraw_make_mem_image(data->raw, &errcode);
-  
-  w = imin(area->width, data->raw->sizes.width-offx);
-  h = imin(area->height, data->raw->sizes.height-offy);
-  
 #ifdef RAW_THREADSAFE_BUT_LEAK
   hack_tiledata_fixsize_mt(6, ea_data(out, 0));
 #else
   hack_tiledata_fixsize(6, ea_data(out, 0));
 #endif
   out_td = (Tiledata*)ea_data(out, 0);
+  
+  libraw_dcraw_process(data->raw);
+  if (!data->raw->image) {
+    printf("LIBRAW: ERROR no image created! - wrong cropbox?\n");
+    libraw_free_image(data->raw);
+    return;
+  }
+  img = libraw_dcraw_make_mem_image(data->raw, &errcode);
+  
+  w = imin(area->width, data->raw->sizes.width-offx);
+  h = imin(area->height, data->raw->sizes.height-offy);
   
   for(j=0;j<h;j++)
     for(i=0;i<w;i++) {
