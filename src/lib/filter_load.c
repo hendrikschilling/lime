@@ -33,12 +33,22 @@ int _load_input_fixed(Filter *f)
   return 0;
 }
 
+static int _del(Filter *f)
+{
+  _Data *data = ea_data(f->data, 0);
+  
+  free(data);  
+  
+  return 0;
+}
+
 Filter *filter_load_new(void)
 {
   Filter *filter = filter_new(&filter_core_load);
   _Data *data = calloc(sizeof(_Data), 1);
   ea_push(filter->data, data);
   
+  filter->del = &_del;
   filter->input_fixed = &_load_input_fixed;
   
   Meta *out, *setting;
