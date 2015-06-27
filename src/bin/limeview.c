@@ -58,13 +58,13 @@
 #define EXTRA_THREADING_FACTOR 4
 #define PRELOAD_EXTRA_WORKERS 32
 
-#define BENCHMARK
-#define BENCHMARK_PREVIEW
-#define BENCHMARK_LENGTH 50
+//#define BENCHMARK
+//#define BENCHMARK_PREVIEW
+#define BENCHMARK_LENGTH 10
 
 //FIXME adjust depending on speed!
 //FIXME fix threaded config
-#define PRELOAD_CONFIG_RANGE 2
+#define PRELOAD_CONFIG_RANGE 32
 #define PRELOAD_IMG_RANGE 1
 #define PRELOAD_THRESHOLD 4
 
@@ -96,6 +96,7 @@ int quick_preview_only = 0;
 int cur_key_down = 0;
 int key_repeat = 0;
 int preloaded_configs = 0;
+int last_group_idx = 0;
 
 const double zoom_fac = 1.4142136;
 
@@ -135,6 +136,7 @@ typedef struct {
   Tagged_File *file;
   File_Group *group;
   int file_group_idx;
+  int refs;
 } Config_Data;
 
 typedef struct {
@@ -998,8 +1000,12 @@ int preload_pending(void)
 
 void preload_flush(void)
 {
-  preload_list = NULL;
-  printf("FIXME prelaod flush\n");
+  _Img_Thread_Data *tdata;
+  
+  EINA_LIST_FREE(preload_list, tdata)
+    free(tdata);
+    
+  assert(!preload_list);
 }
 
 
@@ -1051,7 +1057,6 @@ static void _process_tile(void *data, Ecore_Thread *th)
     
   eina_sched_prio_drop();
   lime_render_area(&tdata->area, tdata->config->sink, tdata->t_id);
-  lime_filter_config_unref(tdata->config->load);
 }
 
 static void _process_tile_bg(void *data, Ecore_Thread *th)
@@ -1061,7 +1066,6 @@ static void _process_tile_bg(void *data, Ecore_Thread *th)
   eina_sched_prio_drop();
   eina_sched_prio_drop();
   lime_render_area(&tdata->area, tdata->config->sink, tdata->t_id);
-  lime_filter_config_unref(tdata->config->load);
 }
 
 void _insert_image(_Img_Thread_Data *tdata)
@@ -1120,6 +1124,22 @@ Eina_Bool _display_preview(void *data)
 
 static void _finished_tile_blind(void *data, Ecore_Thread *th);
 
+void limeview_config_ref(Config_Data *c)
+{
+  assert(c->sink);
+  assert(!c->running);
+  assert(c->configured);
+  c->refs++;
+  lime_filter_config_ref(c->sink);
+}
+
+void limeview_config_unref(Config_Data *c)
+{
+  assert(c->refs);
+  c->refs--;
+  lime_filter_config_unref(c->sink);
+}
+
 void run_preload_threads(void)
 {
   _Img_Thread_Data *tdata;
@@ -1135,7 +1155,7 @@ void run_preload_threads(void)
     worker_preload++;
     tdata->t_id = lock_free_thread_id();
     filter_memsink_buffer_set(tdata->config->sink, NULL, tdata->t_id);
-    lime_filter_config_ref(tdata->config->sink);
+    limeview_config_ref(tdata->config);
     ecore_thread_run(_process_tile_bg, _finished_tile_blind, NULL, tdata);
   }
 }
@@ -1144,6 +1164,8 @@ static void
 _finished_tile_blind(void *data, Ecore_Thread *th)
 {
   _Img_Thread_Data *tdata = data;
+  
+  limeview_config_unref(tdata->config);
   
   assert(tdata->t_id != -1);
   
@@ -1167,6 +1189,8 @@ _finished_tile(void *data, Ecore_Thread *th)
 {
   _Img_Thread_Data *tdata = data;
   double delay = bench_delay_get(delay_cur);
+  
+  limeview_config_unref(tdata->config);
   
   assert(tdata->t_id != -1);
   
@@ -1497,7 +1521,7 @@ int fill_area(int xm, int ym, int wm, int hm, int minscale, int preview)
 	  	  
 	  worker++;
 	  
-	  lime_filter_config_ref(tdata->config->sink);
+          limeview_config_ref(tdata->config);
 	  ecore_thread_run(_process_tile, _finished_tile, NULL, tdata);
 	  started++;
 
@@ -1697,9 +1721,7 @@ static void on_jump_image(void *data, Evas_Object *obj, void *event_info)
   if (idx == tagfiles_idx(files))
     return;
   
-  //FIXME don't reset around next/target idx
-  //FIXME we still will leak configs if we are currently rendering stuff!
-  //FIXME segfaults if this happens - disable for now!
+  quick_preview_only = 1;
   
   if (mat_cache_old && !worker)
     _display_preview(NULL);
@@ -1812,6 +1834,7 @@ void on_known_tags_changed(Tagfiles *tagfiles, void *data, const char *new_tag)
 void group_config_reset(File_Group *group)
 {
   int i;
+  int found = 0;
   Config_Data *config;
   
   if (!group)
@@ -1833,15 +1856,20 @@ void group_config_reset(File_Group *group)
     //FIXME if config->running -> the config thread is still waiting to execute? cancel that thread?
     //printf("del config for %s\n", tagged_file_name(filegroup_nth(group,i), config, config_curr, );
     
+    if (config)
+      found = 1;
+    
     if (config && config != config_curr && config->sink) {
+      if (config->refs) {
+        printf("FIXME: del config with refs!\n");
+        continue;
+      }
       while(config->running) {
         printf("DEBUG: blocked on getting config!\n");
         usleep(50000);
         pthread_mutex_lock(&barrier_lock);
         pthread_mutex_unlock(&barrier_lock);
       }
-      //FIXME del filters?
-      //FIXME refcount config?!
       filegroup_data_attach(group, i, NULL);
       lime_config_reset(config->sink);
       fc_list_del(config->filter_chain);
@@ -1851,9 +1879,7 @@ void group_config_reset(File_Group *group)
     }
   }
   
-  //FIXME delete group cb
-  //printf("FIXME delete group_changed_cb for %s\n", filegroup_basename(group));
-  if (config) //at least one config was created for the group
+  if (found) //at least one config was created for the group
     tagfiles_group_changed_cb_delete(files, group);
 }
 
@@ -2005,8 +2031,10 @@ Config_Data *config_data_get(File_Group *group, int nth)
   /*if (config && config->sink)
     return config;*/
 
-  if (!config->configured)
+  if (!config->configured) {
     config->failed = lime_config_test(config->sink);
+    config->configured = EINA_TRUE;
+  }
   
   return config;
 }
@@ -2349,7 +2377,7 @@ void step_image_do(void *data, Evas_Object *obj)
     if (!step)
       group_idx = 0;
     else {
-      group_idx = step->group_idx;
+      group_idx = imin(step->group_idx, filegroup_count(group)-1);
       free(step);
       step = NULL;
     }
@@ -2390,6 +2418,7 @@ void step_image_do(void *data, Evas_Object *obj)
   }
   
   if (config_curr) {
+    last_group_idx = group_idx;
     fc_list_gui_del(config_curr->filter_chain);
     //config_curr->filters = NULL;
     //config_curr = NULL;
@@ -2752,7 +2781,7 @@ on_next_image(void *data, Evas_Object *obj, void *event_info)
     if (mat_cache_old && !worker)
       _display_preview(NULL);
     //doesnt matter if true or false
-    workerfinish_schedule(&step_image_do, tagfiles_step_new(1,0), NULL, EINA_TRUE);
+    workerfinish_schedule(&step_image_do, tagfiles_step_new(1,last_group_idx), NULL, EINA_TRUE);
   }
 }
 
@@ -2769,7 +2798,7 @@ on_prev_image(void *data, Evas_Object *obj, void *event_info)
     if (mat_cache_old && !worker)
       _display_preview(NULL);
     //FIXME doesnt matter if true or false
-    workerfinish_schedule(&step_image_do, tagfiles_step_new(-1,0), NULL, EINA_TRUE);
+    workerfinish_schedule(&step_image_do, tagfiles_step_new(-1,last_group_idx), NULL, EINA_TRUE);
   }
 }
 

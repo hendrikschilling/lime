@@ -125,8 +125,6 @@ void tagfiles_group_changed_cb_delete(Tagfiles *tagfiles, File_Group *group)
   Group_Changed_Cb_Data *data;
   Eina_List *l;
   
-  printf("stored config (app. by callbacks): %d\n", eina_list_count(tagfiles->group_changed_cb));
-  
   if (!tagfiles->group_changed_cb)
     return;
   
@@ -134,10 +132,9 @@ void tagfiles_group_changed_cb_delete(Tagfiles *tagfiles, File_Group *group)
     if (data->group == group)
       break;
     
-  if (!data || data->group != group) {
-    printf("FIXME could not find specified group in group_changed_cb list\n");
+  if (!data || data->group != group)
+    //not found
     return;
-  }
   
   tagfiles->group_changed_cb = eina_list_remove_list(tagfiles->group_changed_cb, l);
 }
