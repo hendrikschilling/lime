@@ -556,7 +556,8 @@ Render_Node *render_state_getjob( Render_State *state)
         tile->want = eina_array_new(4);
         node->need++;
         ea_push(tile->want, node);
-        incnode(node);
+        //FIXME this incnode would cause problems with tiffsave!
+        //incnode(node);
         
         node = jobnode;
         
@@ -716,17 +717,19 @@ void lime_render_area(Rect *area, Filter *f, int thread_id)
     if (job->tile && job->tile->want)
       while(ea_count(job->tile->want)) {
 	waiter = ea_pop(job->tile->want);
-	for(j=0;j<ea_count(waiter->f_source);j++)
-	  if (filter_hash_value_get(ea_data(waiter->f_source, j)) == job->tile->filterhash)
-	    //FIXME channel selection, use paired channels not blindly the same number!
-	    clobbertile_add(ea_data(waiter->inputs, j), ea_data(job->tile->channels, j));
+        if (waiter->mode != MODE_ITER) {
+          for(j=0;j<ea_count(waiter->f_source);j++)
+            if (filter_hash_value_get(ea_data(waiter->f_source, j)) == job->tile->filterhash)
+              //FIXME channel selection, use paired channels not blindly the same number!
+              clobbertile_add(ea_data(waiter->inputs, j), ea_data(job->tile->channels, j));
+        }
 	waiter->need--;
 	if (!waiter->need) {
 	  ea_push(waiter->state->ready, waiter);
 	  waiter->state->pending--;
 	}
 	//FIXME add proper interface!
-	else if (!strcmp(waiter->f->fc->shortname, "savejpeg"))
+	else if (!strcmp(waiter->f->fc->shortname, "savejpeg") || !strcmp(waiter->f->fc->shortname, "savetiff"))
           cache_stats_print();
       }
     
