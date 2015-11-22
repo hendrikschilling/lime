@@ -2286,7 +2286,7 @@ void refresh_tab_tags(void)
   
   elm_genlist_realized_items_update(tags_list);
   
-  elm_segment_control_item_selected_set(elm_segment_control_item_get(seg_rating, filegroup_rating(cur_group)), EINA_TRUE);
+  //elm_segment_control_item_selected_set(elm_segment_control_item_get(seg_rating, filegroup_rating(cur_group)), EINA_TRUE);
 }
 
 void refresh_tab_setings(void)
@@ -3690,10 +3690,10 @@ static void on_rating_changed(void *data, Evas_Object *obj, void *event_info)
   char unit_fmt[32];
   assert(cur_group);
   
-  if (filegroup_rating(cur_group) == elm_segment_control_item_index_get(elm_segment_control_item_selected_get(obj)))
-    return;
+  //if (filegroup_rating(cur_group) == elm_segment_control_item_index_get(elm_segment_control_item_selected_get(obj)))
+    //return;
   
-  filegroup_rating_set(cur_group, elm_segment_control_item_index_get(elm_segment_control_item_selected_get(obj)));
+  //filegroup_rating_set(cur_group, elm_segment_control_item_index_get(elm_segment_control_item_selected_get(obj)));
   
   filtered_image_count = filtered_image_count_get();
   sprintf(unit_fmt, "%%.0f/%d", filtered_image_count);
@@ -3708,7 +3708,7 @@ static void on_filter_rating_changed(void *data, Evas_Object *obj, void *event_i
   char unit_fmt[32];
   File_Group *group = cur_group;
   
-  tags_filter_rating = elm_segment_control_item_index_get(elm_segment_control_item_selected_get(obj));
+  //tags_filter_rating = elm_segment_control_item_index_get(elm_segment_control_item_selected_get(obj));
   
   filtered_image_count = filtered_image_count_get();
   sprintf(unit_fmt, "%%.0f/%d", filtered_image_count);
@@ -4054,7 +4054,7 @@ elm_main(int argc, char **argv)
   evas_object_size_hint_align_set(tags_list, EVAS_HINT_FILL, EVAS_HINT_FILL);
   evas_object_show(tags_list);
   
-  seg_rating = elm_segment_control_add(win);
+  /*seg_rating = elm_segment_control_add(win);
   elm_segment_control_item_selected_set(elm_segment_control_item_add(seg_rating, NULL, "0"), EINA_TRUE);
   elm_segment_control_item_add(seg_rating, NULL, "1");
   elm_segment_control_item_add(seg_rating, NULL, "2");
@@ -4065,7 +4065,7 @@ elm_main(int argc, char **argv)
   evas_object_size_hint_align_set(seg_rating, EVAS_HINT_FILL, 0);
   elm_box_pack_end(tab_tags, seg_rating);
   evas_object_show(seg_rating);
-  evas_object_smart_callback_add(seg_rating, "changed", on_rating_changed, NULL);
+  evas_object_smart_callback_add(seg_rating, "changed", on_rating_changed, NULL);*/
   
   tags_filter_list =  elm_genlist_add(win);
   elm_object_tree_focus_allow_set(tags_filter_list, EINA_FALSE);
@@ -4075,7 +4075,7 @@ elm_main(int argc, char **argv)
   evas_object_size_hint_align_set(tags_filter_list, EVAS_HINT_FILL, EVAS_HINT_FILL);
   evas_object_show(tags_filter_list);
   
-  seg_filter_rating = elm_segment_control_add(win);
+  /*seg_filter_rating = elm_segment_control_add(win);
   elm_segment_control_item_selected_set(elm_segment_control_item_add(seg_filter_rating, NULL, "0"), EINA_TRUE);
   elm_segment_control_item_add(seg_filter_rating, NULL, "1");
   elm_segment_control_item_add(seg_filter_rating, NULL, "2");
@@ -4086,7 +4086,7 @@ elm_main(int argc, char **argv)
   evas_object_size_hint_align_set(seg_filter_rating, EVAS_HINT_FILL, 0);
   elm_box_pack_end(tab_tags, seg_filter_rating);
   evas_object_show(seg_filter_rating);
-  evas_object_smart_callback_add(seg_filter_rating, "changed", on_filter_rating_changed, NULL);
+  evas_object_smart_callback_add(seg_filter_rating, "changed", on_filter_rating_changed, NULL);*/
   
   tab_filter = elm_box_add(win);
   elm_object_tree_focus_allow_set(tab_filter, EINA_FALSE);

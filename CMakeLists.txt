@@ -23,5 +23,9 @@ find_package (Threads)
 set(CMAKE_C_FLAGS "-Wall -g -O3 -fno-omit-frame-pointer")
 set(CMAKE_CXX_FLAGS "-Wall -g -O3 -fno-omit-frame-pointer")
 
+include_directories(/usr/include/eina-1/eina)
+include_directories(/usr/include/eina-1)
+include_directories(/usr/include/efl-1)
+
 add_subdirectory(src/lib)
 add_subdirectory(src/bin)

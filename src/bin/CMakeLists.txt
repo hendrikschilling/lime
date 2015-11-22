@@ -13,7 +13,7 @@ add_executable(limeview limeview.c cli.c tagfiles.c settings.c)
 add_executable(limedo limedo.c cli.c)
 
 target_link_libraries(limeview ${ELM_LIBRARIES} ${EIO_LIBRARIES} ${EXEMPI_LIBRARIES} lime)
-target_link_libraries(limedo  ${EINA_LIBRARIES} lime)
+target_link_libraries(limedo eina ${EINA_LIBRARIES} lime)
 
 install (TARGETS limeview limedo
          RUNTIME DESTINATION bin)
