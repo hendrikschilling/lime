@@ -22,6 +22,6 @@
 
 #include "Lime.h"
 
-Filter_Core filter_core_lensfun;
+extern Filter_Core filter_core_lensfun;
 
 #endif

@@ -206,8 +206,8 @@ static int prepare(Filter *f)
   
   hInProfile = NULL;
   hOutProfile = NULL;
-  data->common->lav_fmt_in = PIX_FMT_NONE;
-  data->common->lav_fmt_out = PIX_FMT_NONE;
+  data->common->lav_fmt_in = AV_PIX_FMT_NONE;
+  data->common->lav_fmt_out = AV_PIX_FMT_NONE;
   data->common->packed_output = EINA_FALSE;
   data->common->packed_input = EINA_FALSE;
   data->common->in_shuffle[0] = 0;

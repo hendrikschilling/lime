@@ -39,11 +39,13 @@ Eina_Hash *lime_filters;
 #include "filter_savejpeg.h"
 #include "filter_rotate.h"
 #include "filter_curves.h"
-#include "filter_lrdeconv.h"
+//#include "filter_lrdeconv.h"
 #include "filter_lensfun.h"
 
 void lime_filters_init(void)
 {
+  printf("init add filters!\n");
+  
   //TODO dynamic loading from filters as dynamic library! on-demand? (by short-name?)
   lime_filters = eina_hash_string_small_new(&free);
 
@@ -65,7 +67,7 @@ void lime_filters_init(void)
   eina_hash_add(lime_filters, filter_core_rotate.shortname, &filter_core_rotate);
   eina_hash_add(lime_filters, filter_core_savejpeg.shortname, &filter_core_savejpeg);
   eina_hash_add(lime_filters, filter_core_curves.shortname, &filter_core_curves);
-  eina_hash_add(lime_filters, filter_core_lrdeconv.shortname, &filter_core_lrdeconv);
+  //eina_hash_add(lime_filters, filter_core_lrdeconv.shortname, &filter_core_lrdeconv);
   eina_hash_add(lime_filters, filter_core_lensfun.shortname, &filter_core_lensfun);
 }
 

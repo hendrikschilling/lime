@@ -262,7 +262,7 @@ int lime_setting_int_set(Filter *f, const char *setting, int value)
   int i;
   Meta *m;
   
-  if (!ea_count(f->settings))
+  if (!f || !ea_count(f->settings))
     return -1;
   
   for(i=0;i<ea_count(f->settings);i++) {
@@ -290,7 +290,7 @@ int lime_setting_string_set(Filter *f, const char *setting, const char *value)
   Meta *m;
   const char *str;
   
-  if (!ea_count(f->settings))
+  if (!f || !ea_count(f->settings))
     return -1;
   
   str = eina_stringshare_add(value);

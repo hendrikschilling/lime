@@ -22,6 +22,6 @@
 
 #include "Lime.h"
 
-Filter_Core filter_core_gauss;
+extern Filter_Core filter_core_gauss;
 
 #endif

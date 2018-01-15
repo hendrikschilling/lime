@@ -22,7 +22,7 @@
 
 #include "Lime.h"
 
-Filter_Core filter_core_savetiff;
+extern Filter_Core filter_core_savetiff;
 
 #endif
 

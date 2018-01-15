@@ -1940,6 +1940,7 @@ Config_Data *config_build(File_Group *group, int nth)
   config->file_group_idx = nth;
   
   if (filegroup_tags_valid(group) && tagged_file_filterchain(config->file)) {
+    printf("load chain!\n");
     filters = lime_filter_chain_deserialize(tagged_file_filterchain(config->file));
     
     //FIXME this triggers sometimes on load!
@@ -1998,10 +1999,11 @@ Config_Data *config_build(File_Group *group, int nth)
       config->load = lime_filter_new("load");
       filters = eina_list_append(NULL, config->load);
       config->sink = lime_filter_new("memsink");
+      printf("on load add sink %p!\n", config->sink);
       lime_setting_int_set(config->sink, "add alpha", 1);
       filters = eina_list_append(filters, config->sink);
     }
-  } 
+  }
   
   //strcpy(image_file, filename);
   filegroup_data_attach(group, nth, config);
@@ -2009,6 +2011,7 @@ Config_Data *config_build(File_Group *group, int nth)
   fc_connect_from_list(filters);
   lime_setting_string_set(config->load, "filename", filename);
   
+  assert(config->sink);
   return config;
 }
 
@@ -2581,8 +2584,10 @@ void start_single_export(Export_Data *export, Export_Job *job)
   
   if (job->filterchain)
     sprintf(dst, "limedo \'%s,savejpeg:filename=%s/%s\' \'%s\'", job->filterchain, string_escape_colon(job->export->path), string_escape_colon(filename), job->filename);
+    //sprintf(dst, "limedo \'%s,down,savejpeg:filename=%s/%s\' \'%s\'", job->filterchain, string_escape_colon(job->export->path), string_escape_colon(filename), job->filename);
   else
     sprintf(dst, "limedo \'savejpeg:filename=%s/%s\' \'%s\'", string_escape_colon(job->export->path), string_escape_colon(filename), job->filename);
+    //sprintf(dst, "limedo \'down,savejpeg:filename=%s/%s\' \'%s\'", string_escape_colon(job->export->path), string_escape_colon(filename), job->filename);
 
   printf("start export of: %s\n", dst);
   ecore_exe_run(dst, job);
@@ -4135,7 +4140,7 @@ elm_main(int argc, char **argv)
   elm_hoversel_item_add(select_filter, "simple rotate", NULL, ELM_ICON_NONE, &on_select_filter_select, &filter_core_simplerotate);
   elm_hoversel_item_add(select_filter, "rotate", NULL, ELM_ICON_NONE, &on_select_filter_select, &filter_core_rotate);
   elm_hoversel_item_add(select_filter, "curves", NULL, ELM_ICON_NONE, &on_select_filter_select, &filter_core_curves);
-  elm_hoversel_item_add(select_filter, "deconv", NULL, ELM_ICON_NONE, &on_select_filter_select, &filter_core_lrdeconv);
+  //elm_hoversel_item_add(select_filter, "deconv", NULL, ELM_ICON_NONE, &on_select_filter_select, &filter_core_lrdeconv);
   elm_hoversel_item_add(select_filter, "lensfun", NULL, ELM_ICON_NONE, &on_select_filter_select, &filter_core_lensfun);
 
   elm_object_text_set(select_filter, "contrast");

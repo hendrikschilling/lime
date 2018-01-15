@@ -22,6 +22,6 @@
 
 #include "Lime.h"
 
-Filter_Core filter_core_lrdeconv;
+extern Filter_Core filter_core_lrdeconv;
 
 #endif
