@@ -44,6 +44,7 @@ int tagfiles_scanned_files(Tagfiles *tagfiles);
 Eina_Hash *tagfiles_known_tags(Tagfiles *tagfiles);
 int filegroup_rating(File_Group *group);
 Eina_Hash *filegroup_tags(File_Group *group);
+void *filegroup_data_get(File_Group *g, int n);
 void tagfiles_group_changed_cb_insert(Tagfiles *tagfiles, File_Group *group, void (*filegroup_changed_cb)(File_Group *group));
 void tagfiles_group_changed_cb_delete(Tagfiles *tagfiles, File_Group *group);
 void tagfiles_group_changed_cb_flush(Tagfiles *files);
